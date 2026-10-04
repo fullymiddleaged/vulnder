@@ -1,0 +1,394 @@
+{
+  "link": "<https://api.github.com/advisories?type=reviewed&sort=updated&direction=asc&per_page=60&modified=%3E%3D2026-09-27T18%3A31%3A05Z&after=Y3Vyc29yOnYyOpK0MjAyNi0wOS0yOVQyMzoxMTo1NFrOAAexPg%3D%3D>; rel=\"next\"",
+  "advisories": [
+    {
+      "ghsa_id": "GHSA-wp3j-xq48-xpjw",
+      "cve_id": "CVE-2025-9566",
+      "url": "https://api.github.com/advisories/GHSA-wp3j-xq48-xpjw",
+      "html_url": "https://github.com/advisories/GHSA-wp3j-xq48-xpjw",
+      "summary": "podman kube play symlink traversal vulnerability",
+      "description": "### Impact\n\nThe podman kube play command can overwrite host files when the kube file contains a ConfigMap or Secret volume mount and the volume already contains a symlink to a host file.\nThis allows a malicious container to write to arbitrary files on the host BUT the attacker only controls the target path not the contents that will be written to the file. The contents are defined in the yaml file by the end user.\n\n### Requirements to exploit:\npodman kube play must be used with a ConfigMap or Secret volume mount AND must be run more than once on the same volume. All the attacker has to do is c",
+      "type": "reviewed",
+      "severity": "high",
+      "repository_advisory_url": "https://api.github.com/repos/podman-container-tools/podman/security-advisories/GHSA-wp3j-xq48-xpjw",
+      "source_code_location": "https://github.com/containers/podman",
+      "identifiers": [
+        {
+          "value": "GHSA-wp3j-xq48-xpjw",
+          "type": "GHSA"
+        },
+        {
+          "value": "CVE-2025-9566",
+          "type": "CVE"
+        }
+      ],
+      "references": [
+        "https://github.com/containers/podman/security/advisories/GHSA-wp3j-xq48-xpjw",
+        "https://github.com/containers/podman/commit/43fbde4e665fe6cee6921868f04b7ccd3de5ad89",
+        "https://nvd.nist.gov/vuln/detail/CVE-2025-9566",
+        "https://access.redhat.com/security/cve/CVE-2025-9566",
+        "https://bugzilla.redhat.com/show_bug.cgi?id=2393152",
+        "https://access.redhat.com/errata/RHSA-2025:15900",
+        "https://access.redhat.com/errata/RHSA-2025:15901",
+        "https://access.redhat.com/errata/RHSA-2025:15904",
+        "https://access.redhat.com/errata/RHSA-2025:16480",
+        "https://access.redhat.com/errata/RHSA-2025:16481",
+        "https://access.redhat.com/errata/RHSA-2025:16482",
+        "https://access.redhat.com/errata/RHSA-2025:16488",
+        "https://access.redhat.com/errata/RHSA-2025:16515",
+        "https://access.redhat.com/errata/RHSA-2025:18218",
+        "https://access.redhat.com/errata/RHSA-2025:18217",
+        "https://access.redhat.com/errata/RHSA-2025:19094",
+        "https://access.redhat.com/errata/RHSA-2025:18240",
+        "https://access.redhat.com/errata/RHSA-2025:19046",
+        "https://access.redhat.com/errata/RHSA-2025:19041",
+        "https://access.redhat.com/errata/RHSA-2025:19002",
+        "https://access.redhat.com/errata/RHSA-2025:20909",
+        "https://access.redhat.com/errata/RHSA-2025:20983",
+        "https://access.redhat.com/errata/RHSA-2025:19894",
+        "https://access.redhat.com/errata/RHBA-2025:16158",
+        "https://access.redhat.com/errata/RHSA-2025:16724",
+        "https://access.redhat.com/errata/RHSA-2025:17669",
+        "https://access.redhat.com/errata/RHEA-2025:4782",
+        "https://access.redhat.com/errata/RHBA-2025:15712",
+        "https://access.redhat.com/errata/RHBA-2025:15692",
+        "https://access.redhat.com/errata/RHBA-2025:16163",
+        "https://access.redhat.com/errata/RHSA-2026:8211",
+        "https://access.redhat.com/errata/RHSA-2026:18289",
+        "https://access.redhat.com/errata/RHSA-2026:18722",
+        "https://access.redhat.com/errata/RHSA-2026:62549",
+        "https://access.redhat.com/errata/RHSA-2026:67857",
+        "https://github.com/advisories/GHSA-wp3j-xq48-xpjw"
+      ],
+      "published_at": "2025-09-04T20:01:54Z",
+      "updated_at": "2026-09-28T03:30:24Z",
+      "github_reviewed_at": "2025-09-04T20:01:54Z",
+      "nvd_published_at": "2025-09-05T20:15:36Z",
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "go",
+            "name": "github.com/containers/podman/v5"
+          },
+          "vulnerable_version_range": "<= 5.6.0",
+          "first_patched_version": "5.6.1",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "go",
+            "name": "github.com/containers/podman/v4"
+          },
+          "vulnerable_version_range": "<= 4.9.5",
+          "first_patched_version": null,
+          "vulnerable_functions": []
+        }
+      ],
+      "cvss_severities": {
+        "cvss_v3": {
+          "vector_string": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H",
+          "score": 8.1
+        },
+        "cvss_v4": {
+          "vector_string": null,
+          "score": 0
+        }
+      },
+      "cwes": [
+        {
+          "cwe_id": "CWE-22",
+          "name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+        },
+        {
+          "cwe_id": "CWE-61",
+          "name": "UNIX Symbolic Link (Symlink) Following"
+        }
+      ],
+      "comments": 2,
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H",
+        "score": 8.1
+      },
+      "epss": {
+        "percentage": 0.01105,
+        "percentile": 0.64515
+      }
+    },
+    {
+      "ghsa_id": "GHSA-9272-wg2r-7xmx",
+      "cve_id": "CVE-2026-55566",
+      "url": "https://api.github.com/advisories/GHSA-9272-wg2r-7xmx",
+      "html_url": "https://github.com/advisories/GHSA-9272-wg2r-7xmx",
+      "summary": "Yamcs has DOM XSS in Extension Routing",
+      "description": "**Attack type**: Unauthenticated remote \n**Impact**: Execution of arbitrary JavaScript in a user’s browser.\n**Affected components**: extension.matcher.ts:12, extension.component.ts:40, app.component.ts:134.\n\nYamcs is vulnerable to cross-site scripting in the /ext URL endpoint. By inputting specially crafted code into the URL, an attacker can execute arbitrary JavaScript code in a user’s browser. This URL may be sent to a user via a phishing email.\n \n<img width=\"940\" height=\"294\" alt=\"image\" src=\"https://github.com/user-attachments/assets/d886d65c-9bb5-4599-ac11-55db83aafc0e\" />\n\nSteps to Repro",
+      "type": "reviewed",
+      "severity": "medium",
+      "repository_advisory_url": "https://api.github.com/repos/yamcs/yamcs/security-advisories/GHSA-9272-wg2r-7xmx",
+      "source_code_location": "https://github.com/yamcs/yamcs",
+      "identifiers": [
+        {
+          "value": "GHSA-9272-wg2r-7xmx",
+          "type": "GHSA"
+        },
+        {
+          "value": "CVE-2026-55566",
+          "type": "CVE"
+        }
+      ],
+      "references": [
+        "https://github.com/yamcs/yamcs/security/advisories/GHSA-9272-wg2r-7xmx",
+        "https://github.com/yamcs/yamcs/commit/8e18e279d8ce761c21f4f67bbd06a1bff804d297",
+        "https://github.com/yamcs/yamcs/commit/ecf34a4e2ccbe085e6ceff0253595b24d5ecb4aa",
+        "https://github.com/yamcs/yamcs/releases/tag/yamcs-5.12.8",
+        "https://github.com/yamcs/yamcs/releases/tag/yamcs-5.13.2",
+        "https://github.com/advisories/GHSA-9272-wg2r-7xmx"
+      ],
+      "published_at": "2026-08-28T17:32:16Z",
+      "updated_at": "2026-09-28T12:47:44Z",
+      "github_reviewed_at": "2026-08-28T17:32:16Z",
+      "nvd_published_at": null,
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "org.yamcs:yamcs-core"
+          },
+          "vulnerable_version_range": ">= 5.13.0, <= 5.13.1",
+          "first_patched_version": "5.13.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "org.yamcs:yamcs-core"
+          },
+          "vulnerable_version_range": "<= 5.12.7",
+          "first_patched_version": "5.12.8",
+          "vulnerable_functions": []
+        }
+      ],
+      "cvss_severities": {
+        "cvss_v3": {
+          "vector_string": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N",
+          "score": 4.3
+        },
+        "cvss_v4": {
+          "vector_string": null,
+          "score": 0
+        }
+      },
+      "cwes": [
+        {
+          "cwe_id": "CWE-79",
+          "name": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+        }
+      ],
+      "comments": 2,
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N",
+        "score": 4.3
+      },
+      "epss": {
+        "percentage": 0.0038,
+        "percentile": 0.29542
+      }
+    },
+    {
+      "ghsa_id": "GHSA-2mhw-wcx5-v3xj",
+      "cve_id": "CVE-2026-61834",
+      "url": "https://api.github.com/advisories/GHSA-2mhw-wcx5-v3xj",
+      "html_url": "https://github.com/advisories/GHSA-2mhw-wcx5-v3xj",
+      "summary": "scim-patch: Mutation of Inherited Built-in Method Objects",
+      "description": "## Summary\n\nIncomplete Prototype Pollution Fix Allows Mutation of Inherited Built-in Method Objects\n\n`scim-patch` blocks direct dangerous path segments such as `__proto__`, `constructor`, and `prototype`, but still traverses inherited properties when applying SCIM patch paths.\n\nAn attacker who controls a SCIM PATCH operation can use paths such as `toString.polluted` to mutate shared built-in function objects, for example `Object.prototype.toString`.\n\n## Impact\n\nA malicious patch can add attacker-controlled properties to inherited built-in method objects. The impact is narrower than direct `Obj",
+      "type": "reviewed",
+      "severity": "medium",
+      "repository_advisory_url": "https://api.github.com/repos/thomaspoignant/scim-patch/security-advisories/GHSA-2mhw-wcx5-v3xj",
+      "source_code_location": "https://github.com/thomaspoignant/scim-patch",
+      "identifiers": [
+        {
+          "value": "GHSA-2mhw-wcx5-v3xj",
+          "type": "GHSA"
+        },
+        {
+          "value": "CVE-2026-61834",
+          "type": "CVE"
+        }
+      ],
+      "references": [
+        "https://github.com/thomaspoignant/scim-patch/security/advisories/GHSA-2mhw-wcx5-v3xj",
+        "https://nvd.nist.gov/vuln/detail/CVE-2026-61834",
+        "https://github.com/thomaspoignant/scim-patch/pull/1127",
+        "https://github.com/thomaspoignant/scim-patch/commit/c86474f7a9b16191d939f59ba94eca6c6e63044b",
+        "https://github.com/thomaspoignant/scim-patch/releases/tag/v0.9.2",
+        "https://github.com/advisories/GHSA-2mhw-wcx5-v3xj"
+      ],
+      "published_at": "2026-09-28T14:01:15Z",
+      "updated_at": "2026-09-28T14:01:17Z",
+      "github_reviewed_at": "2026-09-28T14:01:15Z",
+      "nvd_published_at": "2026-09-23T15:17:15Z",
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "scim-patch"
+          },
+          "vulnerable_version_range": "< 0.9.2",
+          "first_patched_version": "0.9.2",
+          "vulnerable_functions": []
+        }
+      ],
+      "cvss_severities": {
+        "cvss_v3": {
+          "vector_string": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N",
+          "score": 4.3
+        },
+        "cvss_v4": {
+          "vector_string": null,
+          "score": 0
+        }
+      },
+      "cwes": [
+        {
+          "cwe_id": "CWE-915",
+          "name": "Improperly Controlled Modification of Dynamically-Determined Object Attributes"
+        },
+        {
+          "cwe_id": "CWE-1321",
+          "name": "Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+        }
+      ],
+      "comments": 2,
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N",
+        "score": 4.3
+      },
+      "epss": {
+        "percentage": 0.0028,
+        "percentile": 0.18561
+      }
+    },
+    {
+      "ghsa_id": "GHSA-456v-xq2p-r4cj",
+      "cve_id": null,
+      "url": "https://api.github.com/advisories/GHSA-456v-xq2p-r4cj",
+      "html_url": "https://github.com/advisories/GHSA-456v-xq2p-r4cj",
+      "summary": "code-ollama: `grep_search` Command Injection via Unescaped `$()` Shell Substitution (CWE-78)",
+      "description": "## `grep_search` Command Injection via Unescaped `$()` Shell Substitution (CWE-78)\n\n### Summary\n\nThe `grep_search` tool in `code-ollama` constructs a shell command string by interpolating attacker-controlled `pattern` and `path` arguments, then executes it via `child_process.exec()`. The sanitization only escapes backslashes and double-quote characters, leaving `$()` command substitution and backtick expansion fully intact. A malicious or compromised Ollama server can therefore inject and execute arbitrary OS commands with the privileges of the local user running `code-ollama`. Because `grep_s",
+      "type": "reviewed",
+      "severity": "high",
+      "repository_advisory_url": "https://api.github.com/repos/ai-action/code-ollama/security-advisories/GHSA-456v-xq2p-r4cj",
+      "source_code_location": "https://github.com/ai-action/code-ollama",
+      "identifiers": [
+        {
+          "value": "GHSA-456v-xq2p-r4cj",
+          "type": "GHSA"
+        }
+      ],
+      "references": [
+        "https://github.com/ai-action/code-ollama/security/advisories/GHSA-456v-xq2p-r4cj",
+        "https://github.com/advisories/GHSA-456v-xq2p-r4cj"
+      ],
+      "published_at": "2026-09-28T13:59:43Z",
+      "updated_at": "2026-09-28T13:59:47Z",
+      "github_reviewed_at": "2026-09-28T13:59:43Z",
+      "nvd_published_at": null,
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "code-ollama"
+          },
+          "vulnerable_version_range": "<= 0.36.0",
+          "first_patched_version": "0.36.1",
+          "vulnerable_functions": []
+        }
+      ],
+      "cvss_severities": {
+        "cvss_v3": {
+          "vector_string": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+          "score": 7.8
+        },
+        "cvss_v4": {
+          "vector_string": null,
+          "score": 0
+        }
+      },
+      "cwes": [
+        {
+          "cwe_id": "CWE-78",
+          "name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+        }
+      ],
+      "comments": 0,
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+        "score": 7.8
+      }
+    },
+    {
+      "ghsa_id": "GHSA-6vj9-mwq6-2f5v",
+      "cve_id": null,
+      "url": "https://api.github.com/advisories/GHSA-6vj9-mwq6-2f5v",
+      "html_url": "https://github.com/advisories/GHSA-6vj9-mwq6-2f5v",
+      "summary": "Nodemailer: Process-global DNS cache reuses TLS `servername` across transports, enabling cross-tenant SMTP credential disclosure",
+      "description": "### Summary\n\nNodemailer's process-global DNS cache is keyed only by `host`, but each cache entry also stores the caller-specific TLS `servername`. When two direct SMTPS transports use the same DNS host with different `tls.servername` values, the first transport's server name is returned to the second transport and overwrites its explicitly configured value.\n\nAs a result, Nodemailer sends the wrong SNI value and verifies the peer certificate against the wrong identity. In a multi-tenant service or SNI-routed SMTP gateway, one tenant can prime the cache so that a victim transport connects to the",
+      "type": "reviewed",
+      "severity": "medium",
+      "repository_advisory_url": "https://api.github.com/repos/nodemailer/nodemailer/security-advisories/GHSA-6vj9-mwq6-2f5v",
+      "source_code_location": "https://github.com/nodemailer/nodemailer",
+      "identifiers": [
+        {
+          "value": "GHSA-6vj9-mwq6-2f5v",
+          "type": "GHSA"
+        }
+      ],
+      "references": [
+        "https://github.com/nodemailer/nodemailer/security/advisories/GHSA-6vj9-mwq6-2f5v",
+        "https://github.com/nodemailer/nodemailer/commit/a6512dbcb3c6e7f2f70d3acccc5752defe3c61fe",
+        "https://github.com/nodemailer/nodemailer/releases/tag/v10.0.2",
+        "https://github.com/advisories/GHSA-6vj9-mwq6-2f5v"
+      ],
+      "published_at": "2026-09-28T21:56:05Z",
+      "updated_at": "2026-09-28T21:57:00Z",
+      "github_reviewed_at": "2026-09-28T21:56:05Z",
+      "nvd_published_at": null,
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "nodemailer"
+          },
+          "vulnerable_version_range": ">= 5.0.0, < 10.0.2",
+          "first_patched_version": "10.0.2",
+          "vulnerable_functions": []
+        }
+      ],
+      "cvss_severities": {
+        "cvss_v3": {
+          "vector_string": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N",
+          "score": 5.9
+        },
+        "cvss_v4": {
+          "vector_string": null,
+          "score": 0
+        }
+      },
+      "cwes": [
+        {
+          "cwe_id": "CWE-295",
+          "name": "Improper Certificate Validation"
+        }
+      ],
+      "comments": 1,
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N",
+        "score": 5.9
+      }
+    }
+  ]
+}

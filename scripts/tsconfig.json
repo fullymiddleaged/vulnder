@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom"],
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../src/ingest/**/*.ts", "../src/lib/**/*.ts", "../src/config.ts"],
+  "exclude": ["../src/ingest/d1-store.ts"]
+}

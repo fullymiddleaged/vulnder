@@ -1,0 +1,74 @@
+// Vulnture Worker configuration.
+//
+// The default (top-level) config is the free-plan deployment: no cron trigger,
+// because ingest cannot fit in the free plan's 50 subrequests and 10 ms CPU.
+// On the free plan, ingest runs from GitHub Actions (.github/workflows/ingest.yml),
+// which writes to D1 through Wrangler.
+//
+// On Workers Paid, deploy with `wrangler deploy --env paid`: same Worker name,
+// plus an hourly cron trigger and INGEST_RUNTIME=worker.
+//
+// Secrets (set with `wrangler secret put <NAME>`; for local dev put them in .dev.vars):
+//   GITHUB_TOKEN  optional. Raises the GitHub API limit from 60/h to 5,000/h for
+//                 the advisory and cvelistV5 release lookups. Recommended on Paid,
+//                 because Workers egress IPs are shared.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vulnture",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+
+  // Static front end, served by Workers static assets. API, feed and badge
+  // routes run the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/feed.xml", "/badge.svg"]
+  },
+
+  // Stack URLs (?s=...) describe someone's infrastructure, so query strings are
+  // stripped from request URLs in logs and traces. Request bodies are never logged.
+  "observability": { "enabled": true, "redact_query_string": true },
+
+  "vars": {
+    // Display name and public base URL. Self-hosters change these; feed links,
+    // badge links and Atom IDs are all built from BASE_URL.
+    "DISPLAY_NAME": "Vulnture",
+    "BASE_URL": "http://localhost:8787",
+    // "actions": ingest runs outside the Worker (free plan). "worker": the cron
+    // handler runs ingest (Paid plan).
+    "INGEST_RUNTIME": "actions"
+  },
+
+  "d1_databases": [
+    {
+      // Create with `wrangler d1 create vulnture`, then paste the database_id here.
+      // Local development works without a real ID.
+      "binding": "DB",
+      "database_name": "vulnture",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "env": {
+    "paid": {
+      "name": "vulnture",
+      "triggers": { "crons": ["17 * * * *"] },
+      "observability": { "enabled": true, "redact_query_string": true },
+      "vars": {
+        "DISPLAY_NAME": "Vulnture",
+        "BASE_URL": "https://vulnture.dev",
+        "INGEST_RUNTIME": "worker"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vulnture",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}
