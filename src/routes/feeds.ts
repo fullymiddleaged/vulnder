@@ -70,7 +70,8 @@ async function cached(
   );
   const cache = await openCache();
   const hit = cache ? await cache.match(key) : undefined;
-  if (hit) return hit;
+  // Cached responses have immutable headers; copy so middleware can add to them.
+  if (hit) return new Response(hit.body, hit);
 
   const res = await build(dataVersion);
   res.headers.set('Cache-Control', `public, max-age=${CACHE_SECONDS}`);

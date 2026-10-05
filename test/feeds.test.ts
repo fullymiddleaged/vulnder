@@ -292,3 +292,15 @@ describe('GET /badge.svg', () => {
     expect(badgeSvg(1)).toContain('1 known-exploited CVE"');
   });
 });
+
+describe('response headers', () => {
+  it('sets no-referrer and nosniff, including on cached responses', async () => {
+    stubOsvFetch();
+    const url = `/badge.svg?s=${encodeURIComponent('p:cisco/asa')}`;
+    for (let i = 0; i < 2; i++) {
+      const res = await app.request(url, {}, env);
+      expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    }
+  });
+});

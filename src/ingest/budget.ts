@@ -67,11 +67,14 @@ export class Budget {
     this.used += n;
   }
 
-  /** A fetch that charges this budget before each request. */
-  wrapFetch(inner: typeof fetch): typeof fetch {
+  /**
+   * A fetch that charges this budget before each request and gives up on a
+   * request after timeoutMs, so one hung upstream cannot stall the whole run.
+   */
+  wrapFetch(inner: typeof fetch, timeoutMs = 60_000): typeof fetch {
     return ((input: RequestInfo | URL, init?: RequestInit) => {
       this.take(1);
-      return inner(input, init);
+      return inner(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) });
     }) as typeof fetch;
   }
 }

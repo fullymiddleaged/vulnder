@@ -182,6 +182,12 @@ export function sqlLiteral(v: unknown): string {
     if (!Number.isFinite(v)) throw new Error(`cannot store non-finite number ${v}`);
     return String(v);
   }
-  if (typeof v === 'string') return `'${v.replace(/\0/g, '').replace(/'/g, "''")}'`;
+  if (typeof v === 'string') {
+    const quoted = `'${v.replace(/\0/g, '').replace(/'/g, "''")}'`;
+    // Wrangler refuses any SQL whose text contains "BEGIN TRANSACTION", even
+    // inside a string literal, and some CVE descriptions do. Splitting the
+    // literal into a concatenation stores the same value.
+    return quoted.includes('BEGIN TRANSACTION') ? `(${quoted.replace(/BEGIN TRANSACTION/g, "BEGIN '||'TRANSACTION")})` : quoted;
+  }
   throw new Error(`unsupported parameter type ${typeof v}`);
 }

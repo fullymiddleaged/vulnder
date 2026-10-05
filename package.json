@@ -17,9 +17,10 @@
     "record-fixtures": "tsx scripts/record-fixtures.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p test && tsc --noEmit -p scripts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p test && tsc --noEmit -p scripts && tsc --noEmit -p web",
     "lint": "eslint .",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "build:web": "esbuild web/main.ts --bundle --format=esm --target=es2022 --minify --sourcemap --outfile=public/app.js"
   },
   "dependencies": {
     "fflate": "^0.8.3",
@@ -31,6 +32,7 @@
     "@cloudflare/vitest-plugin": "^1.3.6",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

@@ -3,6 +3,7 @@ import { Budget } from './ingest/budget';
 import { D1BindingStore } from './ingest/d1-store';
 import { runIngest } from './ingest/run';
 import { feeds } from './routes/feeds';
+import { config } from './routes/config';
 import { health } from './routes/health';
 import { resolve } from './routes/resolve';
 import type { AppEnv } from './types';
@@ -13,7 +14,15 @@ const CRON_DEADLINE_MS = 10 * 60_000;
 
 const app = new Hono<AppEnv>();
 
+app.use('*', async (c, next) => {
+  await next();
+  // Stack URLs are sensitive: never send them on as a Referer.
+  c.header('Referrer-Policy', 'no-referrer');
+  c.header('X-Content-Type-Options', 'nosniff');
+});
+
 app.route('/api/health', health);
+app.route('/api/config', config);
 app.route('/api/resolve', resolve);
 app.route('/', feeds);
 

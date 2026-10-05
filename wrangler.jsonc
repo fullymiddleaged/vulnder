@@ -20,6 +20,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
 
+  // Bundles the front end (web/) into public/app.js before dev and deploy.
+  "build": { "command": "npm run build:web" },
+
   // Static front end, served by Workers static assets. API, feed and badge
   // routes run the Worker first.
   "assets": {

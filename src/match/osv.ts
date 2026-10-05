@@ -12,6 +12,8 @@ const MAX_QUERIES = 1000;
 const MAX_PAGES = 3;
 const CACHE_TTL_SECONDS = 6 * 3600;
 const CACHE_ORIGIN = 'https://osv-cache.vulnture.invalid';
+/** Someone is waiting on the page; give up on OSV rather than hang. */
+const TIMEOUT_MS = 5000;
 
 export interface OsvQuery {
   ecosystem: string;
@@ -55,6 +57,7 @@ export function createOsvClient(fetchImpl: typeof fetch, cache: Cache | null): O
             method: 'POST',
             headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT },
             body: JSON.stringify({ queries: pending.map((p) => p.body) }),
+            signal: AbortSignal.timeout(TIMEOUT_MS),
           });
           if (!res.ok) throw new Error(`OSV querybatch: HTTP ${res.status}`);
           const body = (await res.json()) as BatchResponse;

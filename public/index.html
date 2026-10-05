@@ -1,1 +1,53 @@
-<p>placeholder</p>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="See the vulnerabilities that matter for your stack, ranked by real-world exploitation. No account needed." />
+    <title>Vulnture</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#app">Skip to content</a>
+    <header class="site">
+      <a href="/" class="brand" aria-label="Vulnture home">
+        <svg class="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 5" />
+          <path d="M8 22c5-1 9-4 12-8 1 3 2 5 4 6 2-1 3-3 4-6 3 4 7 7 12 8-4 1-8 1-11 3l-5 5-5-5c-3-2-7-2-11-3z" fill="currentColor" />
+        </svg>
+        <span data-name>Vulnture</span>
+      </a>
+      <p class="tagline">Something is circling your stack. See what, ranked by real-world exploitation.</p>
+    </header>
+
+    <main id="app" tabindex="-1">
+      <noscript><p class="card">The stack builder needs JavaScript. The JSON feed, Atom feed and badge work without it: see docs/STACK_FORMAT.md in the repository for the URL format.</p></noscript>
+    </main>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <footer class="site">
+      <p id="freshness" class="small muted">Checking data freshness…</p>
+      <details id="privacy">
+        <summary>Privacy</summary>
+        <p class="small">
+          Vulnture does not store your stack or what you type. Free text is sent to Workers AI to pick out component names; the parsed result
+          is cached under a hash of the text, never the text itself. Manifest files are read in your browser, and only package names and
+          versions are sent. Stack links are not written to logs. Vulnture is hosted on Cloudflare, which processes every request to run
+          the service, including the stack in the page address. No analytics or tracking scripts are used.
+        </p>
+      </details>
+      <p class="small muted">
+        Data: <a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records (MITRE)</a>,
+        <a href="https://github.com/advisories" rel="noreferrer">GitHub Advisory Database</a>,
+        <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a>,
+        <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
+        and <a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks.
+        EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.
+      </p>
+    </footer>
+  </body>
+</html>

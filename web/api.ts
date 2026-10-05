@@ -1,0 +1,98 @@
+import type { Candidate } from '../src/resolve/types';
+
+export interface AppConfig {
+  displayName: string;
+  baseUrl: string;
+  turnstileSiteKey: string;
+}
+
+export interface Chip {
+  input: string;
+  status: 'resolved' | 'ambiguous' | 'unrecognised';
+  item?: string;
+  label?: string;
+  known?: boolean;
+  alternatives?: { item: string; label: string }[];
+}
+
+export interface ResolveResponse {
+  source: 'manifest' | 'model';
+  format?: string;
+  chips: Chip[];
+  droppedTransitive: number;
+}
+
+export interface Result {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  publishedAt: string | null;
+  tier: 'exploited' | 'likely' | 'backlog';
+  evidence: {
+    kevAddedAt: string | null;
+    kevDueDate: string | null;
+    knownRansomware: boolean;
+    epss: number | null;
+    epssPercentile: number | null;
+    epssDate: string | null;
+  };
+  confidence: 'version_confirmed' | 'product_match';
+  matched: string[];
+  fixedVersions: string[];
+  cvss: { score: number; vector: string | null } | null;
+  links: { advisory: string | null; patch: string | null };
+}
+
+export interface Change {
+  vulnId: string;
+  type: 'published' | 'kev_added' | 'epss_crossed' | 'fix_released';
+  occurredAt: string;
+  detail: Record<string, unknown>;
+  title: string | null;
+  tier?: Result['tier'];
+}
+
+export interface Feed {
+  stack: string;
+  days: number;
+  generatedAt: string;
+  links: { page: string; json: string; atom: string; badge: string };
+  versionCheckUnavailable: boolean;
+  summary: Record<Result['tier'], number>;
+  changes: Change[];
+  results: Result[];
+  watching: string[];
+}
+
+export interface Health {
+  sources: Record<string, { health: 'ok' | 'stale' | 'error' | 'never'; lastSuccessAt: string | null }>;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly fallback?: string,
+  ) {
+    super(message);
+  }
+}
+
+async function json<T>(res: Response): Promise<T> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string; fallback?: string };
+  if (!res.ok) throw new ApiError(body.error ?? `request failed (${res.status})`, res.status, body.fallback);
+  return body as T;
+}
+
+export const getConfig = () => fetch('/api/config').then((r) => json<AppConfig>(r));
+export const getHealth = () => fetch('/api/health').then((r) => json<Health>(r));
+export const getFeed = (s: string, days: number) =>
+  fetch(`/api/feed?s=${encodeURIComponent(s)}${days === 30 ? '' : `&days=${days}`}`).then((r) => json<Feed>(r));
+
+export function resolve(body: { text: string } | { candidates: Candidate[] }, turnstileToken: string): Promise<ResolveResponse> {
+  return fetch('/api/resolve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...body, turnstileToken }),
+  }).then((r) => json<ResolveResponse>(r));
+}

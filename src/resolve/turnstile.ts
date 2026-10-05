@@ -14,7 +14,7 @@ export async function verifyTurnstile(
   form.append('response', token);
   if (remoteIp) form.append('remoteip', remoteIp);
   try {
-    const res = await fetchImpl(SITEVERIFY_URL, { method: 'POST', body: form });
+    const res = await fetchImpl(SITEVERIFY_URL, { method: 'POST', body: form, signal: AbortSignal.timeout(5000) });
     const body = (await res.json()) as { success?: boolean; 'error-codes'?: string[] };
     return { success: body.success === true, errors: body['error-codes'] ?? [] };
   } catch {

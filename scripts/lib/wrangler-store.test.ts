@@ -13,6 +13,12 @@ describe('sqlLiteral', () => {
     expect(sqlLiteral('{"k":"it\'s; DROP TABLE vulns; --"}')).toBe(`'{"k":"it''s; DROP TABLE vulns; --"}'`);
   });
 
+  it('never emits the text "BEGIN TRANSACTION", which wrangler rejects', () => {
+    const lit = sqlLiteral("SQL injection via 'BEGIN TRANSACTION; DROP' and BEGIN TRANSACTION again");
+    expect(lit).not.toContain('BEGIN TRANSACTION');
+    expect(lit).toBe("('SQL injection via ''BEGIN '||'TRANSACTION; DROP'' and BEGIN '||'TRANSACTION again')");
+  });
+
   it('refuses values it cannot represent', () => {
     expect(() => sqlLiteral(Number.NaN)).toThrow();
     expect(() => sqlLiteral(Infinity)).toThrow();

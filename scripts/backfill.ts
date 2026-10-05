@@ -110,7 +110,7 @@ async function backfillCve(): Promise<void> {
     if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < cutoff) continue;
     const patch = parseCveRecord(JSON.parse(await readFile(file, 'utf8')));
     if (patch) batch.push(patch);
-    if (batch.length >= 500) await flush(false);
+    if (batch.length >= 2000) await flush(false);
   }
   await flush(true);
   await store.flush();
