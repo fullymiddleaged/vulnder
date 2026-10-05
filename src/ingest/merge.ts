@@ -57,8 +57,7 @@ export const SOURCE_FLAGS: Record<SourceName, number> = { cve: 1, ghsa: 2, kev: 
 /** Higher-ranked sources win for the descriptive fields. */
 const RANK: Record<SourceName, number> = { cve: 3, ghsa: 2, kev: 1, epss: 0 };
 
-const RANKED_FIELDS = ['title', 'summary', 'publishedAt', 'cvss', 'ssvc'] as const;
-type RankedField = (typeof RANKED_FIELDS)[number];
+type RankedField = 'title' | 'summary' | 'publishedAt' | 'cvss' | 'ssvc';
 
 const MAX_REFS = 40;
 const FLOAT_EPSILON = 1e-9;

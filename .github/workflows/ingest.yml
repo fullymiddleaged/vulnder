@@ -1,0 +1,44 @@
+# Hourly ingest for the free Workers plan, where the Worker cannot run ingest
+# itself (50 subrequests, 10 ms CPU). Runs the same ingest code in Node and
+# writes to the remote D1 database through Wrangler.
+#
+# Repository secrets:
+#   CLOUDFLARE_API_TOKEN   token with D1 edit permission on the account
+#   CLOUDFLARE_ACCOUNT_ID  the account that owns the D1 database
+# GITHUB_TOKEN is provided by Actions and raises the GitHub API limit.
+#
+# GitHub disables scheduled workflows after 60 days without repository
+# activity; /api/health reports sources as stale when that happens.
+#
+# On Workers Paid, deploy with `wrangler deploy --env paid` instead and
+# disable this workflow.
+name: ingest
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ingest -- --remote --minutes 40
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

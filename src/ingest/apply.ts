@@ -154,12 +154,15 @@ export async function applyPatches(store: Store, patches: VulnPatch[], opts: App
   const stats: ApplyStats = { received: patches.length, written: 0, skipped: 0, deleted: 0, events: 0, inserted: [] };
   const nowIso = opts.now.toISOString();
 
-  // 1. Resolve every ID and alias to the vuln that already holds it.
+  // 1. Resolve every ID and alias to the vuln that already holds it, either as
+  //    its primary ID (e.g. a GHSA-only record) or as an alias.
   const aliasMap = new Map<string, string>();
   if (patches.length > 0) {
     const rows = await allForKeys<{ alias: string; vuln_id: string }>(
       store,
-      'SELECT alias, vuln_id FROM aliases WHERE alias IN (SELECT value FROM json_each(?))',
+      `SELECT id AS alias, id AS vuln_id FROM vulns WHERE id IN (SELECT value FROM json_each(?1))
+       UNION ALL
+       SELECT alias, vuln_id FROM aliases WHERE alias IN (SELECT value FROM json_each(?1))`,
       patches.flatMap((p) => [p.id, ...p.aliases]),
     );
     for (const r of rows) aliasMap.set(r.alias, r.vuln_id);

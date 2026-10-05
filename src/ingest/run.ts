@@ -84,16 +84,21 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   const reports: SourceReport[] = [];
   let anyWrites = false;
 
-  for (const name of opts.sources ?? SOURCE_ORDER) {
+  const order = opts.sources ?? SOURCE_ORDER;
+  for (const [index, name] of order.entries()) {
     const source = SOURCES[name];
     const report: SourceReport = { source: name, status: 'ok', pages: 0, received: 0, written: 0, skipped: 0, deleted: 0, events: 0 };
     const status: SourceStatus = { ...EMPTY_STATUS, ...((await getMeta<SourceStatus>(store, statusKey(name))) ?? {}) };
     let cursor = (await getMeta<unknown>(store, cursorKey(name))) ?? source.initialCursor(now());
+    // Each source may start pages until it has used its share of what is left,
+    // so a source that is far behind cannot starve the ones after it. A share
+    // it does not use rolls over to the sources after it.
+    const shareEnd = budget.spent + Math.floor(budget.remaining / (order.length - index));
 
     try {
       for (;;) {
         // Leave room for the page's own fetch and its D1 batch.
-        if (!budget.has(4)) {
+        if (!budget.has(4) || (report.pages > 0 && budget.spent + 4 > shareEnd)) {
           report.status = 'partial';
           break;
         }

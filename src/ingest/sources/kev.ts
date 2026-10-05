@@ -3,6 +3,7 @@ import { USER_AGENT } from '../../config';
 import { CVE_ID, normalizeKey } from '../../lib/normalize';
 import { toIso } from '../../lib/time';
 import type { FetchResult, Source, SourceContext, VulnPatch } from '../types';
+import { productLabel } from './cve-record';
 
 /**
  * CISA Known Exploited Vulnerabilities, fetched whole with a conditional GET
@@ -96,7 +97,7 @@ export function parseKevEntry(raw: unknown): VulnPatch | null {
             kind: 'product',
             vendor,
             product,
-            label: [e.vendorProject, e.product].filter(Boolean).join(' '),
+            label: productLabel(e.vendorProject, e.product),
             ranges: [],
             fixedVersion: null,
           },

@@ -39,6 +39,10 @@ export class Budget {
     return this.used;
   }
 
+  get remaining(): number {
+    return Math.max(0, this.opts.maxSubrequests - this.used);
+  }
+
   /** True when n more subrequests fit and the deadline has not passed. */
   has(n = 1): boolean {
     return this.used + n <= this.opts.maxSubrequests && this.now() < this.opts.deadline;
@@ -50,6 +54,16 @@ export class Budget {
     if (this.used + n > this.opts.maxSubrequests) {
       throw new BudgetExhausted(`subrequest limit ${this.opts.maxSubrequests} reached`);
     }
+    this.used += n;
+  }
+
+  /**
+   * Records n subrequests without refusing them. Used for D1 queries, so the
+   * run's own bookkeeping (cursors, status) still lands after a source has
+   * spent the budget. Sources check has() before each page, and the Worker's
+   * limit is set below the platform's, which leaves room for this.
+   */
+  charge(n = 1): void {
     this.used += n;
   }
 
