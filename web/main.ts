@@ -69,7 +69,7 @@ function renderInput(prefill = ''): void {
     if (file.size > 5_000_000) return say('That file is larger than 5 MB.');
     const text = await file.text();
     const manifest = parseManifest(text, file.name);
-    if (!manifest) return say(`${file.name} is not a manifest format Vulnture reads.`);
+    if (!manifest) return say(`${file.name} is not a manifest format Vulnder reads.`);
     say(`Read ${manifest.candidates.length} entries from ${file.name}.`);
     await submit({ candidates: manifest.candidates });
   };
@@ -224,7 +224,7 @@ function renderChips(chips: Chip[], existing: string[] = []): void {
       onclick: () => {
         const items: StackItem[] = state.flatMap((s) => (s.selected ? parseStack(s.selected) : []));
         if (items.length === 0) return say('Choose or add at least one item.');
-        if (items.length > 200) return say('A stack can have at most 200 items. Self-host Vulnture for larger stacks.');
+        if (items.length > 200) return say('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
         navigate(serializeStack(items), 30);
       },
     },
@@ -265,7 +265,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
     return;
   }
   say(`${feed.results.length} vulnerabilities found.`);
-  document.title = `${feed.summary.exploited} exploited · ${config?.displayName ?? 'Vulnture'}`;
+  document.title = `${feed.summary.exploited} exploited · ${config?.displayName ?? 'Vulnder'}`;
 
   const items = parseStack(feed.stack);
   const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));

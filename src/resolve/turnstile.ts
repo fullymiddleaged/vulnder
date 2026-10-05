@@ -17,7 +17,9 @@ export async function verifyTurnstile(
     const res = await fetchImpl(SITEVERIFY_URL, { method: 'POST', body: form, signal: AbortSignal.timeout(5000) });
     const body = (await res.json()) as { success?: boolean; 'error-codes'?: string[] };
     return { success: body.success === true, errors: body['error-codes'] ?? [] };
-  } catch {
+  } catch (err) {
+    // The reason never contains the token or the secret.
+    console.error(`turnstile siteverify failed: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`);
     return { success: false, errors: ['internal-error'] };
   }
 }

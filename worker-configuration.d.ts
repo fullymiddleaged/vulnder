@@ -6,8 +6,8 @@ interface __BaseEnv_Env {
 	RESOLVE_LIMITER: RateLimit;
 	AI: Ai;
 	ASSETS: Fetcher;
-	DISPLAY_NAME: "Vulnture";
-	BASE_URL: "https://vulnture.dev" | "http://localhost:8787";
+	DISPLAY_NAME: "Vulnder";
+	BASE_URL: "https://vulnder.dev" | "http://localhost:8787";
 	INGEST_RUNTIME: "worker" | "actions";
 	AI_MODEL: "@cf/google/gemma-4-26b-a4b-it";
 	TURNSTILE_SITE_KEY: "1x00000000000000000000AA";
@@ -21,8 +21,8 @@ declare namespace Cloudflare {
 		RESOLVE_LIMITER: RateLimit;
 		AI: Ai;
 		ASSETS: Fetcher;
-		DISPLAY_NAME: "Vulnture";
-		BASE_URL: "https://vulnture.dev";
+		DISPLAY_NAME: "Vulnder";
+		BASE_URL: "https://vulnder.dev";
 		INGEST_RUNTIME: "worker";
 		AI_MODEL: "@cf/google/gemma-4-26b-a4b-it";
 		TURNSTILE_SITE_KEY: "1x00000000000000000000AA";

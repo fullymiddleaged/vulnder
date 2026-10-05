@@ -1,5 +1,5 @@
 {
-  "name": "vulnture",
+  "name": "vulnder",
   "version": "0.1.0",
   "private": true,
   "description": "A stack-aware CVE feed on Cloudflare Workers",

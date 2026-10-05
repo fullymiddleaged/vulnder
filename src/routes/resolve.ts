@@ -112,8 +112,8 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
 });
 
 async function cachedExtraction(env: Env, text: string): Promise<Candidate[]> {
-  const key = new Request(`https://parse-cache.vulnture.invalid/v1/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
-  const cache = await caches.open('vulnture-parse').catch(() => null);
+  const key = new Request(`https://parse-cache.vulnder.invalid/v1/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
+  const cache = await caches.open('vulnder-parse').catch(() => null);
   const hit = cache ? await cache.match(key) : undefined;
   if (hit) return parseModelOutput({ response: await hit.json() });
 

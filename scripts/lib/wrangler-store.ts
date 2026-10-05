@@ -63,7 +63,7 @@ export class WranglerStore implements Store {
     const sql = this.pending.join('');
     this.pending = [];
     this.pendingBytes = 0;
-    const dir = await mkdtemp(path.join(tmpdir(), 'vulnture-'));
+    const dir = await mkdtemp(path.join(tmpdir(), 'vulnder-'));
     const file = path.join(dir, 'batch.sql');
     try {
       await writeFile(file, sql, 'utf8');

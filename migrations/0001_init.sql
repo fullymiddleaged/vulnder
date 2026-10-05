@@ -1,4 +1,4 @@
--- Vulnture initial schema.
+-- Vulnder initial schema.
 -- Timestamps are ISO 8601 UTC strings. JSON columns hold JSON text.
 
 -- One row per vulnerability, keyed by CVE ID where one exists, otherwise by the

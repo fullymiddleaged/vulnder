@@ -1,4 +1,4 @@
-# Contributing to Vulnture
+# Contributing to Vulnder
 
 Thanks for helping. Two kinds of contribution are especially useful: a new **data source** and a new **manifest parser**. Both have a small, fixed interface.
 

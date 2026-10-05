@@ -1,4 +1,4 @@
-// Vulnture Worker configuration.
+// Vulnder Worker configuration.
 //
 // The default (top-level) config is the free-plan deployment: no cron trigger,
 // because ingest cannot fit in the free plan's 50 subrequests and 10 ms CPU.
@@ -16,7 +16,7 @@
 //                 because Workers egress IPs are shared.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "vulnture",
+  "name": "vulnder",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
 
@@ -38,7 +38,7 @@
   "vars": {
     // Display name and public base URL. Self-hosters change these; feed links,
     // badge links and Atom IDs are all built from BASE_URL.
-    "DISPLAY_NAME": "Vulnture",
+    "DISPLAY_NAME": "Vulnder",
     "BASE_URL": "http://localhost:8787",
     // "actions": ingest runs outside the Worker (free plan). "worker": the cron
     // handler runs ingest (Paid plan).
@@ -60,10 +60,10 @@
 
   "d1_databases": [
     {
-      // Create with `wrangler d1 create vulnture`, then paste the database_id here.
+      // Create with `wrangler d1 create vulnder`, then paste the database_id here.
       // Local development works without a real ID.
       "binding": "DB",
-      "database_name": "vulnture",
+      "database_name": "vulnder",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
@@ -71,12 +71,12 @@
 
   "env": {
     "paid": {
-      "name": "vulnture",
+      "name": "vulnder",
       "triggers": { "crons": ["17 * * * *"] },
       "observability": { "enabled": true, "redact_query_string": true },
       "vars": {
-        "DISPLAY_NAME": "Vulnture",
-        "BASE_URL": "https://vulnture.dev",
+        "DISPLAY_NAME": "Vulnder",
+        "BASE_URL": "https://vulnder.dev",
         "INGEST_RUNTIME": "worker",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
         // Replace with the production Turnstile site key before deploying.
@@ -87,7 +87,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "vulnture",
+          "database_name": "vulnder",
           "database_id": "00000000-0000-0000-0000-000000000000",
           "migrations_dir": "migrations"
         }

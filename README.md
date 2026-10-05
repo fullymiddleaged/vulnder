@@ -1,10 +1,10 @@
-# Vulnture
+# Vulnder
 
 **Something is circling your stack.** Describe what you run, or drop in a manifest, and see the vulnerabilities from the last 30 days that apply to you. They're ranked by real-world exploitation signals, not CVSS labels. You don't need an account: your stack lives in the URL, and the same URL gives you a JSON feed, an Atom feed and a README badge.
 
 <!-- Screenshot: add docs/screenshot.png once the app is deployed. -->
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/vulnture)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/vulnder)
 
 <sub>Before using the button, replace `OWNER` with the GitHub account that hosts this repository.</sub>
 
@@ -30,10 +30,10 @@ The page opens with **What changed this week**: newly published issues, KEV addi
 ## Feeds and badge
 
 ```
-https://vulnture.dev/?s=npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16
-https://vulnture.dev/api/feed?s=…      JSON: changes and the tiered list
-https://vulnture.dev/feed.xml?s=…      Atom: one entry per change
-https://vulnture.dev/badge.svg?s=…     "N known-exploited CVEs", green at zero
+https://vulnder.dev/?s=npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16
+https://vulnder.dev/api/feed?s=…      JSON: changes and the tiered list
+https://vulnder.dev/feed.xml?s=…      Atom: one entry per change
+https://vulnder.dev/badge.svg?s=…     "N known-exploited CVEs", green at zero
 ```
 
 `days` (1–90, default 30) widens or narrows the window. The `s` format is a versioned public contract, documented in [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md). A stack can hold up to 200 items; self-host for anything larger.
@@ -42,14 +42,14 @@ https://vulnture.dev/badge.svg?s=…     "N known-exploited CVEs", green at zero
 
 ## Privacy
 
-A list of what you run is useful to an attacker, so Vulnture keeps as little as it can:
+A list of what you run is useful to an attacker, so Vulnder keeps as little as it can:
 
 - **Your stack and your text are not stored.** Free text goes to Workers AI only to pick out component names. The parsed result is cached under a SHA-256 hash of the normalised text; the text itself is never cached.
 - **Manifests stay on your machine.** Files are parsed in your browser, and only package names and versions are sent.
 - **Stack URLs are not logged.** Workers Logs redact query strings (`observability.redact_query_string`), and the code never logs request bodies or `s`.
 - **No tracking.** There are no analytics or third-party scripts, apart from Cloudflare Turnstile on the submit form.
 - **No referrer leaks.** Pages and links send no `Referer`, so clicking an advisory doesn't hand your stack URL to another site.
-- **What Cloudflare can see.** Vulnture runs on Cloudflare, which processes every request, including the stack in the URL. Feed responses are cached in Cloudflare's cache under the canonical stack. If that is too much exposure, self-host.
+- **What Cloudflare can see.** Vulnder runs on Cloudflare, which processes every request, including the stack in the URL. Feed responses are cached in Cloudflare's cache under the canonical stack. If that is too much exposure, self-host.
 
 ## Data sources
 
@@ -61,7 +61,7 @@ A list of what you run is useful to an attacker, so Vulnture keeps as little as 
 | [FIRST EPSS](https://www.first.org/epss) | Exploitation probability and percentile. *EPSS scores courtesy of FIRST.* |
 | [OSV](https://osv.dev) | Exact-version checks at request time |
 
-Vulnture keeps 90 days of data. A vulnerability stays while it was published, or had an event, in the last 90 days, so an old CVE that lands on KEV today still shows up.
+Vulnder keeps 90 days of data. A vulnerability stays while it was published, or had an event, in the last 90 days, so an old CVE that lands on KEV today still shows up.
 
 ## Running locally
 
@@ -83,7 +83,7 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 
 ## Deploying
 
-1. `npx wrangler d1 create vulnture`, then put the returned `database_id` in both D1 entries in `wrangler.jsonc`.
+1. `npx wrangler d1 create vulnder`, then put the returned `database_id` in both D1 entries in `wrangler.jsonc`.
 2. Set `BASE_URL` (and `DISPLAY_NAME` if you like) in `wrangler.jsonc`. Feed links, badge links and Atom IDs are built from it.
 3. Create a [Turnstile widget](https://developers.cloudflare.com/turnstile/), put its site key in `TURNSTILE_SITE_KEY`, and run `npx wrangler secret put TURNSTILE_SECRET_KEY`.
 4. `npm run db:migrate:remote`, then `npm run backfill -- --remote`.

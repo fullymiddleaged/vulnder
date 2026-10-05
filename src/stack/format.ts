@@ -66,7 +66,7 @@ export function parseStack(param: string): StackItem[] {
   if (invalid.length > 0) throw new StackFormatError(`unrecognised stack item(s): ${invalid.slice(0, 5).join(', ')}`, invalid);
   const canonical = canonicalize(items);
   if (canonical.length > MAX_ITEMS) {
-    throw new StackFormatError(`a stack can have at most ${MAX_ITEMS} items; self-host Vulnture for larger stacks`);
+    throw new StackFormatError(`a stack can have at most ${MAX_ITEMS} items; self-host Vulnder for larger stacks`);
   }
   return canonical;
 }

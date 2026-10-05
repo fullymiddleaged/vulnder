@@ -88,7 +88,7 @@ async function cached(
 
 async function openCache(): Promise<Cache | null> {
   try {
-    return await caches.open('vulnture-feeds');
+    return await caches.open('vulnder-feeds');
   } catch {
     return null;
   }
@@ -97,7 +97,7 @@ async function openCache(): Promise<Cache | null> {
 async function runMatch(c: Context<AppEnv>, req: StackRequest, now: Date): Promise<MatchResult> {
   const osvCache = await (async () => {
     try {
-      return await caches.open('vulnture-osv');
+      return await caches.open('vulnder-osv');
     } catch {
       return null;
     }

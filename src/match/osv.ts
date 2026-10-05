@@ -11,7 +11,7 @@ const MAX_QUERIES = 1000;
 /** Follow-up pages per query when OSV paginates (very large result sets only). */
 const MAX_PAGES = 3;
 const CACHE_TTL_SECONDS = 6 * 3600;
-const CACHE_ORIGIN = 'https://osv-cache.vulnture.invalid';
+const CACHE_ORIGIN = 'https://osv-cache.vulnder.invalid';
 /** Someone is waiting on the page; give up on OSV rather than hang. */
 const TIMEOUT_MS = 5000;
 

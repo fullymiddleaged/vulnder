@@ -8,7 +8,7 @@ export const EPSS_HIGH = 0.1;
 export const EPSS_RISE = 0.1;
 
 /** Sent on every outbound request, as GitHub's API requires. */
-export const USER_AGENT = 'vulnture-ingest';
+export const USER_AGENT = 'vulnder-ingest';
 
 /** GitHub REST API version. 2026-03-10 also exists; 2022-11-28 is the one the parsers were recorded against. */
 export const GITHUB_API_VERSION = '2022-11-28';
