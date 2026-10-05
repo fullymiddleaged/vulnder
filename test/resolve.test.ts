@@ -138,6 +138,23 @@ describe('resolveCandidates', () => {
     ]);
   });
 
+  it('orders close matches by the stack profile, without hiding any', async () => {
+    await env.DB.prepare('INSERT INTO catalog (kind, key, ecosystem, name, vendor, product, normalized, label, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind('product', 'cisco/small_business_switches', null, null, 'cisco', 'small_business_switches', 'small_business_switches', 'Cisco Small Business Switches', 1)
+      .run();
+    const switches = { kind: 'product', name: 'switches', vendor: 'Cisco', version: null, direct: true } as const;
+    const items = (r: Awaited<ReturnType<typeof resolveCandidates>>) => r.chips[0]!.items.map((i) => i.item);
+
+    const home = await resolveCandidates(store(), [switches], { modelHint: 'home' });
+    expect(home.profile).toEqual({ profile: 'home', confidence: 0.86 });
+    expect(items(home)).toEqual(['?p:cisco/small_business_switches', '?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/industrial_ethernet_switches']);
+
+    // Too little evidence to reorder: catalog order (most-affected first).
+    const unsure = await resolveCandidates(store(), [switches]);
+    expect(unsure.profile.confidence).toBeLessThan(0.5);
+    expect(items(unsure)).toEqual(['?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/industrial_ethernet_switches', '?p:cisco/small_business_switches']);
+  });
+
   it('scores similarity sensibly', () => {
     expect(similarity('postgresql', 'postgresql')).toBe(1);
     expect(similarity('grafanna', 'grafana')).toBeGreaterThan(0.8);
@@ -157,20 +174,27 @@ describe('model output', () => {
         ],
       },
     });
-    expect(out).toEqual([
+    expect(out.candidates).toEqual([
       { kind: 'package', ecosystem: 'PyPI', name: 'Django', version: '4.2', direct: true },
       { kind: 'product', name: 'Exchange', vendor: 'Microsoft', version: null, direct: true },
     ]);
   });
 
   it('returns nothing for unparseable output', () => {
-    expect(parseModelOutput({ response: 'Sure! Here are your items:' })).toEqual([]);
-    expect(parseModelOutput(null)).toEqual([]);
-    expect(parseModelOutput({ choices: [{ message: { content: '{"items": "nope"}' } }] })).toEqual([]);
+    const empty = { candidates: [], profile: null };
+    expect(parseModelOutput({ response: 'Sure! Here are your items:' })).toEqual(empty);
+    expect(parseModelOutput(null)).toEqual(empty);
+    expect(parseModelOutput({ choices: [{ message: { content: '{"items": "nope"}' } }] })).toEqual(empty);
+  });
+
+  it('keeps a known profile hint and drops anything else', () => {
+    expect(parseModelOutput({ response: { items: [], profile: 'home' } }).profile).toBe('home');
+    expect(parseModelOutput({ response: { items: [], profile: 'government' } }).profile).toBeNull();
+    expect(parseModelOutput({ response: { items: [] } }).profile).toBeNull();
   });
 
   it('accepts a fenced JSON string', () => {
-    expect(parseModelOutput({ response: '```json\n{"items":[{"name":"Redis","version":null,"type":"product","ecosystem":null,"vendor":null}]}\n```' })).toHaveLength(1);
+    expect(parseModelOutput({ response: '```json\n{"items":[{"name":"Redis","version":null,"type":"product","ecosystem":null,"vendor":null}]}\n```' }).candidates).toHaveLength(1);
   });
 });
 
@@ -224,6 +248,19 @@ describe('POST /api/resolve', () => {
     const body = (await res.json()) as { source: string; format: string; chips: { items: { item: string }[] }[] };
     expect(body).toMatchObject({ source: 'manifest', format: 'package.json' });
     expect(body.chips.map((c) => c.items[0]!.item)).toEqual(['npm:next@14.2.3', 'npm:vitest']);
+    expect(body).toMatchObject({ profile: { profile: 'developer', confidence: 0.67 } });
+  });
+
+  it('passes the model’s profile hint through, and caches it with the parse', async () => {
+    stubTurnstile();
+    const reply = { response: { items: [{ name: 'Redis', version: null, type: 'product', ecosystem: null, vendor: null }], profile: 'home' } };
+    const e = testEnv(async () => reply);
+    const text = `Redis on my home server ${++textSalt}`;
+    for (let i = 0; i < 2; i++) {
+      const body = (await (await post({ text, turnstileToken: 't' }, e)).json()) as { profile: unknown };
+      expect(body.profile).toEqual({ profile: 'home', confidence: 1 });
+    }
+    expect((e.AI.run as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
   });
 
   it('accepts candidates parsed in the browser', async () => {

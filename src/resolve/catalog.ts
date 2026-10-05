@@ -3,6 +3,7 @@ import type { Store } from '../ingest/store';
 import { formatItem, parseStack, type StackItem } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES, CATEGORIES } from './aliases';
+import { classifyProfile, MIN_RANK_CONFIDENCE, rankByProfile, type Profile, type ProfileClassifier, type ProfileGuess } from './profile';
 import type { Candidate } from './types';
 
 /**
@@ -13,7 +14,8 @@ import type { Candidate } from './types';
  *
  * Order: curated aliases, product categories, exact keys, then trigram
  * similarity over catalog entries sharing a prefix, then the vendor's
- * best-known products.
+ * best-known products. Close matches are then ordered by the stack's likely
+ * profile (see profile.ts).
  */
 
 export interface ChipItem {
@@ -36,6 +38,13 @@ export interface ResolveResult {
   chips: Chip[];
   /** Transitive lockfile dependencies left out because nothing is known about them. */
   droppedTransitive: number;
+  profile: ProfileGuess;
+}
+
+export interface ResolveOptions {
+  /** The extraction model's view of who runs the stack; null for manifests. */
+  modelHint?: Profile | null;
+  classifier?: ProfileClassifier;
 }
 
 interface CatalogRow {
@@ -61,7 +70,7 @@ const MAX_PREFIX_ROWS = 4000;
 
 type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
 
-export async function resolveCandidates(store: Store, candidates: Candidate[]): Promise<ResolveResult> {
+export async function resolveCandidates(store: Store, candidates: Candidate[], options: ResolveOptions = {}): Promise<ResolveResult> {
   // Exact catalog lookups for every package, in one query.
   const packageKeys = candidates.flatMap((c) => (c.kind === 'package' ? [`${c.ecosystem}:${normalizePackageName(c.ecosystem, c.name)}`] : []));
   const knownPackages = new Set(
@@ -114,7 +123,35 @@ export async function resolveCandidates(store: Store, candidates: Candidate[]): 
     }
     chips.push(resolveProduct(c, rows, byVendor, knownAlias));
   }
-  return { chips, droppedTransitive };
+
+  const profile = await classifyProfile(profileSignals(candidates, chips, options.modelHint ?? null), options.classifier);
+  if (profile.profile && profile.confidence >= MIN_RANK_CONFIDENCE) {
+    for (const chip of chips) {
+      if (chip.items.length > 1 && chip.items.every((i) => i.close)) chip.items = rankByProfile(chip.items, profile.profile, productOf);
+    }
+  }
+  return { chips, droppedTransitive, profile };
+}
+
+/** Exact products, the vendors behind close-only chips, and direct packages. */
+function profileSignals(candidates: Candidate[], chips: Chip[], modelHint: Profile | null) {
+  const products: { vendor: string; product: string }[] = [];
+  const vendors = new Set<string>();
+  for (const chip of chips) {
+    const exact = chip.items.filter((i) => !i.close).map(productOf);
+    for (const p of exact) if (p) products.push(p);
+    if (exact.length > 0) continue;
+    const closeVendors = new Set(chip.items.map((i) => productOf(i)?.vendor));
+    const [only] = closeVendors;
+    if (closeVendors.size === 1 && only) vendors.add(only);
+  }
+  const directPackages = candidates.filter((c) => c.kind === 'package' && c.direct).length;
+  return { products, vendors: [...vendors], directPackages, modelHint };
+}
+
+function productOf(i: ChipItem): { vendor: string; product: string } | null {
+  const parsed = parseStack(i.item.replace(/^\?/, ''))[0]!;
+  return parsed.kind === 'product' ? { vendor: parsed.vendor, product: parsed.product } : null;
 }
 
 function resolveProduct(c: ProductCandidate, rows: CatalogRow[], byVendor: CatalogRow[], knownAlias: Set<string>): Chip {

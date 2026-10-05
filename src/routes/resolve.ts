@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { resolveCandidates } from '../resolve/catalog';
-import { extractCandidates, ExtractionUnavailable, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
+import { extractCandidates, type Extraction, ExtractionUnavailable, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { parseManifest } from '../resolve/manifests';
 import { verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
@@ -75,6 +75,8 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   if (!check.success) return c.json({ error: 'verification failed; reload the page and try again', codes: check.errors }, 403);
 
   let candidates: Candidate[];
+  // Manifests are classified by rules alone.
+  let modelHint: Extraction['profile'] = null;
   let source: 'manifest' | 'model';
   let format: string | undefined;
   if (body.candidates) {
@@ -94,7 +96,7 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
       if (!text.trim()) return c.json({ error: 'nothing to resolve' }, 400);
       source = 'model';
       try {
-        candidates = await cachedExtraction(c.env, text);
+        ({ candidates, profile: modelHint } = await cachedExtraction(c.env, text));
       } catch (err) {
         if (err instanceof ExtractionUnavailable) {
           return c.json(
@@ -107,24 +109,24 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     }
   }
 
-  const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates);
+  const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates, { modelHint });
   return c.json({ source, format, ...result }, 200, { 'Cache-Control': 'no-store' });
 });
 
-async function cachedExtraction(env: Env, text: string): Promise<Candidate[]> {
+async function cachedExtraction(env: Env, text: string): Promise<Extraction> {
   const key = new Request(`https://parse-cache.vulnder.invalid/v1/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
   const cache = await caches.open('vulnder-parse').catch(() => null);
   const hit = cache ? await cache.match(key) : undefined;
   if (hit) return parseModelOutput({ response: await hit.json() });
 
-  const candidates = await extractCandidates(env.AI, env.AI_MODEL, text);
+  const extraction = await extractCandidates(env.AI, env.AI_MODEL, text);
   if (cache) {
-    const items = candidates.map((c) =>
+    const items = extraction.candidates.map((c) =>
       c.kind === 'package'
         ? { name: c.name, version: c.version, type: 'package', ecosystem: c.ecosystem, vendor: null }
         : { name: c.name, version: c.version, type: 'product', ecosystem: null, vendor: c.vendor },
     );
-    await cache.put(key, Response.json({ items }, { headers: { 'Cache-Control': `max-age=${PARSE_CACHE_SECONDS}` } }));
+    await cache.put(key, Response.json({ items, profile: extraction.profile }, { headers: { 'Cache-Control': `max-age=${PARSE_CACHE_SECONDS}` } }));
   }
-  return candidates;
+  return extraction;
 }

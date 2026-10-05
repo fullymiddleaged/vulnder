@@ -18,6 +18,8 @@ export interface ResolveResponse {
   format?: string;
   chips: Chip[];
   droppedTransitive: number;
+  /** Who the stack probably belongs to; only used to order close matches. */
+  profile: { profile: 'enterprise' | 'smb' | 'home' | 'cloud' | 'developer' | null; confidence: number };
 }
 
 export interface Result {
