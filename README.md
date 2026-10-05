@@ -1,6 +1,6 @@
 # Vulnder
 
-**Something is circling your stack.** Describe what you run, or drop in a manifest, and see the vulnerabilities from the last 30 days that apply to you. They're ranked by real-world exploitation signals, not CVSS labels. You don't need an account: your stack lives in the URL, and the same URL gives you a JSON feed, an Atom feed and a README badge.
+**Someone's into your stack. See who, ranked by real-world exploitation.** Describe what you run, or drop in a manifest, and see the vulnerabilities from the last 30 days that apply to you. They're ranked by real-world exploitation signals, not CVSS labels. You don't need an account: your stack lives in the URL, and the same URL gives you a JSON feed, an Atom feed and a README badge.
 
 <!-- Screenshot: add docs/screenshot.png once the app is deployed. -->
 

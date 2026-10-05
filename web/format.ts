@@ -16,6 +16,17 @@ export function describeChange(c: Change): string {
   }
 }
 
+/** The playful headline above the results. Tier and evidence wording stays plain. */
+export function matchHeadline(count: number, days: number): { title: string; subtitle: string } {
+  if (count === 0) {
+    return { title: 'No matches.', subtitle: `Nobody's been into your stack in the last ${days} days. Keep it that way.` };
+  }
+  return {
+    title: "It's a match. Unfortunately.",
+    subtitle: `${count} ${count === 1 ? 'CVE is' : 'CVEs are'} into your stack from the last ${days} days. Red flags, ranked:`,
+  };
+}
+
 export function pct(v: number): string {
   return `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}%`;
 }

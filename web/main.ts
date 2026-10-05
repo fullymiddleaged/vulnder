@@ -2,7 +2,7 @@ import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
 import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Chip, type Feed, type Result } from './api';
 import { clear, h, safeHref } from './dom';
-import { ago, describeChange, ordinal, pct } from './format';
+import { ago, describeChange, matchHeadline, ordinal, pct } from './format';
 
 declare global {
   interface Window {
@@ -282,7 +282,11 @@ async function renderResults(stack: string, days: number): Promise<void> {
     ),
   );
 
-  app.append(renderChanges(feed));
+  const headline = matchHeadline(feed.results.length, feed.days);
+  app.append(
+    h('section', { class: 'headline', 'aria-labelledby': 'match-title' }, h('h2', { id: 'match-title' }, headline.title), h('p', { class: 'muted' }, headline.subtitle)),
+    renderChanges(feed),
+  );
   for (const tier of ['exploited', 'likely', 'backlog'] as const) {
     const list = feed.results.filter((r) => r.tier === tier);
     app.append(
@@ -301,7 +305,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
         'section',
         { class: 'card', 'aria-labelledby': 'watching-title' },
         h('h2', { id: 'watching-title' }, 'Watching'),
-        h('p', { class: 'muted' }, `Nothing circling these in the last ${feed.days} days. The feed will pick up new issues.`),
+        h('p', { class: 'muted' }, `No admirers in the last ${feed.days} days. The feed will pick up new issues.`),
         h('ul', { class: 'chips compact' }, feed.watching.map((w) => h('li', { class: 'chip' }, h('code', {}, w)))),
       ),
     );

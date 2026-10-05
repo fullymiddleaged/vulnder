@@ -97,6 +97,24 @@ describe('WranglerStore', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('retries a failed call twice, then gives up', async () => {
+    let calls = 0;
+    const flaky = new WranglerStore({
+      target: 'local',
+      retryDelayMs: 1,
+      runner: async () => {
+        calls++;
+        if (calls < 3) throw new Error('transient');
+        return '[{"results":[{"ok":1}],"success":true}]';
+      },
+    });
+    expect(await flaky.all('SELECT 1')).toEqual([{ ok: 1 }]);
+    expect(calls).toBe(3);
+
+    const broken = new WranglerStore({ target: 'local', retryDelayMs: 1, runner: async () => Promise.reject(new Error('down')) });
+    await expect(broken.all('SELECT 1')).rejects.toThrow('down');
+  });
+
   it('refuses reads too long for the Windows command line', async () => {
     const { store } = fake();
     await expect(store.all('SELECT ?', ['x'.repeat(40_000)])).rejects.toThrow(/too long/);

@@ -19,6 +19,8 @@ export interface WranglerStoreOptions {
   cwd?: string;
   /** Flush the write buffer once it reaches this many bytes. */
   flushBytes?: number;
+  /** Base delay between retries of a failed wrangler call. */
+  retryDelayMs?: number;
   /** Runs wrangler with the given arguments and returns stdout. Replaceable in tests. */
   runner?: (args: string[]) => Promise<string>;
 }
@@ -36,7 +38,7 @@ export class WranglerStore implements Store {
   constructor(private readonly opts: WranglerStoreOptions) {
     this.database = opts.database ?? 'DB';
     this.flushBytes = opts.flushBytes ?? 4_000_000;
-    this.run = opts.runner ?? defaultRunner(opts.cwd ?? process.cwd());
+    this.run = withRetries(opts.runner ?? defaultRunner(opts.cwd ?? process.cwd()), opts.retryDelayMs ?? 2000);
   }
 
   async all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -72,6 +74,24 @@ export class WranglerStore implements Store {
       await rm(dir, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * Retries a failed wrangler call twice. Safe because reads have no effect and
+ * every write file is idempotent (upserts, INSERT OR IGNORE, delete-then-insert).
+ * Local runs occasionally fail with no message, e.g. after the machine sleeps.
+ */
+function withRetries(run: (args: string[]) => Promise<string>, delayMs: number): (args: string[]) => Promise<string> {
+  return async (args) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await run(args);
+      } catch (err) {
+        if (attempt >= 2) throw err;
+        await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
+      }
+    }
+  };
 }
 
 function defaultRunner(cwd: string): (args: string[]) => Promise<string> {

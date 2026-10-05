@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ago, describeChange, ordinal, pct } from '../web/format';
+import { ago, describeChange, matchHeadline, ordinal, pct } from '../web/format';
 
 describe('UI formatting', () => {
+  it('writes the match headline for none, one and many', () => {
+    expect(matchHeadline(0, 30)).toEqual({ title: 'No matches.', subtitle: "Nobody's been into your stack in the last 30 days. Keep it that way." });
+    expect(matchHeadline(1, 7).subtitle).toBe('1 CVE is into your stack from the last 7 days. Red flags, ranked:');
+    expect(matchHeadline(3, 30)).toEqual({ title: "It's a match. Unfortunately.", subtitle: '3 CVEs are into your stack from the last 30 days. Red flags, ranked:' });
+  });
+
   it('writes percentages with sensible precision', () => {
     expect(pct(0.45)).toBe('45.0%');
     expect(pct(0.1)).toBe('10.0%');

@@ -132,3 +132,6 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
   .row { flex-wrap: wrap; }
   .brand { font-size: 1.35rem; }
 }
+
+.headline h2 { font-size: 1.5rem; margin-bottom: 0.1rem; }
+.headline p { margin: 0; }
