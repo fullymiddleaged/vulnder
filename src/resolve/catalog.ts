@@ -2,33 +2,34 @@ import { normalizeKey, normalizePackageName } from '../lib/normalize';
 import type { Store } from '../ingest/store';
 import { formatItem, parseStack, type StackItem } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
-import { ALIASES } from './aliases';
+import { ALIASES, CATEGORIES } from './aliases';
 import type { Candidate } from './types';
 
 /**
- * Turns candidates into chips. Packages from manifests are exact identifiers
- * and always resolve. Product names (from the model or a Dockerfile) are
- * matched against the catalog: curated aliases first, then exact keys, then
- * trigram similarity over catalog entries sharing a prefix.
+ * Turns candidates into chips without asking the user to choose. A name that
+ * clearly identifies one thing resolves to an exact item. A vague one ("nginx",
+ * "Cisco switches") expands to every product it plausibly means, each marked as
+ * a close match, so results show everything relevant and say how sure they are.
+ *
+ * Order: curated aliases, product categories, exact keys, then trigram
+ * similarity over catalog entries sharing a prefix, then the vendor's
+ * best-known products.
  */
 
-export type ChipStatus = 'resolved' | 'ambiguous' | 'unrecognised';
-
-export interface Alternative {
+export interface ChipItem {
+  /** Canonical stack item (with a leading '?' when close). */
   item: string;
   label: string;
+  close: boolean;
+  /** True when the catalog has vulnerabilities for it in the retention window. */
+  known: boolean;
 }
 
 export interface Chip {
   /** What the user wrote or the manifest named. */
   input: string;
-  status: ChipStatus;
-  /** Canonical stack item when resolved. */
-  item?: string;
-  label?: string;
-  /** True when the catalog has vulnerabilities for it in the retention window. */
-  known?: boolean;
-  alternatives?: Alternative[];
+  status: 'resolved' | 'unrecognised';
+  items: ChipItem[];
 }
 
 export interface ResolveResult {
@@ -52,8 +53,13 @@ interface CatalogRow {
 const RESOLVE_SCORE = 0.8;
 const SUGGEST_SCORE = 0.45;
 const CLEAR_LEAD = 0.1;
-const MAX_ALTERNATIVES = 5;
+/** Fuzzy guesses get noisy past this many. Category expansion is not capped. */
+const MAX_FUZZY = 8;
+/** "Cisco" alone: the vendor's most-affected products. */
+const MAX_VENDOR_ONLY = 8;
 const MAX_PREFIX_ROWS = 4000;
+
+type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
 
 export async function resolveCandidates(store: Store, candidates: Candidate[]): Promise<ResolveResult> {
   // Exact catalog lookups for every package, in one query.
@@ -69,16 +75,15 @@ export async function resolveCandidates(store: Store, candidates: Candidate[]): 
         ).map((r) => r.key),
   );
 
-  // Product names: aliases need no query; the rest go to the catalog together.
-  const products = candidates.filter((c): c is Extract<Candidate, { kind: 'product' }> => c.kind === 'product');
+  const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
   const queries = [...new Set(products.map((p) => normalizeKey(p.name)).filter((k): k is string => !!k && !ALIASES[k]))];
   const rows = queries.length === 0 ? [] : await productCandidates(store, queries);
-  // "Cisco switches": when the name matches nothing, a known vendor still narrows it down.
-  const vendors = [...new Set(products.map((p) => normalizeKey(p.vendor)).filter((v): v is string => !!v))];
-  const byVendor = vendors.length === 0 ? [] : await topProductsByVendor(store, vendors);
+  // Every product of each vendor named (or implied by the first word), for categories and vendor-only input.
+  const vendors = [...new Set(products.flatMap((p) => vendorGuesses(p)))];
+  const byVendor = vendors.length === 0 ? [] : await productsByVendor(store, vendors);
 
   const aliasItems = [...new Set(candidates.flatMap((c) => ALIASES[normalizeKey(c.name) ?? ''] ?? []))];
-  const knownAliasProducts = await knownItems(store, aliasItems);
+  const knownAlias = await knownItems(store, aliasItems);
 
   const chips: Chip[] = [];
   let droppedTransitive = 0;
@@ -92,7 +97,7 @@ export async function resolveCandidates(store: Store, candidates: Candidate[]): 
         const alias = (ALIASES[normalizeKey(c.name) ?? ''] ?? []).map((a) => parseStack(a)[0]!).find((a) => a.kind === 'package' && a.ecosystem === c.ecosystem);
         if (alias && alias.kind === 'package') {
           name = alias.name;
-          known = knownAliasProducts.has(formatItem(alias));
+          known = knownAlias.has(formatItem(alias));
         }
       }
       if (!c.direct && !known) {
@@ -100,58 +105,81 @@ export async function resolveCandidates(store: Store, candidates: Candidate[]): 
         continue;
       }
       const item: StackItem = { kind: 'package', ecosystem: c.ecosystem, name, version: c.version };
-      chips.push({ input: c.version ? `${c.name} ${c.version}` : c.name, status: 'resolved', item: formatItem(item), label: c.name, known });
+      chips.push({
+        input: c.version ? `${c.name} ${c.version}` : c.name,
+        status: 'resolved',
+        items: [{ item: formatItem(item), label: c.name, close: false, known }],
+      });
       continue;
     }
-    chips.push(resolveProduct(c, rows, byVendor, knownAliasProducts));
+    chips.push(resolveProduct(c, rows, byVendor, knownAlias));
   }
-  return { chips: dedupeChips(chips), droppedTransitive };
+  return { chips, droppedTransitive };
 }
 
-function resolveProduct(
-  c: Extract<Candidate, { kind: 'product' }>,
-  rows: CatalogRow[],
-  byVendor: CatalogRow[],
-  knownAlias: Set<string>,
-): Chip {
+function resolveProduct(c: ProductCandidate, rows: CatalogRow[], byVendor: CatalogRow[], knownAlias: Set<string>): Chip {
   const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   const key = normalizeKey(c.name);
-  if (!key) return { input, status: 'unrecognised' };
-  const withVersion = (item: string) => {
-    const parsed = parseStack(item)[0]!;
-    return formatItem({ ...parsed, version: c.version });
+  if (!key) return { input, status: 'unrecognised', items: [] };
+  const make = (item: string, label: string, close: boolean, known: boolean): ChipItem => {
+    const parsed = parseStack(item.replace(/^\?/, ''))[0]!;
+    return { item: formatItem({ ...parsed, version: c.version, close: close || undefined }), label, close, known };
   };
+  const resolved = (items: ChipItem[]): Chip => ({ input, status: items.length > 0 ? 'resolved' : 'unrecognised', items });
 
+  // 1. Curated aliases: one target is exact, several are all close.
   const aliased = ALIASES[key];
   if (aliased) {
-    const alts = aliased.map((item) => ({ item: withVersion(item), label: labelFor(item) }));
-    if (alts.length === 1) return { input, status: 'resolved', item: alts[0]!.item, label: alts[0]!.label, known: knownAlias.has(aliased[0]!) };
-    return { input, status: 'ambiguous', alternatives: alts };
+    const close = aliased.length > 1;
+    return resolved(aliased.map((item) => make(item, labelFor(item), close, knownAlias.has(item))));
   }
 
-  const vendorKey = normalizeKey(c.vendor);
+  // 2. Categories: "Cisco switches" means every Cisco switch product.
+  const category = CATEGORIES.find((cat) => cat.words.test(c.name));
+  const vendorKey = vendorGuesses(c).find((v) => byVendor.some((r) => r.vendor === v)) ?? null;
+  if (category && vendorKey) {
+    const pattern = category.byVendor[vendorKey] ?? category.generic;
+    const fitting = byVendor.filter((r) => r.vendor === vendorKey && pattern.test(stripVendor(r.product!, vendorKey)));
+    if (fitting.length > 0) return resolved(fitting.map((r) => make(itemOf(r), r.label ?? r.key, true, true)));
+  }
+
+  // 3. Exact key or clear fuzzy winner; otherwise every plausible guess as close.
   const scored = rows
     .map((r) => ({ r, score: similarity(key, r.normalized) + (vendorKey && r.vendor === vendorKey ? 0.15 : 0) + (r.product === key ? 0.1 : 0) }))
     .filter((s) => s.score >= SUGGEST_SCORE)
     .sort((a, b) => b.score - a.score || b.r.count - a.r.count);
   const unique = [...new Map(scored.map((s) => [s.r.key, s])).values()];
-  const itemOf = (r: CatalogRow) =>
-    r.kind === 'product' ? `p:${r.vendor}/${r.product}` : formatItem({ kind: 'package', ecosystem: r.ecosystem as never, name: r.name!, version: null });
   const best = unique[0];
-  if (!best) {
-    const vendorRows = vendorKey ? byVendor.filter((r) => r.vendor === vendorKey).slice(0, MAX_ALTERNATIVES) : [];
-    if (vendorRows.length === 0) return { input, status: 'unrecognised' };
-    return { input, status: 'ambiguous', alternatives: vendorRows.map((r) => ({ item: withVersion(itemOf(r)), label: r.label ?? r.key })) };
+  if (best) {
+    const second = unique[1];
+    if (best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
+      return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true)]);
+    }
+    return resolved(unique.slice(0, MAX_FUZZY).map((s) => make(itemOf(s.r), s.r.label ?? s.r.key, true, true)));
   }
-  const second = unique[1];
-  if (best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
-    return { input, status: 'resolved', item: withVersion(itemOf(best.r)), label: best.r.label ?? best.r.key, known: true };
+
+  // 4. Only a vendor: its most-affected products, as close matches.
+  if (vendorKey) {
+    const top = byVendor.filter((r) => r.vendor === vendorKey).slice(0, MAX_VENDOR_ONLY);
+    return resolved(top.map((r) => make(itemOf(r), r.label ?? r.key, true, true)));
   }
-  return {
-    input,
-    status: 'ambiguous',
-    alternatives: unique.slice(0, MAX_ALTERNATIVES).map((s) => ({ item: withVersion(itemOf(s.r)), label: s.r.label ?? s.r.key })),
-  };
+  return { input, status: 'unrecognised', items: [] };
+}
+
+/** The vendor given, or else the first word of the name ("Cisco switches"). */
+function vendorGuesses(c: ProductCandidate): string[] {
+  const given = normalizeKey(c.vendor);
+  const firstWord = normalizeKey(c.name.trim().split(/\s+/)[0]);
+  return [given, firstWord].filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
+}
+
+/** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
+function stripVendor(product: string, vendor: string): string {
+  return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
+}
+
+function itemOf(r: CatalogRow): string {
+  return r.kind === 'product' ? `p:${r.vendor}/${r.product}` : formatItem({ kind: 'package', ecosystem: r.ecosystem as never, name: r.name!, version: null });
 }
 
 /** Catalog rows whose normalized name shares a prefix with any query. */
@@ -169,13 +197,12 @@ async function productCandidates(store: Store, queries: string[]): Promise<Catal
   );
 }
 
-/** The most-affected products of each vendor, for names that match nothing. */
-async function topProductsByVendor(store: Store, vendors: string[]): Promise<CatalogRow[]> {
+/** All products of the given vendors, most-affected first. */
+async function productsByVendor(store: Store, vendors: string[]): Promise<CatalogRow[]> {
   return store.all<CatalogRow>(
-    `SELECT kind, key, ecosystem, name, vendor, product, normalized, label, count FROM (
-       SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.vendor ORDER BY c.count DESC, c.key) AS rn
-       FROM catalog c WHERE c.kind = 'product' AND c.vendor IN (SELECT value FROM json_each(?))
-     ) WHERE rn <= ${MAX_ALTERNATIVES}`,
+    `SELECT kind, key, ecosystem, name, vendor, product, normalized, label, count FROM catalog
+     WHERE kind = 'product' AND vendor IN (SELECT value FROM json_each(?))
+     ORDER BY count DESC, key LIMIT ${MAX_PREFIX_ROWS}`,
     [JSON.stringify(vendors)],
   );
 }
@@ -221,14 +248,4 @@ export function similarity(a: string, b: string): number {
   }
   for (const n of gb.values()) total += n;
   return total === 0 ? 0 : (2 * shared) / total;
-}
-
-function dedupeChips(chips: Chip[]): Chip[] {
-  const seen = new Set<string>();
-  return chips.filter((c) => {
-    const k = c.item ?? `${c.status}:${c.input}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
 }

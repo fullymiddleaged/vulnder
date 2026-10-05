@@ -30,9 +30,16 @@ export const PREFIXES: Record<string, Ecosystem> = {
 };
 const PREFIX_FOR: Record<string, string> = Object.fromEntries(Object.entries(PREFIXES).map(([p, e]) => [e, p]));
 
+/**
+ * `close` marks a close match: something the user's words loosely fit (e.g. one
+ * of several Cisco switch products for "Cisco switches"), shown but labelled.
+ */
 export type StackItem =
-  | { kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null }
-  | { kind: 'product'; vendor: string; product: string; version: string | null };
+  | { kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null; close?: boolean }
+  | { kind: 'product'; vendor: string; product: string; version: string | null; close?: boolean };
+
+/** Marks a close match in the URL: `?p:nginx/nginx`. */
+const CLOSE_MARK = '?';
 
 export class StackFormatError extends Error {
   constructor(
@@ -79,18 +86,41 @@ export function serializeStack(items: StackItem[]): string {
 }
 
 export function formatItem(item: StackItem): string {
+  return `${item.close ? CLOSE_MARK : ''}${identity(item)}`;
+}
+
+/** The item without its close-match mark. */
+function identity(item: StackItem): string {
   const base = item.kind === 'package' ? `${PREFIX_FOR[item.ecosystem]}:${escape(item.name)}` : `p:${escape(item.vendor)}/${escape(item.product)}`;
   return item.version ? `${base}@${escape(item.version)}` : base;
 }
 
-/** Deduplicates and sorts, so equivalent stacks share one URL and one cache entry. */
+/**
+ * Deduplicates and sorts, so equivalent stacks share one URL and one cache
+ * entry. When the same item is both exact and close, exact wins.
+ */
 export function canonicalize(items: StackItem[]): StackItem[] {
   const byKey = new Map<string, StackItem>();
-  for (const item of items) byKey.set(formatItem(item), item);
+  for (const item of items) {
+    const key = identity(item);
+    const prev = byKey.get(key);
+    if (!prev || (prev.close && !item.close)) byKey.set(key, item.close ? { ...item, close: true } : withoutClose(item));
+  }
   return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, item]) => item);
 }
 
-function parseItem(text: string): StackItem | null {
+function withoutClose(item: StackItem): StackItem {
+  const { close: _close, ...rest } = item;
+  return rest as StackItem;
+}
+
+function parseItem(raw: string): StackItem | null {
+  const close = raw.startsWith(CLOSE_MARK);
+  const item = parseExactItem(close ? raw.slice(CLOSE_MARK.length) : raw);
+  return item && close ? { ...item, close: true } : item;
+}
+
+function parseExactItem(text: string): StackItem | null {
   const colon = text.indexOf(':');
   if (colon <= 0) return null;
   const prefix = text.slice(0, colon).toLowerCase();

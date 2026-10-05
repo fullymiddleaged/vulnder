@@ -135,3 +135,7 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 
 .headline h2 { font-size: 1.5rem; margin-bottom: 0.1rem; }
 .headline p { margin: 0; }
+.chip.close { border-style: dashed; }
+.badge.match-exact { color: var(--fg); }
+.badge.match-close { color: var(--likely); border-style: dashed; }
+.result .badge + .badge { margin-left: 0.4rem; }

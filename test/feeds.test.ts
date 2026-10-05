@@ -139,6 +139,16 @@ describe('matchStack', () => {
     expect(res.results[0]!.evidence).toMatchObject({ knownRansomware: true });
   });
 
+  it('labels close matches and ranks them after exact ones in the same tier', async () => {
+    const res = await matchStack(store(), parseStack('?p:cisco/ios_xe,npm:next'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(res.results.map((r) => [r.id, r.tier, r.match])).toEqual([
+      ['CVE-2026-1001', 'exploited', 'exact'],
+      ['CVE-2026-1005', 'exploited', 'close'],
+      ['CVE-2026-1002', 'likely', 'exact'],
+    ]);
+    expect(res.results[1]!.matched).toEqual(['?p:cisco/ios_xe']);
+  });
+
   it('widens the window with days', async () => {
     const res = await matchStack(store(), parseStack(STACK), { now: NOW, days: 90, osv: fakeOsv() });
     expect(res.results.map((r) => r.id)).toContain('CVE-2026-1004');

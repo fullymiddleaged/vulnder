@@ -8,11 +8,9 @@ export interface AppConfig {
 
 export interface Chip {
   input: string;
-  status: 'resolved' | 'ambiguous' | 'unrecognised';
-  item?: string;
-  label?: string;
-  known?: boolean;
-  alternatives?: { item: string; label: string }[];
+  status: 'resolved' | 'unrecognised';
+  /** Exact items, or every close match for a vague name. Close items start with '?'. */
+  items: { item: string; label: string; close: boolean; known: boolean }[];
 }
 
 export interface ResolveResponse {
@@ -37,6 +35,7 @@ export interface Result {
     epssDate: string | null;
   };
   confidence: 'version_confirmed' | 'product_match';
+  match: 'exact' | 'close';
   matched: string[];
   fixedVersions: string[];
   cvss: { score: number; vector: string | null } | null;

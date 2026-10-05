@@ -42,6 +42,8 @@ export interface MatchedVuln {
     epssDate: string | null;
   };
   confidence: Confidence;
+  /** 'exact' when a stack item named it outright; 'close' when only a close match (a '?' item) did. */
+  match: 'exact' | 'close';
   /** Stack items (canonical form) that matched. */
   matched: string[];
   fixedVersions: string[];
@@ -188,6 +190,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     let confirmed = false;
     let unverified = false;
     const matched = new Set<string>();
+    let exact = false;
     const fixes = new Set<string>();
 
     for (const r of rows) {
@@ -197,6 +200,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
           if (affecting && [...affecting].some((id) => ids.has(id))) {
             confirmed = true;
             matched.add(formatItem(item));
+            if (!item.close) exact = true;
             if (r.fixed_version) fixes.add(r.fixed_version);
           }
           // Checked and not affected: this row does not count as a match.
@@ -204,12 +208,13 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
         }
         unverified = true;
         matched.add(formatItem(item));
+        if (!item.close) exact = true;
         if (r.fixed_version) fixes.add(r.fixed_version);
       }
     }
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
-    results.push(toResult(v, confirmed ? 'version_confirmed' : 'product_match', [...matched].sort(), [...fixes].sort()));
+    results.push(toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort()));
   }
 
   results.sort(compareResults);
@@ -236,7 +241,7 @@ export function tierOf(v: { kev_added_at: string | null; epss: number | null }):
   return 'backlog';
 }
 
-function toResult(v: VulnRow, confidence: Confidence, matched: string[], fixedVersions: string[]): MatchedVuln {
+function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', matched: string[], fixedVersions: string[]): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
   return {
     id: v.id,
@@ -255,6 +260,7 @@ function toResult(v: VulnRow, confidence: Confidence, matched: string[], fixedVe
       epssDate: v.epss_date,
     },
     confidence,
+    match,
     matched,
     fixedVersions,
     cvss: v.cvss_score !== null ? { score: v.cvss_score, vector: v.cvss_vector } : null,
@@ -284,6 +290,7 @@ export function pickLinks(id: string, refs: Ref[]): { advisory: string | null; p
 function compareResults(a: MatchedVuln, b: MatchedVuln): number {
   return (
     TIER_RANK[a.tier] - TIER_RANK[b.tier] ||
+    (a.match === b.match ? 0 : a.match === 'exact' ? -1 : 1) ||
     (b.evidence.kevAddedAt ?? '').localeCompare(a.evidence.kevAddedAt ?? '') ||
     (b.evidence.epss ?? 0) - (a.evidence.epss ?? 0) ||
     (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||

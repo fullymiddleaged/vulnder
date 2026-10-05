@@ -1,6 +1,6 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
-import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Chip, type Feed, type Result } from './api';
+import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import { ago, describeChange, matchHeadline, ordinal, pct } from './format';
 
@@ -136,6 +136,9 @@ function mountTurnstile(box: HTMLElement): void {
   tryRender();
 }
 
+/** Shown once on the results page after a submit, e.g. names that matched nothing. */
+let pendingNote = '';
+
 async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }): Promise<void> {
   if (!turnstileToken) return say('Please wait for the verification check to finish, then try again.');
   const token = turnstileToken;
@@ -144,50 +147,56 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
   say('Working out what is in your stack…');
   try {
     const res = await resolve(body, token);
-    say(res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '');
-    renderChips(res.chips);
+    const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
+    const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
+    const notes = [
+      unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. Use "Edit stack" to add them by hand.` : '',
+      res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
+    ].filter(Boolean);
+    if (items.length === 0) {
+      say(notes.join(' ') || 'Nothing recognisable there.');
+      return renderEdit([]);
+    }
+    const stack = parseStack(items.join(','));
+    if (stack.length > 200) {
+      say('That is more than 200 items. Trim the list, or self-host Vulnder for larger stacks.');
+      return renderEdit(items);
+    }
+    pendingNote = notes.join(' ');
+    navigate(serializeStack(stack), 30);
   } catch (err) {
     if (err instanceof ApiError && err.fallback === 'manual') {
       say(err.message);
-      renderChips([]);
+      renderEdit([]);
     } else {
       say(err instanceof Error ? err.message : 'Something went wrong.');
     }
   }
 }
 
-// ---------- Confirm ----------
+// ---------- Edit ----------
 
-interface ChipState {
-  chip: Chip;
-  selected: string | null;
-}
-
-function renderChips(chips: Chip[], existing: string[] = []): void {
+function renderEdit(initial: string[]): void {
   clear(app);
-  const state: ChipState[] = [
-    ...existing.map((item) => ({ chip: { input: item, status: 'resolved' as const, item }, selected: item })),
-    ...chips.map((chip) => ({ chip, selected: chip.status === 'resolved' ? chip.item! : null })),
-  ];
+  const items = [...new Set(initial)];
   const list = h('ul', { class: 'chips', 'aria-label': 'Stack items' });
 
   const draw = () => {
     clear(list);
-    state.forEach((s, i) => {
-      const remove = h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${s.chip.input}`, onclick: () => (state.splice(i, 1), draw()) }, '×');
-      let body: Node;
-      if (s.chip.status === 'ambiguous') {
-        const select = h('select', { 'aria-label': `Which ${s.chip.input}?` }, h('option', { value: '' }, `Which "${s.chip.input}"?`), (s.chip.alternatives ?? []).map((a) => h('option', { value: a.item, selected: s.selected === a.item }, `${a.label} (${a.item})`)));
-        select.addEventListener('change', () => (s.selected = select.value || null));
-        body = select;
-      } else if (s.chip.status === 'unrecognised') {
-        body = h('span', {}, h('s', {}, s.chip.input), h('span', { class: 'muted small' }, ' not recognised'));
-      } else {
-        body = h('span', {}, h('code', {}, s.selected!), s.chip.known === false ? h('span', { class: 'muted small' }, ' watching') : null);
-      }
-      list.append(h('li', { class: `chip ${s.chip.status}` }, body, remove));
+    items.forEach((item, i) => {
+      const close = item.startsWith('?');
+      const shown = close ? item.slice(1) : item;
+      list.append(
+        h(
+          'li',
+          { class: `chip ${close ? 'close' : 'resolved'}` },
+          h('code', {}, shown),
+          close ? h('span', { class: 'muted small' }, ' close match') : null,
+          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${shown}`, onclick: () => (items.splice(i, 1), draw()) }, '×'),
+        ),
+      );
     });
-    if (state.length === 0) list.append(h('li', { class: 'muted' }, 'No items yet. Add some below.'));
+    if (items.length === 0) list.append(h('li', { class: 'muted' }, 'No items yet. Add some below.'));
   };
   draw();
 
@@ -199,10 +208,7 @@ function renderChips(chips: Chip[], existing: string[] = []): void {
       onsubmit: (e: Event) => {
         e.preventDefault();
         try {
-          for (const item of parseStack(addInput.value)) {
-            const text = serializeStack([item]);
-            state.push({ chip: { input: text, status: 'resolved', item: text }, selected: text });
-          }
+          for (const item of parseStack(addInput.value)) items.push(serializeStack([{ ...item, close: undefined }]));
           addInput.value = '';
           say('');
           draw();
@@ -216,16 +222,16 @@ function renderChips(chips: Chip[], existing: string[] = []): void {
     h('button', { type: 'submit' }, 'Add'),
   );
 
-  const confirm = h(
+  const show = h(
     'button',
     {
       type: 'button',
       class: 'primary',
       onclick: () => {
-        const items: StackItem[] = state.flatMap((s) => (s.selected ? parseStack(s.selected) : []));
-        if (items.length === 0) return say('Choose or add at least one item.');
-        if (items.length > 200) return say('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
-        navigate(serializeStack(items), 30);
+        if (items.length === 0) return say('Add at least one item.');
+        const stack: StackItem[] = parseStack(items.join(','));
+        if (stack.length > 200) return say('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
+        navigate(serializeStack(stack), 30);
       },
     },
     'Show vulnerabilities',
@@ -234,13 +240,13 @@ function renderChips(chips: Chip[], existing: string[] = []): void {
   app.append(
     h(
       'section',
-      { class: 'card', 'aria-labelledby': 'confirm-title' },
-      h('h2', { id: 'confirm-title' }, 'Check your stack'),
-      h('p', { class: 'muted' }, 'Remove anything wrong, pick the right match where there is a choice, and add what is missing. Items with nothing reported in the window are still watched.'),
+      { class: 'card', 'aria-labelledby': 'edit-title' },
+      h('h2', { id: 'edit-title' }, 'Edit your stack'),
+      h('p', { class: 'muted' }, 'Remove anything that is not yours and add what is missing. Close matches are products your description loosely fits. Items with nothing reported are still watched.'),
       list,
       addForm,
       h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '.'),
-      h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => renderInput() }, 'Start over'), confirm),
+      h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => renderInput() }, 'Start over'), show),
     ),
   );
 }
@@ -264,7 +270,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
     app.append(h('div', { class: 'card' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
     return;
   }
-  say(`${feed.results.length} vulnerabilities found.`);
+  say([`${feed.results.length} vulnerabilities found.`, pendingNote].filter(Boolean).join(' '));
+  pendingNote = '';
   document.title = `${feed.summary.exploited} exploited · ${config?.displayName ?? 'Vulnder'}`;
 
   const items = parseStack(feed.stack);
@@ -276,8 +283,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
       'section',
       { class: 'card summary', 'aria-labelledby': 'stack-title' },
       h('div', { class: 'row' }, h('h2', { id: 'stack-title' }, 'Your stack'), daySelect),
-      h('ul', { class: 'chips compact' }, items.map((i) => h('li', { class: 'chip resolved' }, h('code', {}, serializeStack([i]))))),
-      h('div', { class: 'row wrap' }, h('button', { type: 'button', onclick: () => renderChips([], items.map((i) => serializeStack([i]))) }, 'Edit stack'), copyButtons(feed)),
+      h('ul', { class: 'chips compact' }, items.map((i) => h('li', { class: `chip ${i.close ? 'close' : 'resolved'}`, title: i.close ? 'Close match' : null }, h('code', {}, serializeStack([{ ...i, close: undefined }]))))),
+      h('div', { class: 'row wrap' }, h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack'), copyButtons(feed)),
       feed.versionCheckUnavailable ? h('p', { class: 'notice' }, 'Version checks are unavailable right now, so every match is shown as a product match.') : null,
     ),
   );
@@ -336,7 +343,7 @@ function renderResult(r: Result): HTMLElement {
   return h(
     'li',
     { class: 'result' },
-    h('div', { class: 'row wrap' }, h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id), h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match')),
+    h('div', { class: 'row wrap' }, h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id), h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'), h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match')),
     r.title ? h('p', { class: 'title' }, r.title) : null,
     h('p', { class: 'evidence' }, evidence),
     h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m)])),

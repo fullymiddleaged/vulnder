@@ -59,3 +59,84 @@ export const ALIASES: Record<string, string[]> = {
   confluence: ['p:atlassian/confluence_data_center', 'p:atlassian/confluence_server'],
   jira: ['p:atlassian/jira_data_center', 'p:atlassian/jira_server'],
 };
+
+/**
+ * Product categories. Catalog names rarely say what a product is (Cisco's
+ * switch software is `ios_xe` and `nx_os`), so a vague "Cisco switches" is
+ * expanded through these patterns into every fitting product of that vendor,
+ * all marked as close matches. `words` is tested against what the user wrote;
+ * `generic` and `byVendor` against catalog product keys, after stripping a
+ * repeated vendor prefix (`cisco_ios_xe_software` is tested as `ios_xe_software`).
+ */
+export interface Category {
+  name: string;
+  words: RegExp;
+  generic: RegExp;
+  byVendor: Record<string, RegExp>;
+}
+
+export const CATEGORIES: Category[] = [
+  {
+    name: 'switch',
+    words: /\bswitch(es)?\b/i,
+    generic: /switch/,
+    byVendor: {
+      cisco: /(^|_)(ios_xe|nx_os)(_|$)|^ios(_software)?$|catalyst(?!_sd_wan)|nexus|switch|meraki_ms/,
+      juniper: /^junos$|^ex\d|qfx/,
+      arista: /^eos$|switch/,
+      hpe: /aruba|procurve|switch/,
+      aruba: /arubaos|switch/,
+      ubiquiti: /unifi|edgeswitch/,
+      fortinet: /fortiswitch/,
+    },
+  },
+  {
+    name: 'router',
+    words: /\brouters?\b/i,
+    generic: /router/,
+    byVendor: {
+      cisco: /(^|_)ios_(xe|xr)(_|$)|^ios(_software)?$|router|(^|_)(isr|asr)(\d|_|$)/,
+      juniper: /^junos$|^mx\d|srx/,
+      mikrotik: /routeros/,
+      tp_link: /router|archer/,
+      netgear: /router|nighthawk/,
+    },
+  },
+  {
+    name: 'firewall',
+    words: /\bfirewalls?\b/i,
+    generic: /firewall/,
+    byVendor: {
+      cisco: /adaptive_security|^asa|firepower|secure_firewall|threat_defense|^ftd|^fmc/,
+      fortinet: /fortios|fortigate|fortiproxy/,
+      paloaltonetworks: /pan_os/,
+      palo_alto_networks: /pan_os/,
+      juniper: /srx|^junos$/,
+      sonicwall: /sonicos|firewall/,
+      sophos: /firewall|sfos/,
+      checkpoint: /gaia|quantum|security_gateway/,
+    },
+  },
+  {
+    name: 'vpn',
+    words: /\bvpns?\b/i,
+    generic: /vpn/,
+    byVendor: {
+      cisco: /anyconnect|secure_client|adaptive_security|^asa|threat_defense/,
+      fortinet: /fortios|fortigate|ssl_vpn/,
+      paloaltonetworks: /globalprotect|pan_os/,
+      palo_alto_networks: /globalprotect|pan_os/,
+      ivanti: /connect_secure|policy_secure|pulse/,
+    },
+  },
+  {
+    name: 'wireless',
+    words: /\b(wireless|wi-?fi|access points?)\b/i,
+    generic: /wireless|wlc|access_point|wifi/,
+    byVendor: {
+      cisco: /wireless|wlc|aironet|meraki_mr|catalyst_9800/,
+      ubiquiti: /unifi/,
+      aruba: /instant|arubaos/,
+    },
+  },
+];

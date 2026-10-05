@@ -33,6 +33,19 @@ describe('parseStack', () => {
     expect(b).toBe(a);
   });
 
+  it('marks close matches with a leading ?', () => {
+    expect(parseStack('?p:nginx/nginx,p:f5/nginx')).toEqual([
+      { kind: 'product', vendor: 'f5', product: 'nginx', version: null },
+      { kind: 'product', vendor: 'nginx', product: 'nginx', version: null, close: true },
+    ]);
+    expect(serializeStack(parseStack('?p:nginx/nginx@1.25,npm:next'))).toBe('npm:next,?p:nginx/nginx@1.25');
+  });
+
+  it('keeps the exact item when the same thing is both exact and close', () => {
+    expect(serializeStack(parseStack('?p:cisco/ios_xe,p:cisco/ios_xe'))).toBe('p:cisco/ios_xe');
+    expect(serializeStack(parseStack('p:cisco/ios_xe,?p:cisco/ios_xe'))).toBe('p:cisco/ios_xe');
+  });
+
   it('unescapes commas and percent signs', () => {
     const items = parseStack('p:acme/widget%2C%20pro');
     expect(items).toEqual([{ kind: 'product', vendor: 'acme', product: 'widget_20pro', version: null }]);

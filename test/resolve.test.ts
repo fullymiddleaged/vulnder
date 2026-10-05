@@ -39,6 +39,7 @@ async function seedCatalog(): Promise<void> {
     ['product', 'cisco/ios_xe', null, null, 'cisco', 'ios_xe', 'ios_xe', 'Cisco IOS XE', 9],
     ['product', 'cisco/nx_os', null, null, 'cisco', 'nx_os', 'nx_os', 'Cisco NX-OS', 5],
     ['product', 'cisco/catalyst_sd_wan_manager', null, null, 'cisco', 'catalyst_sd_wan_manager', 'catalyst_sd_wan_manager', 'Cisco Catalyst SD-WAN Manager', 7],
+    ['product', 'cisco/industrial_ethernet_switches', null, null, 'cisco', 'industrial_ethernet_switches', 'industrial_ethernet_switches', 'Cisco Industrial Ethernet Switches', 1],
     ['product', 'grafana/grafana', null, null, 'grafana', 'grafana', 'grafana', 'Grafana', 2],
     ['product', 'zammad/zammad', null, null, 'zammad', 'zammad', 'zammad', 'Zammad', 2],
   ];
@@ -83,28 +84,42 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('resolveCandidates', () => {
-  it('resolves exact, aliased and fuzzy product names, and offers choices', async () => {
+  it('resolves clear names exactly and expands vague ones into close matches', async () => {
     const res = await resolveCandidates(store(), [
       { kind: 'product', name: 'Postgres', vendor: null, version: '16', direct: true },
       { kind: 'product', name: 'Grafanna', vendor: null, version: null, direct: true },
       { kind: 'product', name: 'nginx', vendor: null, version: null, direct: true },
       { kind: 'product', name: 'switches', vendor: 'Cisco', version: null, direct: true },
       { kind: 'product', name: 'Vercel', vendor: 'Vercel', version: null, direct: true },
+      { kind: 'product', name: 'Cisco', vendor: null, version: null, direct: true },
     ]);
+    const close = (item: string, label: string) => ({ item, label, close: true, known: true });
     expect(res.chips).toEqual([
-      { input: 'Postgres 16', status: 'resolved', item: 'p:postgresql/postgresql@16', label: 'postgresql postgresql', known: true },
-      { input: 'Grafanna', status: 'resolved', item: 'p:grafana/grafana', label: 'Grafana', known: true },
-      { input: 'nginx', status: 'ambiguous', alternatives: [{ item: 'p:f5/nginx', label: 'f5 nginx' }, { item: 'p:nginx/nginx', label: 'nginx nginx' }] },
+      { input: 'Postgres 16', status: 'resolved', items: [{ item: 'p:postgresql/postgresql@16', label: 'postgresql postgresql', close: false, known: true }] },
+      { input: 'Grafanna', status: 'resolved', items: [{ item: 'p:grafana/grafana', label: 'Grafana', close: false, known: true }] },
+      { input: 'nginx', status: 'resolved', items: [close('?p:f5/nginx', 'f5 nginx'), close('?p:nginx/nginx', 'nginx nginx')] },
       {
+        // Every Cisco switch product, but not the SD-WAN manager.
         input: 'Cisco switches',
-        status: 'ambiguous',
-        alternatives: [
-          { item: 'p:cisco/ios_xe', label: 'Cisco IOS XE' },
-          { item: 'p:cisco/catalyst_sd_wan_manager', label: 'Cisco Catalyst SD-WAN Manager' },
-          { item: 'p:cisco/nx_os', label: 'Cisco NX-OS' },
+        status: 'resolved',
+        items: [
+          close('?p:cisco/ios_xe', 'Cisco IOS XE'),
+          close('?p:cisco/nx_os', 'Cisco NX-OS'),
+          close('?p:cisco/industrial_ethernet_switches', 'Cisco Industrial Ethernet Switches'),
         ],
       },
-      { input: 'Vercel', status: 'unrecognised' },
+      { input: 'Vercel', status: 'unrecognised', items: [] },
+      {
+        // A bare vendor: its most-affected products.
+        input: 'Cisco',
+        status: 'resolved',
+        items: [
+          close('?p:cisco/ios_xe', 'Cisco IOS XE'),
+          close('?p:cisco/catalyst_sd_wan_manager', 'Cisco Catalyst SD-WAN Manager'),
+          close('?p:cisco/nx_os', 'Cisco NX-OS'),
+          close('?p:cisco/industrial_ethernet_switches', 'Cisco Industrial Ethernet Switches'),
+        ],
+      },
     ]);
   });
 
@@ -116,7 +131,7 @@ describe('resolveCandidates', () => {
       { kind: 'package', ecosystem: 'PyPI', name: 'FastAPI', version: null, direct: true },
     ]);
     expect(res.droppedTransitive).toBe(1);
-    expect(res.chips.map((c) => [c.item, c.known])).toEqual([
+    expect(res.chips.map((c) => [c.items[0]!.item, c.items[0]!.known])).toEqual([
       ['npm:next@14.2.3', true],
       ['npm:left-pad@1.3.0', false],
       ['pypi:fastapi', true],
@@ -165,15 +180,15 @@ describe('POST /api/resolve', () => {
     const e = testEnv(async () => MODEL_REPLY);
     const res = await post({ text: `${BRIEF_EXAMPLE} ${++textSalt}`, turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX' }, e);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { source: string; chips: { input: string; status: string; item?: string; alternatives?: { item: string }[] }[] };
+    const body = (await res.json()) as { source: string; chips: { input: string; status: string; items: { item: string }[] }[] };
     expect(body.source).toBe('model');
-    expect(body.chips.map((c) => [c.input, c.status, c.item ?? c.alternatives?.map((a) => a.item).join(' | ')])).toEqual([
+    expect(body.chips.map((c) => [c.input, c.status, c.items.map((i) => i.item).join(' | ')])).toEqual([
       ['Next.js', 'resolved', 'npm:next'],
-      ['Vercel', 'unrecognised', undefined],
+      ['Vercel', 'unrecognised', ''],
       ['Postgres 16', 'resolved', 'p:postgresql/postgresql@16'],
       ['Redis', 'resolved', 'p:redis/redis'],
-      ['nginx', 'ambiguous', 'p:f5/nginx | p:nginx/nginx'],
-      ['Cisco switches', 'ambiguous', 'p:cisco/ios_xe | p:cisco/catalyst_sd_wan_manager | p:cisco/nx_os'],
+      ['nginx', 'resolved', '?p:f5/nginx | ?p:nginx/nginx'],
+      ['Cisco switches', 'resolved', '?p:cisco/ios_xe | ?p:cisco/nx_os | ?p:cisco/industrial_ethernet_switches'],
     ]);
   });
 
@@ -206,9 +221,9 @@ describe('POST /api/resolve', () => {
     });
     const text = JSON.stringify({ dependencies: { next: '14.2.3' }, devDependencies: { vitest: '^4.1.0' } });
     const res = await post({ text, turnstileToken: 't' }, e);
-    const body = (await res.json()) as { source: string; format: string; chips: { item: string }[] };
+    const body = (await res.json()) as { source: string; format: string; chips: { items: { item: string }[] }[] };
     expect(body).toMatchObject({ source: 'manifest', format: 'package.json' });
-    expect(body.chips.map((c) => c.item)).toEqual(['npm:next@14.2.3', 'npm:vitest']);
+    expect(body.chips.map((c) => c.items[0]!.item)).toEqual(['npm:next@14.2.3', 'npm:vitest']);
   });
 
   it('accepts candidates parsed in the browser', async () => {
@@ -226,8 +241,8 @@ describe('POST /api/resolve', () => {
       },
       e,
     );
-    const body = (await res.json()) as { chips: { item: string }[] };
-    expect(body.chips.map((c) => c.item)).toEqual(['npm:next@14.2.3', 'p:postgresql/postgresql@16']);
+    const body = (await res.json()) as { chips: { items: { item: string }[] }[] };
+    expect(body.chips.map((c) => c.items[0]!.item)).toEqual(['npm:next@14.2.3', 'p:postgresql/postgresql@16']);
   });
 
   it('falls back to the manual path when the model is unavailable', async () => {
