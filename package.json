@@ -24,6 +24,7 @@
   "dependencies": {
     "fflate": "^0.8.3",
     "hono": "^4.13.13",
+    "smol-toml": "^1.9.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

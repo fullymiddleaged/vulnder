@@ -4,6 +4,7 @@ import { D1BindingStore } from './ingest/d1-store';
 import { runIngest } from './ingest/run';
 import { feeds } from './routes/feeds';
 import { health } from './routes/health';
+import { resolve } from './routes/resolve';
 import type { AppEnv } from './types';
 
 /** Worker cron budget: under the Paid plan's 1,000 D1 queries per invocation, and well inside 15 minutes. */
@@ -13,6 +14,7 @@ const CRON_DEADLINE_MS = 10 * 60_000;
 const app = new Hono<AppEnv>();
 
 app.route('/api/health', health);
+app.route('/api/resolve', resolve);
 app.route('/', feeds);
 
 app.notFound((c) => {

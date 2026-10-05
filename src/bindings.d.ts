@@ -9,3 +9,13 @@ declare namespace Cloudflare {
 interface Env {
   GITHUB_TOKEN?: string;
 }
+
+declare namespace Cloudflare {
+  interface Env {
+    /** Required for POST /api/resolve. */
+    TURNSTILE_SECRET_KEY?: string;
+  }
+}
+interface Env {
+  TURNSTILE_SECRET_KEY?: string;
+}

@@ -38,8 +38,8 @@ What I checked before phase 1, and the changes to [BRIEF.md](BRIEF.md) that came
 
 - ~~Phase 1: GitHub API version header~~ — resolved, see D.
 - ~~Phase 1: current package versions~~ — resolved, see D.
-- Phase 3: whether D1 FTS5 supports the trigram tokenizer, and whether `wrangler d1 export` handles virtual tables (for catalog fuzzy matching).
-- Phase 3: whether Gemma 4's reasoning output can be disabled or capped, and the real token use per parse.
+- ~~Phase 3: D1 FTS5 trigram support~~: avoided, see E.
+- ~~Phase 3: Gemma 4 reasoning~~: resolved, see E. Real neuron use per parse still needs one live call (needs the account).
 - Phase 5: EPSS attribution wording.
 
 ## D. Phase 1 findings (2026-10-04)
@@ -57,3 +57,13 @@ Things that behaved differently from the plan, and what the code does about them
 9. **Measured cost:** with fixture data, a first run uses ~66 subrequests (fetches plus D1 queries) and a caught-up run ~25.
 10. **Tooling versions** (checked 2026-10-04): `@cloudflare/vitest-pool-workers` is succeeded by `@cloudflare/vitest-plugin` (1.3.6, used here). It needs vitest ^4.1 (vitest 5 is out but unsupported), and typescript-eslint needs TypeScript <6.1, so TypeScript is 6.0.3 (7.0 is out). npm 10.9's installer crashed on vitest's peer set; npm 11 installed cleanly but blocks install scripts by default, so `allowScripts` in package.json approves only esbuild and workerd. `npm audit`: 0 vulnerabilities.
 11. **Workers Logs record request URLs by default.** `observability.redact_query_string: true` strips query strings, so stack URLs (`?s=…`) never reach the logs.
+
+## E. Phase 3 findings (2026-10-05)
+
+1. **Gemma 4 reasoning can be turned off.** Its input schema accepts `chat_template_kwargs: { enable_thinking: false }`, plus `max_completion_tokens` to cap output. `response_format` supports `json_schema` with `strict`. The response is OpenAI-shaped (`choices[0].message.content`, with `usage.completion_tokens_details.reasoning_tokens`). The neuron estimate (~17 per parse) is still unmeasured; it needs one live call with the account.
+2. **No FTS5 for catalog matching.** Fuzzy matching uses trigram (Sørensen–Dice) similarity in the Worker over catalog rows that share a 3–4 character prefix with the query (an indexed range scan on `catalog.normalized`). This sidesteps the open question of trigram tokenizer support in D1 and `wrangler d1 export` of virtual tables.
+3. **Curated aliases** (`src/resolve/aliases.ts`) handle names that never match an identifier on their own: "Next.js" is npm `next`, "Postgres" is `postgresql/postgresql`. A model-supplied package name is only rewritten through an alias in the same ecosystem, so real manifest names are never changed.
+4. **Vendor fallback.** "A couple of Cisco switches" names no product. When the model gives a vendor and the name matches nothing, the chip offers that vendor's most-affected products as choices.
+5. **Lockfiles:** direct dependencies always become chips; transitive ones only if the catalog has vulnerabilities for them. This keeps a 1,000-package lockfile under the 200-item stack cap and still catches vulnerable transitive packages.
+6. **Turnstile test keys** (site `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA`) are the local defaults. POST /api/resolve fails closed (503) when no secret is configured.
+7. **Server-side manifest detection** also runs on posted text, so API clients and no-JS users avoid a model call. The browser path sends candidates only.

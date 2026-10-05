@@ -9,6 +9,8 @@
 // plus an hourly cron trigger and INGEST_RUNTIME=worker.
 //
 // Secrets (set with `wrangler secret put <NAME>`; for local dev put them in .dev.vars):
+//   TURNSTILE_SECRET_KEY  required for POST /api/resolve. Local test value:
+//                 1x0000000000000000000000000000000AA (always passes).
 //   GITHUB_TOKEN  optional. Raises the GitHub API limit from 60/h to 5,000/h for
 //                 the advisory and cvelistV5 release lookups. Recommended on Paid,
 //                 because Workers egress IPs are shared.
@@ -37,8 +39,21 @@
     "BASE_URL": "http://localhost:8787",
     // "actions": ingest runs outside the Worker (free plan). "worker": the cron
     // handler runs ingest (Paid plan).
-    "INGEST_RUNTIME": "actions"
+    "INGEST_RUNTIME": "actions",
+    // Workers AI model for free-text extraction. Must support json_schema output.
+    "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+    // Turnstile site key (public). This is Cloudflare's always-pass test key for
+    // local development; set your own for a deployment. The matching secret,
+    // TURNSTILE_SECRET_KEY, goes in .dev.vars locally and `wrangler secret put` remotely.
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
   },
+
+  // Free-text parsing only. Free plan: 10,000 neurons a day.
+  "ai": { "binding": "AI" },
+
+  // Per-IP limit on POST /api/resolve (Turnstile is the main gate). The IP is
+  // used only as the limiter key and never logged. Periods can be 10 or 60 s.
+  "ratelimits": [{ "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
 
   "d1_databases": [
     {
@@ -59,8 +74,13 @@
       "vars": {
         "DISPLAY_NAME": "Vulnture",
         "BASE_URL": "https://vulnture.dev",
-        "INGEST_RUNTIME": "worker"
+        "INGEST_RUNTIME": "worker",
+        "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+        // Replace with the production Turnstile site key before deploying.
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
       },
+      "ai": { "binding": "AI" },
+      "ratelimits": [{ "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
       "d1_databases": [
         {
           "binding": "DB",
