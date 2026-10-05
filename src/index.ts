@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Budget } from './ingest/budget';
 import { D1BindingStore } from './ingest/d1-store';
 import { runIngest } from './ingest/run';
+import { feeds } from './routes/feeds';
 import { health } from './routes/health';
 import type { AppEnv } from './types';
 
@@ -12,6 +13,7 @@ const CRON_DEADLINE_MS = 10 * 60_000;
 const app = new Hono<AppEnv>();
 
 app.route('/api/health', health);
+app.route('/', feeds);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) return c.json({ error: 'not found' }, 404);
