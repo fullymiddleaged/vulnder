@@ -51,6 +51,7 @@ const now = new Date();
 const cutoff = windowStart(now, RETENTION_DAYS);
 const store = new WranglerStore({ target, flushBytes: 8_000_000 });
 const githubToken = process.env.GITHUB_TOKEN || undefined;
+const SCAN_CONCURRENCY = 256;
 const unlimited = () => new Budget({ maxSubrequests: Number.MAX_SAFE_INTEGER, deadline: Number.MAX_SAFE_INTEGER });
 
 function summarize(report: RunReport): void {
@@ -95,11 +96,15 @@ async function backfillCve(): Promise<void> {
     batch = [];
   };
 
-  for await (const file of cveFiles(values.cvelist!)) {
-    scanned++;
-    if (scanned % 25_000 === 0) log(`  ${scanned} records scanned, ${stored} stored`);
+  // Reading ~400k small files one at a time is slow (especially on Windows),
+  // so files are read SCAN_CONCURRENCY at a time.
+  const files: string[] = [];
+  for await (const file of cveFiles(values.cvelist!)) files.push(file);
+  log(`  ${files.length} record files found`);
+
+  const scanOne = async (file: string): Promise<VulnPatch | null> => {
     const meta = await readMeta(file);
-    if (!meta) continue;
+    if (!meta) return null;
     if (meta.dateUpdated) {
       const ts = new Date(meta.dateUpdated).toISOString();
       if (ts > maxTs || (ts === maxTs && meta.cveId > maxId)) {
@@ -107,9 +112,15 @@ async function backfillCve(): Promise<void> {
         maxId = meta.cveId;
       }
     }
-    if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < cutoff) continue;
-    const patch = parseCveRecord(JSON.parse(await readFile(file, 'utf8')));
-    if (patch) batch.push(patch);
+    if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < cutoff) return null;
+    return parseCveRecord(JSON.parse(await readFile(file, 'utf8')));
+  };
+
+  for (let i = 0; i < files.length; i += SCAN_CONCURRENCY) {
+    const patches = await Promise.all(files.slice(i, i + SCAN_CONCURRENCY).map(scanOne));
+    for (const p of patches) if (p) batch.push(p);
+    scanned += Math.min(SCAN_CONCURRENCY, files.length - i);
+    if (scanned % 25_600 < SCAN_CONCURRENCY) log(`  ${scanned} records scanned, ${stored} stored`);
     if (batch.length >= 2000) await flush(false);
   }
   await flush(true);
