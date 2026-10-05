@@ -1,6 +1,7 @@
 import { normalizeKey, normalizePackageName } from '../lib/normalize';
 import type { Store } from '../ingest/store';
 import { formatItem, parseStack, type StackItem } from '../stack/format';
+import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES } from './aliases';
 import type { Candidate } from './types';
 
@@ -113,7 +114,7 @@ function resolveProduct(
   byVendor: CatalogRow[],
   knownAlias: Set<string>,
 ): Chip {
-  const input = [c.vendor, c.name, c.version].filter(Boolean).join(' ');
+  const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   const key = normalizeKey(c.name);
   if (!key) return { input, status: 'unrecognised' };
   const withVersion = (item: string) => {

@@ -104,7 +104,7 @@ describe('resolveCandidates', () => {
           { item: 'p:cisco/nx_os', label: 'Cisco NX-OS' },
         ],
       },
-      { input: 'Vercel Vercel', status: 'unrecognised' },
+      { input: 'Vercel', status: 'unrecognised' },
     ]);
   });
 
@@ -169,7 +169,7 @@ describe('POST /api/resolve', () => {
     expect(body.source).toBe('model');
     expect(body.chips.map((c) => [c.input, c.status, c.item ?? c.alternatives?.map((a) => a.item).join(' | ')])).toEqual([
       ['Next.js', 'resolved', 'npm:next'],
-      ['Vercel Vercel', 'unrecognised', undefined],
+      ['Vercel', 'unrecognised', undefined],
       ['Postgres 16', 'resolved', 'p:postgresql/postgresql@16'],
       ['Redis', 'resolved', 'p:redis/redis'],
       ['nginx', 'ambiguous', 'p:f5/nginx | p:nginx/nginx'],
