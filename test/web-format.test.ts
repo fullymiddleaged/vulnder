@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { ago, describeChange, matchHeadline, ordinal, pct } from '../web/format';
+import type { Change, Result } from '../web/api';
+import { ago, changeCounts, describeChange, eventDetail, groupChanges, matchHeadline, ordinal, pct, shortSummary } from '../web/format';
+
+function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
+  return {
+    id,
+    title: `${id} title`,
+    summary: null,
+    publishedAt: null,
+    tier,
+    evidence: { kevAddedAt: null, kevDueDate: null, knownRansomware: false, epss: null, epssPercentile: null, epssDate: null },
+    confidence: 'product_match',
+    match,
+    matched: [],
+    fixedVersions: [],
+    cvss: null,
+    links: { advisory: null, patch: null },
+  };
+}
+
+function change(vulnId: string, type: Change['type'], occurredAt: string, detail: Record<string, unknown> = {}): Change {
+  return { vulnId, type, occurredAt, detail, title: null };
+}
 
 describe('UI formatting', () => {
   it('writes the match headline for none, one and many', () => {
@@ -31,5 +53,61 @@ describe('UI formatting', () => {
     expect(describeChange({ ...base, type: 'kev_added', detail: {} })).toMatch(/added to CISA KEV \(known exploited\)/);
     expect(describeChange({ ...base, type: 'fix_released', detail: { package: 'next', fixedVersion: '14.2.5' } })).toBe('CVE-2026-1: Bug: fix released in next 14.2.5.');
     expect(describeChange({ ...base, title: null, type: 'published', detail: {} })).toBe('CVE-2026-1 was published.');
+  });
+});
+
+describe('what changed this week', () => {
+  const results = [result('CVE-A', 'backlog'), result('CVE-B', 'exploited'), result('CVE-C', 'likely'), result('CVE-D', 'exploited', 'close'), result('CVE-E', 'exploited')];
+
+  it('groups events per CVE and orders by importance, tier, match, then recency', () => {
+    const groups = groupChanges(
+      [
+        change('CVE-A', 'published', '2026-10-05T00:00:00Z'),
+        change('CVE-B', 'published', '2026-10-01T00:00:00Z'),
+        change('CVE-B', 'kev_added', '2026-10-03T00:00:00Z'),
+        change('CVE-C', 'epss_crossed', '2026-10-04T00:00:00Z', { from: 0.03, to: 0.42 }),
+        change('CVE-D', 'kev_added', '2026-10-04T00:00:00Z'),
+        change('CVE-E', 'kev_added', '2026-10-02T00:00:00Z'),
+      ],
+      results,
+    );
+    expect(groups.map((g) => [g.vulnId, g.events.map((e) => e.type).join('+')])).toEqual([
+      ['CVE-B', 'kev_added+published'], // exploited, exact, newest KEV-exact
+      ['CVE-E', 'kev_added'], // exploited, exact, older
+      ['CVE-D', 'kev_added'], // exploited, but a close match
+      ['CVE-C', 'epss_crossed'],
+      ['CVE-A', 'published'],
+    ]);
+    expect(groups[0]!.result?.id).toBe('CVE-B');
+  });
+
+  it('counts CVEs per kind of change', () => {
+    const groups = groupChanges(
+      [
+        change('CVE-B', 'kev_added', '2026-10-03T00:00:00Z'),
+        change('CVE-B', 'published', '2026-10-01T00:00:00Z'),
+        change('CVE-A', 'published', '2026-10-05T00:00:00Z'),
+        change('CVE-C', 'fix_released', '2026-10-05T00:00:00Z'),
+      ],
+      results,
+    );
+    expect(changeCounts(groups)).toBe('1 added to KEV · 1 fix released · 2 new CVEs');
+    expect(changeCounts([])).toBe('');
+  });
+
+  it('describes each event', () => {
+    expect(eventDetail(change('X', 'kev_added', '2026-10-02T00:00:00.000Z', { dueDate: '2026-10-23T00:00:00.000Z', ransomware: true }))).toBe(
+      '2026-10-02, federal due date 2026-10-23, used in ransomware',
+    );
+    expect(eventDetail(change('X', 'epss_crossed', '2026-10-04T00:00:00.000Z', { from: 0.031, to: 0.42 }))).toBe('3.1% → 42.0% on 2026-10-04');
+    expect(eventDetail(change('X', 'epss_crossed', '2026-10-04T00:00:00.000Z', { from: null, to: 0.12 }))).toBe('12.0% on 2026-10-04');
+    expect(eventDetail(change('X', 'fix_released', '2026-10-04T00:00:00.000Z', { package: 'next', fixedVersion: '14.2.5' }))).toBe('next 14.2.5');
+    expect(eventDetail(change('X', 'published', '2026-10-04T00:00:00.000Z'))).toBe('2026-10-04');
+  });
+
+  it('shortens summaries on a word boundary', () => {
+    expect(shortSummary(null)).toBeNull();
+    expect(shortSummary('### Impact\n\nA  short   one.')).toBe('Impact A short one.');
+    expect(shortSummary('word '.repeat(100), 22)).toBe('word word word word…');
   });
 });

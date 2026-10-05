@@ -2,7 +2,7 @@ import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
 import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Result } from './api';
 import { clear, h, safeHref } from './dom';
-import { ago, describeChange, matchHeadline, ordinal, pct } from './format';
+import { ago, CHANGE_LABEL, changeCounts, eventDetail, groupChanges, matchHeadline, ordinal, pct, shortSummary, type ChangeGroup } from './format';
 
 declare global {
   interface Window {
@@ -319,14 +319,77 @@ async function renderResults(stack: string, days: number): Promise<void> {
   }
 }
 
+/** How many change cards show before the rest fold away. */
+const CHANGES_SHOWN = 8;
+
 function renderChanges(feed: Feed): HTMLElement {
-  return h(
+  const groups = groupChanges(feed.changes, feed.results);
+  const section = h(
     'section',
     { class: 'card changes', 'aria-labelledby': 'changes-title' },
     h('h2', { id: 'changes-title' }, 'What changed this week'),
-    feed.changes.length === 0
-      ? h('p', { class: 'muted' }, 'No changes in the last 7 days.')
-      : h('ul', {}, feed.changes.map((c) => h('li', {}, h('time', { datetime: c.occurredAt }, c.occurredAt.slice(0, 10)), ' ', describeChange(c)))),
+  );
+  if (groups.length === 0) {
+    section.append(h('p', { class: 'muted' }, 'No changes in the last 7 days.'));
+    return section;
+  }
+  section.append(h('p', { class: 'muted small' }, changeCounts(groups)));
+  section.append(h('ol', { class: 'change-list' }, groups.slice(0, CHANGES_SHOWN).map(renderChangeGroup)));
+  if (groups.length > CHANGES_SHOWN) {
+    const rest = groups.length - CHANGES_SHOWN;
+    section.append(
+      h(
+        'details',
+        { class: 'more' },
+        h('summary', {}, `Show ${rest} more`),
+        h('ol', { class: 'change-list' }, groups.slice(CHANGES_SHOWN).map(renderChangeGroup)),
+      ),
+    );
+  }
+  if (groups.some((g) => g.events.some((e) => e.type === 'epss_crossed'))) {
+    section.append(h('p', { class: 'muted small' }, 'An EPSS jump is a rise in the predicted probability of exploitation in the next 30 days, not evidence of exploitation.'));
+  }
+  return section;
+}
+
+function renderChangeGroup(g: ChangeGroup): HTMLElement {
+  const r = g.result;
+  const advisory = safeHref(r?.links.advisory);
+  const patch = safeHref(r?.links.patch);
+  const summary = shortSummary(r?.summary ?? null);
+  return h(
+    'li',
+    { class: `change ${r?.tier ?? 'backlog'}` },
+    h(
+      'ul',
+      { class: 'events', 'aria-label': 'What happened' },
+      g.events.map((e) => h('li', { class: `event ${e.type}` }, h('strong', {}, CHANGE_LABEL[e.type]), ' ', h('span', {}, eventDetail(e)))),
+    ),
+    h(
+      'h3',
+      {},
+      advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, g.vulnId) : g.vulnId,
+      g.title ? h('span', { class: 'title' }, ` ${g.title}`) : null,
+    ),
+    r
+      ? h(
+          'p',
+          { class: 'small row wrap' },
+          h('span', { class: `badge tier-${r.tier}` }, TIER_TITLE[r.tier]),
+          h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
+          h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m.replace(/^\?/, ''))])),
+        )
+      : null,
+    summary ? h('p', { class: 'small' }, summary) : null,
+    r && (r.fixedVersions.length > 0 || advisory || patch)
+      ? h(
+          'p',
+          { class: 'small links' },
+          r.fixedVersions.length > 0 ? h('span', {}, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
+          advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
+          patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
+        )
+      : null,
   );
 }
 

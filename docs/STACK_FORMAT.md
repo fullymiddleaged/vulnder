@@ -51,6 +51,10 @@ The version is everything after the last `@`. An `@` in the first position doesn
 
 For packages, a version lets Vulnder check whether that exact version is affected. Without one, results are labelled **Product match**.
 
+### Close matches
+
+An item starting with `?` is a **close match**: something your description loosely fits rather than names outright. For example, "Cisco switches" becomes `?p:cisco/ios_xe,?p:cisco/nx_os,…`. Close matches are shown, labelled "Close match", and ranked after exact matches in the same tier. If the same item appears both with and without `?`, the exact one wins. Older URLs without `?` items mean exactly what they did before.
+
 ### Escaping
 
 Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled by normal URL encoding of the query value.

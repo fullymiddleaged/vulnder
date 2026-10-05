@@ -139,3 +139,20 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 .badge.match-exact { color: var(--fg); }
 .badge.match-close { color: var(--likely); border-style: dashed; }
 .result .badge + .badge { margin-left: 0.4rem; }
+.change-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.75rem; }
+.change { border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); padding: 0.6rem 0.9rem; background: var(--bg); }
+.change.exploited { border-left-color: var(--exploited); }
+.change.likely { border-left-color: var(--likely); }
+.change.backlog { border-left-color: var(--backlog); }
+.change h3 { margin: 0.3rem 0; }
+.change h3 .title { font-weight: 500; }
+.change p { margin: 0.3rem 0; }
+.events { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; font-size: 0.8rem; }
+.event { border-radius: 999px; padding: 0.1rem 0.6rem; border: 1px solid var(--border); }
+.event.kev_added { border-color: var(--exploited); color: var(--exploited); }
+.event.epss_crossed { border-color: var(--likely); color: var(--likely); }
+.event.fix_released { border-color: var(--ok); color: var(--ok); }
+.badge.tier-exploited { color: var(--exploited); }
+.badge.tier-likely { color: var(--likely); }
+.badge.tier-backlog { color: var(--backlog); }
+.more summary { cursor: pointer; margin-top: 0.75rem; color: var(--accent); }
