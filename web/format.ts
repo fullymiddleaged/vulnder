@@ -138,10 +138,10 @@ export function shortSummary(text: string | null, max = 220): string | null {
  * green is kept for good news such as a released fix.
  */
 export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'yellow' | 'grey'; note: string }> = {
-  act: { label: 'Act', light: 'red', note: 'Being exploited: on CISA KEV, or CISA reports active exploitation.' },
-  attend: { label: 'Attend', light: 'amber', note: 'Likely to be exploited: EPSS of 10% or more, or a working exploit that is easy to use or gives full control.' },
-  watch: { label: 'Watch', light: 'yellow', note: 'Severe if exploited: CVSS 9.0 or more, or a public proof-of-concept exploit.' },
-  track: { label: 'Track', light: 'grey', note: 'Affects your stack, with no exploitation signal and lower severity.' },
+  act: { label: 'Act now', light: 'red', note: 'Being exploited: on CISA KEV, or CISA reports active exploitation.' },
+  attend: { label: 'Attend', light: 'amber', note: 'Likely to be exploited, or critical and within reach: EPSS of 10% or more, CVSS 9.0 or more with no login or user action needed, or a working exploit that is easy to use or gives full control.' },
+  watch: { label: 'Watch', light: 'yellow', note: 'High severity or a public exploit: CVSS 8.0 or more, or a proof-of-concept exploit.' },
+  track: { label: 'Track', light: 'grey', note: 'Affects your stack, but CVSS is under 8.0 and nothing suggests exploitation.' },
 };
 
 /** Results by priority, keeping feed order within each. */

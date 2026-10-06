@@ -1,11 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { assess, comparePriority, fixFirst, severity, type Assessment, type Signals } from '../src/match/priority';
+import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
-const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, cvss: null, ssvc: null };
+const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, cvss: null, cvssVector: null, ssvc: null };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
   exploitation,
   automatable,
   technicalImpact,
+});
+
+/** Network, no login, no user action. */
+const OPEN = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H';
+
+describe('reach: what stands between an attacker and the bug', () => {
+  it('finds no barriers on a network bug that needs no login or help', () => {
+    expect(reach(OPEN)).toEqual({ barriers: [] });
+    expect(reach('CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N/AU:Y')).toEqual({ barriers: [] });
+    // Metrics out of the standard order, as some records have them.
+    expect(reach('CVSS:3.0/UI:N/C:H/PR:N/AV:N/AC:H/S:U/I:H/A:H')).toEqual({ barriers: [] });
+  });
+
+  it('names each barrier', () => {
+    expect(reach('CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')).toEqual({ barriers: ['local access'] });
+    expect(reach('CVSS:3.1/AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')).toEqual({ barriers: ['local access'] });
+    expect(reach('CVSS:3.1/AV:A/AC:L/PR:H/UI:R/S:U/C:H/I:H/A:H')).toEqual({ barriers: ['adjacent network access', 'a login', 'user action'] });
+    expect(reach('CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N')).toEqual({ barriers: ['user action'] });
+  });
+
+  it('reads nothing from a missing, unversioned or partial vector', () => {
+    expect(reach(null)).toBeNull();
+    expect(reach('')).toBeNull();
+    expect(reach('AV:N/AC:L/Au:N/C:P/I:P/A:P')).toBeNull();
+    expect(reach('CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P')).toBeNull();
+    expect(reach('CVSS:3.1/AV:N/AC:L/UI:N')).toBeNull();
+    expect(reach('CVSS:3.1/AV/PR/UI//__proto__:x')).toBeNull();
+  });
 });
 
 describe('assess: priority bands', () => {
@@ -14,20 +42,34 @@ describe('assess: priority bands', () => {
     expect(assess({ ...base, ssvc: ssvc('active') }).priority).toBe('act');
   });
 
-  it('attends to likely exploitation, or a PoC that is automatable or total-impact', () => {
+  it('attends to likely exploitation, critical severity, or a PoC that is automatable or total-impact', () => {
     expect(assess({ ...base, epss: 0.1 }).priority).toBe('attend');
+    expect(assess({ ...base, cvss: 9.0, epss: 0.001 }).priority).toBe('attend');
     expect(assess({ ...base, ssvc: ssvc('poc', 'yes') }).priority).toBe('attend');
     expect(assess({ ...base, ssvc: ssvc('PoC', 'no', 'Total') }).priority).toBe('attend');
   });
 
-  it('watches critical severity, a bare PoC, or automatable with total impact', () => {
-    expect(assess({ ...base, cvss: 9.5, epss: 0.001 }).priority).toBe('watch');
+  it('attends to a critical only when an attacker can reach it', () => {
+    const critical = { ...base, cvss: 9.0, epss: 0.001 };
+    expect(assess({ ...critical, cvssVector: OPEN }).priority).toBe('attend');
+    expect(assess({ ...critical, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H' }).priority).toBe('watch');
+    expect(assess({ ...critical, cvssVector: 'CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H' }).priority).toBe('watch');
+    expect(assess({ ...critical, cvssVector: 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N' }).priority).toBe('watch');
+    // CISA judging it automatable outweighs the vector.
+    expect(assess({ ...critical, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H', ssvc: ssvc('none', 'yes') }).priority).toBe('attend');
+    // No vector to read: the critical keeps the benefit of the doubt.
+    expect(assess({ ...critical, cvssVector: 'AV:N/AC:L/Au:N/C:C/I:C/A:C' }).priority).toBe('attend');
+  });
+
+  it('watches CVSS 8.0 to 8.9, a bare PoC, or automatable with total impact', () => {
+    expect(assess({ ...base, cvss: 8.0, epss: 0.001 }).priority).toBe('watch');
+    expect(assess({ ...base, cvss: 8.9, epss: 0.09 }).priority).toBe('watch');
     expect(assess({ ...base, ssvc: ssvc('poc') }).priority).toBe('watch');
     expect(assess({ ...base, ssvc: ssvc('none', 'yes', 'total') }).priority).toBe('watch');
   });
 
   it('tracks everything else, including total impact on its own', () => {
-    expect(assess({ ...base, cvss: 8.9, epss: 0.09 }).priority).toBe('track');
+    expect(assess({ ...base, cvss: 7.9, epss: 0.09 }).priority).toBe('track');
     expect(assess({ ...base, ssvc: ssvc('none', 'no', 'total') }).priority).toBe('track');
     expect(assess(base).priority).toBe('track');
   });
@@ -62,6 +104,10 @@ describe('assess: score and reasons', () => {
       'CVSS 9.8 (critical)',
     ]);
     expect(assess({ ...base, ssvc: ssvc('active') }).reasons).toEqual(['Active exploitation (CISA)']);
+    // Reachability is explained from CVSS 7.0 up, just before the score.
+    expect(assess({ ...base, cvss: 7.0, cvssVector: OPEN }).reasons).toEqual(['Reachable over the network without a login', 'CVSS 7.0 (high)']);
+    expect(assess({ ...base, cvss: 9.8, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H' }).reasons).toEqual(['Needs a login and user action', 'CVSS 9.8 (critical)']);
+    expect(assess({ ...base, cvss: 6.9, cvssVector: OPEN }).reasons).toEqual(['CVSS 6.9 (medium)']);
     expect(assess({ ...base, epss: 0.123, ssvc: ssvc('poc') }).reasons).toEqual(['EPSS 12%', 'Proof-of-concept exploit']);
     expect(assess(base).reasons).toEqual([]);
   });

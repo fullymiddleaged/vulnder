@@ -118,7 +118,7 @@ describe('what changed this week', () => {
 describe('priority display', () => {
   it('maps priorities to traffic lights, with no green', () => {
     expect(Object.entries(RISK).map(([p, r]) => [p, r.label, r.light])).toEqual([
-      ['act', 'Act', 'red'],
+      ['act', 'Act now', 'red'],
       ['attend', 'Attend', 'amber'],
       ['watch', 'Watch', 'yellow'],
       ['track', 'Track', 'grey'],

@@ -4,14 +4,19 @@ import type { Ssvc } from '../ingest/types';
 /**
  * What to fix first. Two layers, both explained on every result:
  *
- * - A priority band, in the style of CISA's SSVC decisions. Evidence of
- *   exploitation always outranks severity, so the bands never invert:
+ * - A priority band. Act, Attend and Track are CISA's SSVC decisions; Watch
+ *   sits between Attend and Track. Evidence of exploitation always outranks
+ *   prediction and severity, so the bands never invert:
  *     act     on CISA KEV, or SSVC says exploitation is active
- *     attend  EPSS of 10% or more, or a proof-of-concept exploit that is
+ *     attend  EPSS of 10% or more, CVSS 9.0 or more that an attacker can
+ *             reach (see reach()), or a proof-of-concept exploit that is
  *             automatable or gives total control
- *     watch   CVSS 9.0 or more, a proof-of-concept exploit, or automatable
+ *     watch   CVSS 8.0 or more, a proof-of-concept exploit, or automatable
  *             with total control
- *     track   everything else
+ *     track   everything else: affected, but nothing above applies
+ *   A critical score alone says how bad a bug is, not whether anyone can get
+ *   at it: one that needs local access, a login or a user's help waits in
+ *   Watch unless something else lifts it.
  * - A 0–100 score that orders results within a band and ranks components:
  *   threat × impact × ease × ransomware, in the shape Grype uses (threat from
  *   KEV or EPSS, 1% while EPSS hasn't scored it; impact from CVSS). It is a heuristic for ordering, not a
@@ -33,10 +38,14 @@ export interface Signals {
   knownRansomware: boolean;
   epss: number | null;
   cvss: number | null;
+  cvssVector: string | null;
   ssvc: Ssvc | null;
 }
 
 const CRITICAL_CVSS = 9;
+const WATCH_CVSS = 8;
+/** From here up, results say whether an attacker can reach the bug. */
+const HIGH_CVSS = 7;
 /** Threat for a CVE that EPSS hasn't scored yet (usually a new one). */
 const UNSCORED_THREAT = 0.01;
 /** A public proof-of-concept counts as at least this much threat. */
@@ -55,12 +64,17 @@ export function assess(s: Signals): Assessment {
   const automatable = s.ssvc?.automatable?.toLowerCase() === 'yes';
   const totalImpact = s.ssvc?.technicalImpact?.toLowerCase() === 'total';
   const critical = s.cvss !== null && s.cvss >= CRITICAL_CVSS;
+  const severe = s.cvss !== null && s.cvss >= WATCH_CVSS;
+  const access = reach(s.cvssVector);
+  // CISA judging it automatable means an attacker gets there unaided, whatever
+  // the vector says. With no vector to read, a critical keeps the benefit of the doubt.
+  const reachable = automatable || access === null || access.barriers.length === 0;
 
   const priority: Priority = active
     ? 'act'
-    : likely || (poc && (automatable || totalImpact))
+    : likely || (critical && reachable) || (poc && (automatable || totalImpact))
       ? 'attend'
-      : critical || poc || (automatable && totalImpact)
+      : severe || poc || (automatable && totalImpact)
         ? 'watch'
         : 'track';
 
@@ -77,8 +91,40 @@ export function assess(s: Signals): Assessment {
   if (poc) reasons.push('Proof-of-concept exploit');
   if (automatable) reasons.push('Automatable');
   if (totalImpact) reasons.push('Total technical impact');
+  if (access && s.cvss !== null && s.cvss >= HIGH_CVSS) reasons.push(describeAccess(access.barriers));
   if (s.cvss !== null) reasons.push(`CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
   return { priority, score, reasons };
+}
+
+/** What an attacker needs before they can try the bug, from the CVSS vector. */
+export type Barrier = 'local access' | 'adjacent network access' | 'a login' | 'user action';
+
+/**
+ * Reads a CVSS 3.x or 4.0 vector for what stands between an attacker on the
+ * internet and the bug: attack vector, privileges required and user
+ * interaction. No barriers means reachable over the network without a login
+ * or anyone's help. Null when there's no vector, or it isn't one we read.
+ */
+export function reach(vector: string | null): { barriers: Barrier[] } | null {
+  if (!vector || !/^CVSS:(3\.[01]|4\.0)\//.test(vector)) return null;
+  // Records don't always list metrics in the standard order.
+  const metrics = new Map(vector.split('/').slice(1).map((m) => m.split(':', 2) as [string, string]));
+  const av = metrics.get('AV');
+  const pr = metrics.get('PR');
+  const ui = metrics.get('UI');
+  if (!av || !pr || !ui) return null;
+  const barriers: Barrier[] = [];
+  if (av === 'L' || av === 'P') barriers.push('local access');
+  else if (av === 'A') barriers.push('adjacent network access');
+  if (pr !== 'N') barriers.push('a login');
+  if (ui !== 'N') barriers.push('user action');
+  return { barriers };
+}
+
+function describeAccess(barriers: Barrier[]): string {
+  if (barriers.length === 0) return 'Reachable over the network without a login';
+  const last = barriers[barriers.length - 1];
+  return `Needs ${barriers.length === 1 ? last : `${barriers.slice(0, -1).join(', ')} and ${last}`}`;
 }
 
 export function severity(cvss: number): 'critical' | 'high' | 'medium' | 'low' | 'none' {

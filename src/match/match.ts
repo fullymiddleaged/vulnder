@@ -258,6 +258,7 @@ function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', 
     knownRansomware: v.kev_ransomware === 1,
     epss: v.epss,
     cvss: v.cvss_score,
+    cvssVector: v.cvss_vector,
     ssvc,
   });
   return {

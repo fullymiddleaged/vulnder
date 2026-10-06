@@ -124,13 +124,13 @@ describe('matchStack', () => {
     expect(res.results.map((r) => [r.id, r.tier, r.confidence, r.priority, r.score])).toEqual([
       ['CVE-2026-1001', 'exploited', 'version_confirmed', 'act', 91],
       ['CVE-2026-1005', 'exploited', 'product_match', 'act', 60],
-      ['CVE-2026-1003', 'backlog', 'product_match', 'track', 0.9],
+      ['CVE-2026-1003', 'backlog', 'product_match', 'watch', 0.9],
     ]);
     expect(res.results[1]!.reasons).toEqual(['On CISA KEV', 'Used in ransomware']);
     expect(res.fixFirst.map((f) => [f.item, f.score, f.counts, f.fixable])).toEqual([
       ['npm:next@14.2.3', 91, { act: 1, attend: 0, watch: 0, track: 0 }, 1],
       ['p:cisco/ios_xe', 60, { act: 1, attend: 0, watch: 0, track: 0 }, 0],
-      ['p:postgresql/postgresql@16', 0.9, { act: 0, attend: 0, watch: 0, track: 1 }, 0],
+      ['p:postgresql/postgresql@16', 0.9, { act: 0, attend: 0, watch: 1, track: 0 }, 0],
     ]);
     expect(res.watching).toEqual(['p:cisco/asa', 'pypi:fastapi']);
     expect(res.versionCheckUnavailable).toBe(false);
@@ -211,7 +211,7 @@ describe('GET /api/feed', () => {
     expect(body.stack).toBe('npm:next@14.2.3,p:cisco/asa,p:cisco/ios_xe,p:postgresql/postgresql@16,pypi:fastapi');
     expect(body.summary).toEqual({ exploited: 2, likely: 0, backlog: 1 });
     expect(body.results.map((r) => r.id)).toEqual(['CVE-2026-1001', 'CVE-2026-1005', 'CVE-2026-1003']);
-    expect(body.priorities).toEqual({ act: 2, attend: 0, watch: 0, track: 1 });
+    expect(body.priorities).toEqual({ act: 2, attend: 0, watch: 1, track: 0 });
     expect(body.fixFirst.map((f) => f.item)).toEqual(['npm:next@14.2.3', 'p:cisco/ios_xe', 'p:postgresql/postgresql@16']);
     // Only events from the last 7 days: both KEV additions, nothing older.
     expect(body.changes.map((c) => [c.vulnId, c.type])).toEqual([
