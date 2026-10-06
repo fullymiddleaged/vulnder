@@ -97,6 +97,9 @@
         "BASE_URL": "https://vulnder.com",
         "INGEST_RUNTIME": "worker",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+        // D1 statements one cron run may make. D1's documented limit is 1,000
+        // per invocation; raise this only if Cloudflare confirms a higher one.
+        "CRON_MAX_D1_QUERIES": "900",
         "PARSE_DAILY_PER_CLIENT": "30",
         "PARSE_DAILY_TOTAL": "600",
         // Replace with the production Turnstile site key before deploying.

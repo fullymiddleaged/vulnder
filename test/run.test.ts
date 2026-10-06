@@ -118,7 +118,8 @@ describe('runIngest', () => {
     await env.DB.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('seeding', '{\"startedAt\":\"2026-10-04T17:00:00Z\"}', '2026-10-04')").run();
     const f = upstreams();
     const report = await ingest(f);
-    expect(report).toEqual({ sources: [], maintenance: false, subrequests: 0, waitingForSeed: true });
+    // One D1 query: the check for the seed marker.
+    expect(report).toEqual({ sources: [], maintenance: false, subrequests: 1, d1Queries: 1, waitingForSeed: true });
     expect(f.calls).toHaveLength(0);
     expect(await rows("SELECT key FROM meta WHERE key != 'seeding'")).toEqual([]);
 
@@ -144,6 +145,25 @@ describe('runIngest', () => {
     }
     expect(partialSeen).toBe(true);
     expect(runs).toBeLessThan(40);
+    expect(await snapshot()).toEqual(expected);
+  });
+
+  it('stops cleanly at the D1 query limit when subrequests remain, and resumes to the same data', async () => {
+    await ingest(upstreams());
+    const expected = await snapshot();
+    await resetDb();
+
+    const first = await ingest(upstreams(), new Budget({ maxSubrequests: 10_000, maxD1Queries: 25, deadline: Number.MAX_SAFE_INTEGER }));
+    expect(first.sources.some((s) => s.status === 'partial')).toBe(true);
+    expect(first.sources.every((s) => s.status !== 'error')).toBe(true);
+    // The D1 limit is what stopped it, far below the subrequest limit.
+    expect(first.subrequests).toBeLessThan(100);
+    expect(first.d1Queries).toBeGreaterThanOrEqual(20);
+
+    for (let runs = 0; runs < 40; runs++) {
+      const report = await ingest(upstreams(), new Budget({ maxSubrequests: 10_000, maxD1Queries: 25, deadline: Number.MAX_SAFE_INTEGER }));
+      if (report.sources.every((s) => s.status === 'ok')) break;
+    }
     expect(await snapshot()).toEqual(expected);
   });
 

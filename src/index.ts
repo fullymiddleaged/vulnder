@@ -2,14 +2,22 @@ import { Hono } from 'hono';
 import { Budget } from './ingest/budget';
 import { D1BindingStore } from './ingest/d1-store';
 import { runIngest } from './ingest/run';
+import { limitFromVar } from './lib/quota';
 import { feeds } from './routes/feeds';
 import { config } from './routes/config';
 import { health } from './routes/health';
 import { resolve } from './routes/resolve';
 import type { AppEnv } from './types';
 
-/** Worker cron budget: under the Paid plan's 1,000 D1 queries per invocation, and well inside 15 minutes. */
-const CRON_MAX_SUBREQUESTS = 900;
+/**
+ * Worker cron budget, kept under the Paid plan's limits so a run stops cleanly
+ * and saves its cursors. Subrequests (fetches plus D1 queries): Paid allows
+ * 10,000 per invocation. D1 queries: D1's own limits page says 1,000 per
+ * invocation, each statement in a batch counted, so they stay at 900 unless
+ * CRON_MAX_D1_QUERIES says otherwise. The deadline is well inside 15 minutes.
+ */
+const CRON_MAX_SUBREQUESTS = 5000;
+const DEFAULT_CRON_MAX_D1_QUERIES = 900;
 const CRON_DEADLINE_MS = 10 * 60_000;
 
 const app = new Hono<AppEnv>();
@@ -45,7 +53,11 @@ export default {
       console.log('ingest skipped: INGEST_RUNTIME is not "worker" (ingest runs from GitHub Actions)');
       return;
     }
-    const budget = new Budget({ maxSubrequests: CRON_MAX_SUBREQUESTS, deadline: Date.now() + CRON_DEADLINE_MS });
+    const budget = new Budget({
+      maxSubrequests: CRON_MAX_SUBREQUESTS,
+      maxD1Queries: limitFromVar(env.CRON_MAX_D1_QUERIES, DEFAULT_CRON_MAX_D1_QUERIES),
+      deadline: Date.now() + CRON_DEADLINE_MS,
+    });
     ctx.waitUntil(
       runIngest({
         store: new D1BindingStore(env.DB, budget),

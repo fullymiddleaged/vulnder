@@ -24,6 +24,28 @@ describe('Budget', () => {
     expect(() => b.take()).toThrow(/deadline/);
   });
 
+  it('stops at the D1 query limit even when subrequests remain', () => {
+    const b = new Budget({ maxSubrequests: 100, maxD1Queries: 5, deadline: Number.MAX_SAFE_INTEGER });
+    b.charge(3);
+    b.take(10);
+    expect([b.spent, b.d1Spent]).toEqual([13, 3]);
+    // Remaining is whichever limit is closer: 2 more D1 queries, not 87 subrequests.
+    expect(b.remaining).toBe(2);
+    expect(b.has(2)).toBe(true);
+    expect(b.has(3)).toBe(false);
+    // Bookkeeping writes are never refused, even past the limit.
+    b.charge(4);
+    expect(b.d1Spent).toBe(7);
+    expect(b.remaining).toBe(0);
+  });
+
+  it('has no separate D1 limit by default', () => {
+    const b = new Budget({ maxSubrequests: 10, deadline: Number.MAX_SAFE_INTEGER });
+    b.charge(8);
+    expect(b.remaining).toBe(2);
+    expect(b.has(2)).toBe(true);
+  });
+
   it('charges wrapped fetches', async () => {
     const b = new Budget({ maxSubrequests: 1, deadline: Number.MAX_SAFE_INTEGER });
     const f = b.wrapFetch((async () => new Response('ok')) as unknown as typeof fetch);

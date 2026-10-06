@@ -10,6 +10,7 @@ interface __BaseEnv_Env {
 	DISPLAY_NAME: "Vulnder";
 	BASE_URL: "https://vulnder.com";
 	INGEST_RUNTIME: "worker" | "actions";
+	CRON_MAX_D1_QUERIES?: "900";
 	AI_MODEL: "@cf/google/gemma-4-26b-a4b-it";
 	PARSE_DAILY_PER_CLIENT: "30";
 	PARSE_DAILY_TOTAL: "600";
@@ -30,6 +31,7 @@ declare namespace Cloudflare {
 		DISPLAY_NAME: "Vulnder";
 		BASE_URL: "https://vulnder.com";
 		INGEST_RUNTIME: "worker";
+		CRON_MAX_D1_QUERIES: "900";
 		AI_MODEL: "@cf/google/gemma-4-26b-a4b-it";
 		PARSE_DAILY_PER_CLIENT: "30";
 		PARSE_DAILY_TOTAL: "600";
@@ -44,7 +46,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DISPLAY_NAME" | "BASE_URL" | "INGEST_RUNTIME" | "AI_MODEL" | "PARSE_DAILY_PER_CLIENT" | "PARSE_DAILY_TOTAL" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY" | "GITHUB_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DISPLAY_NAME" | "BASE_URL" | "INGEST_RUNTIME" | "CRON_MAX_D1_QUERIES" | "AI_MODEL" | "PARSE_DAILY_PER_CLIENT" | "PARSE_DAILY_TOTAL" | "TURNSTILE_SITE_KEY" | "TURNSTILE_SECRET_KEY" | "GITHUB_TOKEN">> {}
 }
 
 // Begin runtime types

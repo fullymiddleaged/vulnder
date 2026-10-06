@@ -62,6 +62,8 @@ export interface RunReport {
   sources: SourceReport[];
   maintenance: boolean;
   subrequests: number;
+  /** D1 statements, also counted in subrequests. */
+  d1Queries: number;
   /** True when the run did nothing because a seed is in progress. */
   waitingForSeed?: boolean;
 }
@@ -79,7 +81,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   // overwritten or fetched twice, so wait for it.
   if ((await getMeta(store, SEEDING_KEY)) !== null) {
     log('a seed is in progress (scripts/seed-remote.ts); skipping this run');
-    return { sources: [], maintenance: false, subrequests: 0, waitingForSeed: true };
+    return { sources: [], maintenance: false, subrequests: budget.spent, d1Queries: budget.d1Spent, waitingForSeed: true };
   }
   const ctx: SourceContext = {
     fetch: budget.wrapFetch(opts.fetch),
@@ -170,7 +172,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
 
   if (anyWrites) await store.batch([bumpDataVersionStatement(now())]);
   await store.flush?.();
-  return { sources: reports, maintenance: maintained, subrequests: budget.spent };
+  return { sources: reports, maintenance: maintained, subrequests: budget.spent, d1Queries: budget.d1Spent };
 }
 
 /**
