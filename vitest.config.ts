@@ -10,6 +10,8 @@ export default defineConfig({
         plugins: [
           cloudflareTest(async () => ({
             wrangler: { configPath: './wrangler.jsonc' },
+            // Tests stub env.AI and never reach Cloudflare, so CI (and forks) need no login or token.
+            remoteBindings: false,
             miniflare: {
               bindings: { TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, 'migrations')) },
             },
