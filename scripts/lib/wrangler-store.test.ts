@@ -87,6 +87,19 @@ describe('WranglerStore', () => {
     expect(calls[1]).toEqual(['d1', 'execute', 'DB', '--local', '--json', '--command', 'SELECT 1 AS ok']);
   });
 
+  it('passes a config file to every wrangler call when given one', async () => {
+    const calls: string[][] = [];
+    const store = new WranglerStore({
+      target: 'remote',
+      config: 'wrangler.production.jsonc',
+      runner: async (a) => (calls.push(a), '[{"results":[],"success":true}]'),
+    });
+    await store.batch([{ sql: 'SELECT 1', params: [] }]);
+    await store.all('SELECT 2');
+    expect(calls).toHaveLength(2);
+    for (const c of calls) expect(c.slice(-2)).toEqual(['--config', 'wrangler.production.jsonc']);
+  });
+
   it('flushes on its own once the buffer is large', async () => {
     const calls: string[][] = [];
     const store = new WranglerStore({ target: 'remote', flushBytes: 100, runner: async (a) => (calls.push(a), '') });

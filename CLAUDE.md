@@ -26,6 +26,6 @@ Runs **at request time, on the user's own text only**, never as a batch job over
 
 - `npm test` (vitest in workerd), `npm run typecheck`, `npm run lint`, `npm run dev` (port 8787). Run all three checks before calling work done.
 - The user deploys through GitHub; never deploy. Commit only when asked, one commit per feature.
-- `wrangler.jsonc` keeps the placeholder `database_id`: local D1 is keyed by it, so changing it orphans the local data.
+- `wrangler.jsonc` keeps the placeholder `database_id`; never commit the real one. Local D1 is keyed by the placeholder. Commands that reach Cloudflare use the git-ignored `wrangler.production.jsonc`, stamped from `D1_DATABASE_ID` (in `.env` locally) by `scripts/lib/production-config.ts`.
 - Edit files with the editor tools, not Python/Node scripts that write files: on Windows those can turn LF into CRLF or mangle escapes.
 - Hostile input is a given: anything reaching `parseStack`, the alias tables or the model must be fuzz-safe (`test/resolve-fuzz.test.ts`). Look up input-keyed tables with `ownValue()`.

@@ -33,6 +33,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bumpDataVersionStatement, cursorKey, SEEDING_KEY } from '../src/ingest/meta';
 import { parseArgs } from './lib/args';
+import { productionConfig } from './lib/production-config';
 import { nextChunk, planSeed, reportedRowsWritten } from './lib/seed';
 import { inlineParams, parseResults, withRetries, wranglerRunner } from './lib/wrangler-store';
 
@@ -71,7 +72,7 @@ const maxRows = values['max-rows'] === undefined ? Infinity : Number(values['max
 if (!(maxRows > 0)) throw new Error('--max-rows must be a positive number');
 
 const run = withRetries(wranglerRunner(process.cwd()), 2000);
-const target = values['into-local'] ? ['--local', '--persist-to', values['into-local']] : ['--remote'];
+const target = values['into-local'] ? ['--local', '--persist-to', values['into-local']] : ['--remote', '--config', productionConfig()];
 const targetName = values['into-local'] ? `local database in ${values['into-local']}` : 'remote database';
 
 async function query<T>(where: string[], sql: string): Promise<T[]> {

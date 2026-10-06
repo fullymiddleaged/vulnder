@@ -12,7 +12,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:remote": "tsx scripts/production-config.ts && wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc",
+    "config:production": "tsx scripts/production-config.ts",
+    "deploy:free": "tsx scripts/production-config.ts && wrangler deploy --config wrangler.production.jsonc",
+    "deploy:paid": "tsx scripts/production-config.ts && wrangler deploy --env paid --config wrangler.production.jsonc",
     "backfill": "tsx scripts/backfill.ts",
     "ingest": "tsx scripts/ingest.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",

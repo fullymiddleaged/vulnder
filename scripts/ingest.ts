@@ -12,6 +12,7 @@
 import { Budget } from '../src/ingest/budget';
 import { runIngest } from '../src/ingest/run';
 import { parseArgs, parseSources, parseTarget } from './lib/args';
+import { productionConfig } from './lib/production-config';
 import { WranglerStore } from './lib/wrangler-store';
 
 const { values } = parseArgs({
@@ -26,7 +27,7 @@ const { values } = parseArgs({
 });
 
 const target = parseTarget(values);
-const store = new WranglerStore({ target });
+const store = new WranglerStore({ target, config: target === 'remote' ? productionConfig() : undefined });
 const budget = new Budget({
   maxSubrequests: Number(values['max-subrequests']),
   deadline: Date.now() + Number(values.minutes) * 60_000,

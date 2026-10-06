@@ -7,3 +7,5 @@ dist/
 .cache/
 public/app.js
 public/app.js.map
+.env
+wrangler.production.jsonc

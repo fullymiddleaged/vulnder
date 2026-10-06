@@ -33,6 +33,7 @@ import type { VulnPatch } from '../src/ingest/types';
 import { utcDay, windowStart } from '../src/lib/time';
 import { parseArgs, parseTarget } from './lib/args';
 import { cveFiles, ensureClone, readMeta } from './lib/cvelist-clone';
+import { productionConfig } from './lib/production-config';
 import { WranglerStore } from './lib/wrangler-store';
 
 const { values } = parseArgs({
@@ -49,7 +50,7 @@ const target = parseTarget(values);
 const log = (m: string) => console.log(`[backfill] ${m}`);
 const now = new Date();
 const cutoff = windowStart(now, RETENTION_DAYS);
-const store = new WranglerStore({ target, flushBytes: 8_000_000 });
+const store = new WranglerStore({ target, flushBytes: 8_000_000, config: target === 'remote' ? productionConfig() : undefined });
 const githubToken = process.env.GITHUB_TOKEN || undefined;
 const SCAN_CONCURRENCY = 256;
 const unlimited = () => new Budget({ maxSubrequests: Number.MAX_SAFE_INTEGER, deadline: Number.MAX_SAFE_INTEGER });

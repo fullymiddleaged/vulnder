@@ -21,6 +21,8 @@ export interface WranglerStoreOptions {
   flushBytes?: number;
   /** Base delay between retries of a failed wrangler call. */
   retryDelayMs?: number;
+  /** Wrangler config file to use instead of wrangler.jsonc (see production-config.ts). */
+  config?: string;
   /** Runs wrangler with the given arguments and returns stdout. Replaceable in tests. */
   runner?: (args: string[]) => Promise<string>;
 }
@@ -38,7 +40,8 @@ export class WranglerStore implements Store {
   constructor(private readonly opts: WranglerStoreOptions) {
     this.database = opts.database ?? 'DB';
     this.flushBytes = opts.flushBytes ?? 4_000_000;
-    this.run = withRetries(opts.runner ?? wranglerRunner(opts.cwd ?? process.cwd()), opts.retryDelayMs ?? 2000);
+    const run = withRetries(opts.runner ?? wranglerRunner(opts.cwd ?? process.cwd()), opts.retryDelayMs ?? 2000);
+    this.run = opts.config ? (args) => run([...args, '--config', opts.config!]) : run;
   }
 
   async all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
