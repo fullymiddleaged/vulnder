@@ -34,7 +34,7 @@ const GITHUB_ECOSYSTEMS: Record<string, Ecosystem> = {
 };
 
 export function ecosystemFromGithub(name: string): Ecosystem | null {
-  return GITHUB_ECOSYSTEMS[name.toLowerCase()] ?? null;
+  return ownValue(GITHUB_ECOSYSTEMS, name.toLowerCase()) ?? null;
 }
 
 /** Registry hosts seen in CVE `affected[].collectionURL`, to OSV names. */
@@ -117,3 +117,12 @@ export function parseCpe(cpe: string): { vendor: string; product: string } | nul
 /** A CVE ID, with 4 or more digits in the sequence part. */
 export const CVE_ID = /^CVE-\d{4}-\d{4,}$/;
 export const GHSA_ID = /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/;
+
+/**
+ * A table lookup that only sees the table's own keys. Plain objects inherit
+ * "constructor", "toString" and friends, so `table[userInput]` can return a
+ * function instead of undefined.
+ */
+export function ownValue<T>(table: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(table, key) ? table[key] : undefined;
+}

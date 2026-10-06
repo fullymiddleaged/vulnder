@@ -85,8 +85,39 @@ export async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * The user's text, ready to fence in <stack> tags: any tag that could close
+ * or reopen the fence is removed, so the text can't step outside it.
+ */
+export function fenceInput(text: string): string {
+  return text.slice(0, MAX_TEXT_CHARS).replace(/<\s*\/?\s*stack\b[^>]*>/gi, ' ');
+}
+
+/** Lowercase letters and digits only, so "Next.js 14" and "nextjs14" compare equal. */
+function compact(s: string): string {
+  return s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/**
+ * Keeps only what the text actually mentions. The model is asked to list
+ * components "as written", so a component whose name isn't in the text was
+ * made up, whether by a hallucination or by instructions hidden in the text;
+ * a version that isn't in the text is dropped the same way. Vendors may be
+ * inferred ("IOS XE" is Cisco's), so they are left alone.
+ */
+export function keepMentioned(extraction: Extraction, text: string): Extraction {
+  const haystack = compact(text);
+  const candidates = extraction.candidates.flatMap((c) => {
+    const name = compact(c.name);
+    if (!name || !haystack.includes(name)) return [];
+    const version = c.version && haystack.includes(compact(c.version)) ? c.version : null;
+    return [{ ...c, version }];
+  });
+  return { ...extraction, candidates };
+}
+
 export async function extractCandidates(ai: Ai, model: string, text: string): Promise<Extraction> {
-  const input = text.slice(0, MAX_TEXT_CHARS);
+  const input = fenceInput(text);
   let raw: unknown;
   try {
     raw = await ai.run(model as keyof AiModels, {
@@ -103,7 +134,7 @@ export async function extractCandidates(ai: Ai, model: string, text: string): Pr
     // Quota exhaustion and outages both mean "use the manual path".
     throw new ExtractionUnavailable(err instanceof Error ? err.message : String(err));
   }
-  return parseModelOutput(raw);
+  return keepMentioned(parseModelOutput(raw), text);
 }
 
 /** Pulls the JSON out of either response shape and keeps only valid items. */

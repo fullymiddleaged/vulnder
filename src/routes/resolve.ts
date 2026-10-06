@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { resolveCandidates } from '../resolve/catalog';
-import { extractCandidates, type Extraction, ExtractionUnavailable, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
+import { extractCandidates, type Extraction, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { parseManifest } from '../resolve/manifests';
 import { verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
@@ -117,7 +117,8 @@ async function cachedExtraction(env: Env, text: string): Promise<Extraction> {
   const key = new Request(`https://parse-cache.vulnder.invalid/v1/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
   const cache = await caches.open('vulnder-parse').catch(() => null);
   const hit = cache ? await cache.match(key) : undefined;
-  if (hit) return parseModelOutput({ response: await hit.json() });
+  // Older cache entries may predate the grounding check, so apply it on hits too.
+  if (hit) return keepMentioned(parseModelOutput({ response: await hit.json() }), text);
 
   const extraction = await extractCandidates(env.AI, env.AI_MODEL, text);
   if (cache) {

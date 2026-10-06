@@ -19,6 +19,7 @@ export const ALIASES: Record<string, string[]> = {
   django: ['pypi:django'],
   flask: ['pypi:flask'],
   fastapi: ['pypi:fastapi'],
+  fast_api: ['pypi:fastapi'],
   rails: ['gem:rails'],
   ruby_on_rails: ['gem:rails'],
   laravel: ['composer:laravel/framework'],

@@ -83,6 +83,12 @@ describe('parseStack', () => {
     expect(() => parseStack('v2;npm:next')).toThrow(StackFormatError);
   });
 
+  it('does not treat object property names as prefixes', () => {
+    for (const prefix of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(() => parseStack(`${prefix}:x`), prefix).toThrow(StackFormatError);
+    }
+  });
+
   it('rejects oversized and decompression-bomb input', () => {
     expect(() => parseStack('npm:x,'.repeat(3000))).toThrow(/longer than/);
     const bomb = deflateSync(new Uint8Array(10_000_000).fill(44)); // ten million commas

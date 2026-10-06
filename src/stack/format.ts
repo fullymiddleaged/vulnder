@@ -1,5 +1,5 @@
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
-import { normalizeKey, normalizePackageName, type Ecosystem } from '../lib/normalize';
+import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '../lib/normalize';
 
 /**
  * The stack URL format, version 1. This is a public contract: people bookmark
@@ -52,6 +52,11 @@ export class StackFormatError extends Error {
 }
 
 const VERSION_RE = /^[A-Za-z0-9._+~:\-^*]{1,64}$/;
+
+/** True when a version can appear in a stack item. */
+export function isStackVersion(version: string): boolean {
+  return VERSION_RE.test(version);
+}
 
 /** Parses an `s` parameter (plain or `~`-compressed) into canonical items. */
 export function parseStack(param: string): StackItem[] {
@@ -141,7 +146,7 @@ function parseExactItem(text: string): StackItem | null {
     return { kind: 'product', vendor, product, version };
   }
 
-  const ecosystem = PREFIXES[prefix];
+  const ecosystem = ownValue(PREFIXES, prefix);
   if (!ecosystem) return null;
   const name = body.trim();
   // eslint-disable-next-line no-control-regex -- reject control characters in names
