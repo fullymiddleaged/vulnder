@@ -10,15 +10,20 @@
 
 ## How it ranks things
 
-Each result goes in one of three tiers:
+Each result gets a priority, in the style of CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions. Evidence of exploitation always outranks severity:
 
-| Tier | Meaning |
+| Priority | When |
 |---|---|
-| **Exploited** | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog. Always listed first. |
-| **Likely** | [EPSS](https://www.first.org/epss) score of 0.10 or more. EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that exploitation has happened. |
-| **Backlog** | Matches your stack, with neither signal. |
+| **Act** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. |
+| **Attend** (amber) | [EPSS](https://www.first.org/epss) of 0.10 or more, or a proof-of-concept exploit that is automatable or gives total control. EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that it has happened. |
+| **Watch** (yellow) | CVSS 9.0 or more, a proof-of-concept exploit, or automatable with total technical impact. |
+| **Track** (grey) | Everything else. |
 
-CVSS is shown, but it's never used to sort.
+Within a priority, results are ordered by a 0–100 risk score: threat (1 for KEV, otherwise EPSS, at least 0.2 with a proof-of-concept exploit, 0.01 before EPSS has scored it) × impact (CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS), × 1.25 if automatable and × 1.2 if used in ransomware, capped at 100. It's a heuristic for ordering, not a probability. Exploitation status, automatability and technical impact come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment) data in CVE records. Every result lists why it got its priority.
+
+**Fix first** ranks the items in your stack: the one with the most urgent priority first, then by the total risk score of its CVEs, since one upgrade usually closes several.
+
+The JSON feed carries `priority`, `score` and `reasons` on each result and a `fixFirst` list. The older `tier` field (exploited, likely or backlog, from KEV and EPSS only) is unchanged, and the badge still counts exploited CVEs.
 
 Each result also has a confidence label:
 

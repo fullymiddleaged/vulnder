@@ -4,13 +4,15 @@ import { allForKeys, type Store } from '../ingest/store';
 import type { Ref, Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
+import { assess, comparePriority, fixFirst, type FixItem, type Priority } from './priority';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
  *
  * Tiers come from exploitation signals only: KEV is "exploited", EPSS at or
- * above 0.10 is "likely", everything else is "backlog". CVSS is shown but never
- * used to rank.
+ * above 0.10 is "likely", everything else is "backlog". Results are ordered by
+ * priority and score (priority.ts), which add severity and CISA's SSVC data but
+ * never let severity outrank evidence of exploitation.
  *
  * Confidence:
  * - "version_confirmed": a package version was given and OSV says it is affected;
@@ -51,6 +53,12 @@ export interface MatchedVuln {
   cwe: string[];
   ssvc: Ssvc | null;
   links: { advisory: string | null; patch: string | null };
+  /** What to do about it: act, attend, watch or track. */
+  priority: Priority;
+  /** 0–100, for ordering within a priority and ranking components. */
+  score: number;
+  /** Why it got this priority, most important first. */
+  reasons: string[];
 }
 
 export interface ChangeEvent {
@@ -66,6 +74,8 @@ export interface MatchResult {
   watching: string[];
   /** True when OSV could not be reached and versions went unchecked. */
   versionCheckUnavailable: boolean;
+  /** Matched stack items in the order to fix them. */
+  fixFirst: FixItem[];
 }
 
 export interface MatchOptions {
@@ -104,8 +114,6 @@ interface VulnRow {
   ssvc: string | null;
   refs: string;
 }
-
-const TIER_RANK: Record<Tier, number> = { exploited: 0, likely: 1, backlog: 2 };
 
 const itemKey = (item: StackItem) =>
   item.kind === 'package' ? `pkg:${item.ecosystem}:${item.name}` : `prod:${item.vendor}/${item.product}`;
@@ -219,7 +227,8 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
 
   results.sort(compareResults);
   const watching = items.map(formatItem).filter((f) => !matchedItems.has(f));
-  return { results, watching, versionCheckUnavailable };
+  const ranked = fixFirst(results.map((r) => ({ ...r, assessment: r })));
+  return { results, watching, versionCheckUnavailable, fixFirst: ranked };
 }
 
 /** Change events for these vulns since a given time, newest first. */
@@ -243,6 +252,14 @@ export function tierOf(v: { kev_added_at: string | null; epss: number | null }):
 
 function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', matched: string[], fixedVersions: string[]): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
+  const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
+  const { priority, score, reasons } = assess({
+    kevAddedAt: v.kev_added_at,
+    knownRansomware: v.kev_ransomware === 1,
+    epss: v.epss,
+    cvss: v.cvss_score,
+    ssvc,
+  });
   return {
     id: v.id,
     aliases: parseJson<string[]>(v.aliases, []),
@@ -265,8 +282,11 @@ function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', 
     fixedVersions,
     cvss: v.cvss_score !== null ? { score: v.cvss_score, vector: v.cvss_vector } : null,
     cwe: parseJson<string[]>(v.cwe, []),
-    ssvc: v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null,
+    ssvc,
     links: pickLinks(v.id, refs),
+    priority,
+    score,
+    reasons,
   };
 }
 
@@ -289,7 +309,7 @@ export function pickLinks(id: string, refs: Ref[]): { advisory: string | null; p
 
 function compareResults(a: MatchedVuln, b: MatchedVuln): number {
   return (
-    TIER_RANK[a.tier] - TIER_RANK[b.tier] ||
+    comparePriority(a, b) ||
     (a.match === b.match ? 0 : a.match === 'exact' ? -1 : 1) ||
     (b.evidence.kevAddedAt ?? '').localeCompare(a.evidence.kevAddedAt ?? '') ||
     (b.evidence.epss ?? 0) - (a.evidence.epss ?? 0) ||

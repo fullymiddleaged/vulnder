@@ -4,6 +4,7 @@ import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
 import { createOsvClient } from '../match/osv';
+import { PRIORITIES } from '../match/priority';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
 import type { AppEnv } from '../types';
 
@@ -139,6 +140,8 @@ export const feeds = new Hono<AppEnv>()
           likely: match.results.filter((r) => r.tier === 'likely').length,
           backlog: match.results.filter((r) => r.tier === 'backlog').length,
         },
+        priorities: Object.fromEntries(PRIORITIES.map((p) => [p, match.results.filter((r) => r.priority === p).length])),
+        fixFirst: match.fixFirst,
         changes: changes.map((e) => ({ ...e, title: byId.get(e.vulnId)?.title ?? null, tier: byId.get(e.vulnId)?.tier })),
         results: match.results,
         watching: match.watching,

@@ -120,23 +120,30 @@ describe('matchStack', () => {
   it('returns the tiered results for the hand-written stack', async () => {
     const osv = fakeOsv();
     const res = await matchStack(store(), parseStack(STACK), { now: NOW, days: 30, osv });
-    expect(res.results.map((r) => [r.id, r.tier, r.confidence])).toEqual([
-      ['CVE-2026-1005', 'exploited', 'product_match'],
-      ['CVE-2026-1001', 'exploited', 'version_confirmed'],
-      ['CVE-2026-1003', 'backlog', 'product_match'],
+    // Both exploited CVEs are "act"; within it, CVSS 9.1 outscores ransomware with no CVSS (impact 0.5).
+    expect(res.results.map((r) => [r.id, r.tier, r.confidence, r.priority, r.score])).toEqual([
+      ['CVE-2026-1001', 'exploited', 'version_confirmed', 'act', 91],
+      ['CVE-2026-1005', 'exploited', 'product_match', 'act', 60],
+      ['CVE-2026-1003', 'backlog', 'product_match', 'track', 0.9],
+    ]);
+    expect(res.results[1]!.reasons).toEqual(['On CISA KEV', 'Used in ransomware']);
+    expect(res.fixFirst.map((f) => [f.item, f.score, f.counts, f.fixable])).toEqual([
+      ['npm:next@14.2.3', 91, { act: 1, attend: 0, watch: 0, track: 0 }, 1],
+      ['p:cisco/ios_xe', 60, { act: 1, attend: 0, watch: 0, track: 0 }, 0],
+      ['p:postgresql/postgresql@16', 0.9, { act: 0, attend: 0, watch: 0, track: 1 }, 0],
     ]);
     expect(res.watching).toEqual(['p:cisco/asa', 'pypi:fastapi']);
     expect(res.versionCheckUnavailable).toBe(false);
     expect(osv.calls).toBe(1);
 
-    const next = res.results[1]!;
+    const next = res.results[0]!;
     expect(next.matched).toEqual(['npm:next@14.2.3']);
     expect(next.fixedVersions).toEqual(['14.2.5']);
     expect(next.links).toEqual({
       advisory: `https://github.com/advisories/${GHSA_NEXT_1}`,
       patch: 'https://github.com/vercel/next.js/commit/abcdef1234567',
     });
-    expect(res.results[0]!.evidence).toMatchObject({ knownRansomware: true });
+    expect(res.results[1]!.evidence).toMatchObject({ knownRansomware: true });
   });
 
   it('labels close matches and ranks them after exact ones in the same tier', async () => {
@@ -194,6 +201,8 @@ describe('GET /api/feed', () => {
     const body = (await res.json()) as {
       stack: string;
       summary: Record<string, number>;
+      priorities: Record<string, number>;
+      fixFirst: { item: string }[];
       changes: { vulnId: string; type: string }[];
       results: { id: string }[];
       links: Record<string, string>;
@@ -201,7 +210,9 @@ describe('GET /api/feed', () => {
     };
     expect(body.stack).toBe('npm:next@14.2.3,p:cisco/asa,p:cisco/ios_xe,p:postgresql/postgresql@16,pypi:fastapi');
     expect(body.summary).toEqual({ exploited: 2, likely: 0, backlog: 1 });
-    expect(body.results.map((r) => r.id)).toEqual(['CVE-2026-1005', 'CVE-2026-1001', 'CVE-2026-1003']);
+    expect(body.results.map((r) => r.id)).toEqual(['CVE-2026-1001', 'CVE-2026-1005', 'CVE-2026-1003']);
+    expect(body.priorities).toEqual({ act: 2, attend: 0, watch: 0, track: 1 });
+    expect(body.fixFirst.map((f) => f.item)).toEqual(['npm:next@14.2.3', 'p:cisco/ios_xe', 'p:postgresql/postgresql@16']);
     // Only events from the last 7 days: both KEV additions, nothing older.
     expect(body.changes.map((c) => [c.vulnId, c.type])).toEqual([
       ['CVE-2026-1005', 'kev_added'],
