@@ -114,6 +114,18 @@ describe('runIngest', () => {
     expect(await rows("SELECT value FROM meta WHERE key = 'data_version'")).toEqual([{ value: '1' }]);
   });
 
+  it('waits while a seed is in progress, then runs normally', async () => {
+    await env.DB.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('seeding', '{\"startedAt\":\"2026-10-04T17:00:00Z\"}', '2026-10-04')").run();
+    const f = upstreams();
+    const report = await ingest(f);
+    expect(report).toEqual({ sources: [], maintenance: false, subrequests: 0, waitingForSeed: true });
+    expect(f.calls).toHaveLength(0);
+    expect(await rows("SELECT key FROM meta WHERE key != 'seeding'")).toEqual([]);
+
+    await env.DB.prepare("DELETE FROM meta WHERE key = 'seeding'").run();
+    expect((await ingest(f)).sources.map((s) => s.status)).toEqual(['ok', 'ok', 'ok', 'ok']);
+  });
+
   it('resumes across budget-limited runs and ends with the same data', async () => {
     // A full first run costs ~66 subrequests and a caught-up run ~25 (fetches plus D1 queries).
     await ingest(upstreams());

@@ -38,7 +38,7 @@ export class WranglerStore implements Store {
   constructor(private readonly opts: WranglerStoreOptions) {
     this.database = opts.database ?? 'DB';
     this.flushBytes = opts.flushBytes ?? 4_000_000;
-    this.run = withRetries(opts.runner ?? defaultRunner(opts.cwd ?? process.cwd()), opts.retryDelayMs ?? 2000);
+    this.run = withRetries(opts.runner ?? wranglerRunner(opts.cwd ?? process.cwd()), opts.retryDelayMs ?? 2000);
   }
 
   async all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -81,7 +81,7 @@ export class WranglerStore implements Store {
  * every write file is idempotent (upserts, INSERT OR IGNORE, delete-then-insert).
  * Local runs occasionally fail with no message, e.g. after the machine sleeps.
  */
-function withRetries(run: (args: string[]) => Promise<string>, delayMs: number): (args: string[]) => Promise<string> {
+export function withRetries(run: (args: string[]) => Promise<string>, delayMs: number): (args: string[]) => Promise<string> {
   return async (args) => {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -94,7 +94,7 @@ function withRetries(run: (args: string[]) => Promise<string>, delayMs: number):
   };
 }
 
-function defaultRunner(cwd: string): (args: string[]) => Promise<string> {
+export function wranglerRunner(cwd: string): (args: string[]) => Promise<string> {
   const require = createRequire(import.meta.url);
   // bin/ is not in wrangler's package exports, so locate it from package.json.
   const pkgPath = require.resolve('wrangler/package.json');

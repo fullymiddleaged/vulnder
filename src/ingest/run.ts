@@ -9,6 +9,7 @@ import {
   EMPTY_STATUS,
   getMeta,
   LAST_MAINTENANCE_KEY,
+  SEEDING_KEY,
   setMetaStatement,
   statusKey,
   type SourceStatus,
@@ -61,6 +62,8 @@ export interface RunReport {
   sources: SourceReport[];
   maintenance: boolean;
   subrequests: number;
+  /** True when the run did nothing because a seed is in progress. */
+  waitingForSeed?: boolean;
 }
 
 /**
@@ -72,6 +75,12 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   const now = opts.now ?? (() => new Date());
   const log = opts.log ?? (() => {});
   const { store, budget } = opts;
+  // A seed replaces cursors at the end; anything ingested before then would be
+  // overwritten or fetched twice, so wait for it.
+  if ((await getMeta(store, SEEDING_KEY)) !== null) {
+    log('a seed is in progress (scripts/seed-remote.ts); skipping this run');
+    return { sources: [], maintenance: false, subrequests: 0, waitingForSeed: true };
+  }
   const ctx: SourceContext = {
     fetch: budget.wrapFetch(opts.fetch),
     store,

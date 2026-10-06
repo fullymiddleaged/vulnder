@@ -16,6 +16,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
     "update-injection-corpus": "tsx scripts/update-injection-corpus.ts",
+    "seed:remote": "tsx scripts/seed-remote.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p test && tsc --noEmit -p scripts && tsc --noEmit -p web",

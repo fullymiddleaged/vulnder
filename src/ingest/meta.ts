@@ -24,6 +24,8 @@ export const cursorKey = (source: SourceName) => `cursor:${source}`;
 export const statusKey = (source: SourceName) => `status:${source}`;
 export const DATA_VERSION_KEY = 'data_version';
 export const LAST_MAINTENANCE_KEY = 'last_maintenance';
+/** Present while scripts/seed-remote.ts is copying a snapshot in; ingest waits until it's gone. */
+export const SEEDING_KEY = 'seeding';
 
 export async function getMeta<T>(store: Store, key: string): Promise<T | null> {
   const rows = await store.all<{ value: string }>('SELECT value FROM meta WHERE key = ?', [key]);

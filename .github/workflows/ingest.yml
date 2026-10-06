@@ -2,6 +2,11 @@
 # itself (50 subrequests, 10 ms CPU). Runs the same ingest code in Node and
 # writes to the remote D1 database through Wrangler.
 #
+# Off unless the repository opts in, so a Paid deployment (whose Worker cron
+# ingests) or a fork doesn't run it by accident. To turn it on:
+#
+# Repository variable:
+#   INGEST_FROM_ACTIONS    "true"
 # Repository secrets:
 #   CLOUDFLARE_API_TOKEN   token with D1 edit permission on the account
 #   CLOUDFLARE_ACCOUNT_ID  the account that owns the D1 database
@@ -10,8 +15,8 @@
 # GitHub disables scheduled workflows after 60 days without repository
 # activity; /api/health reports sources as stale when that happens.
 #
-# On Workers Paid, deploy with `wrangler deploy --env paid` instead and
-# disable this workflow.
+# On Workers Paid, deploy with `wrangler deploy --env paid` instead and leave
+# INGEST_FROM_ACTIONS unset.
 name: ingest
 
 on:
@@ -28,11 +33,12 @@ concurrency:
 
 jobs:
   ingest:
+    if: vars.INGEST_FROM_ACTIONS == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
