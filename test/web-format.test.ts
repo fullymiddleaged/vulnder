@@ -94,7 +94,7 @@ describe('what changed this week', () => {
       ],
       results,
     );
-    expect(changeCounts(groups)).toBe('1 added to KEV · 1 fix released · 2 new CVEs');
+    expect(changeCounts(groups)).toBe('1 added to KEV, 1 fix released, 2 new CVEs');
     expect(changeCounts([])).toBe('');
   });
 

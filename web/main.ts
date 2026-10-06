@@ -105,7 +105,7 @@ function renderInput(prefill = ''): void {
   const form = h(
     'form',
     {
-      class: 'card',
+      class: 'compose',
       onsubmit: (e: Event) => {
         e.preventDefault();
         const text = textarea.value.trim();
@@ -116,23 +116,22 @@ function renderInput(prefill = ''): void {
         void submit({ text });
       },
     },
-    h('label', { for: 'stack-text', class: 'label' }, 'Describe your stack, or paste a manifest'),
+    h('label', { for: 'stack-text', class: 'compose-label' }, 'What do you run?'),
     textarea,
-    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Name what you run, with versions where you know them.'), counter),
+    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe it in your own words, with versions where you know them, or paste a manifest.'), counter),
+    h(
+      'div',
+      { class: 'examples' },
+      h('span', { class: 'muted small' }, 'Or try'),
+      EXAMPLES.map((ex) =>
+        h('button', { type: 'button', class: 'chip-button', onclick: () => ((textarea.value = ex.text), updateCounter(), textarea.focus()) }, ex.label),
+      ),
+    ),
     turnstileBox,
     submitButton,
   );
 
-  const examples = h(
-    'div',
-    { class: 'examples' },
-    h('span', { class: 'muted' }, 'Try an example:'),
-    EXAMPLES.map((ex) =>
-      h('button', { type: 'button', class: 'chip-button', onclick: () => ((textarea.value = ex.text), updateCounter(), textarea.focus()) }, ex.label),
-    ),
-  );
-
-  app.append(form, examples, drop);
+  app.append(form, drop);
   mountTurnstile(turnstileBox);
 }
 
@@ -255,7 +254,7 @@ function renderEdit(initial: string[]): void {
   app.append(
     h(
       'section',
-      { class: 'card', 'aria-labelledby': 'edit-title' },
+      { class: 'block', 'aria-labelledby': 'edit-title' },
       h('h2', { id: 'edit-title' }, 'Edit your stack'),
       h('p', { class: 'muted' }, 'Remove anything that is not yours and add what is missing. Close matches are products your description loosely fits. Items with nothing reported are still watched.'),
       list,
@@ -282,12 +281,12 @@ async function renderResults(stack: string, days: number): Promise<void> {
     feed = await getFeed(stack, days);
   } catch (err) {
     say('');
-    app.append(h('div', { class: 'card' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
+    app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
     return;
   }
   say([`${feed.results.length} vulnerabilities found.`, pendingNote].filter(Boolean).join(' '));
   pendingNote = '';
-  document.title = `${feed.summary.exploited} exploited · ${config?.displayName ?? 'Vulnder'}`;
+  document.title = `${config?.displayName ?? 'Vulnder'}: ${feed.summary.exploited} exploited`;
 
   const items = parseStack(feed.stack);
   const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
@@ -296,7 +295,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
   app.append(
     h(
       'section',
-      { class: 'card summary', 'aria-labelledby': 'stack-title' },
+      { class: 'block summary', 'aria-labelledby': 'stack-title' },
       h('div', { class: 'row' }, h('h2', { id: 'stack-title' }, 'Your stack'), daySelect),
       h('ul', { class: 'chips compact' }, items.map((i) => h('li', { class: `chip ${i.close ? 'close' : 'resolved'}`, title: i.close ? 'Close match' : null }, h('code', {}, serializeStack([{ ...i, close: undefined }]))))),
       h('div', { class: 'row wrap' }, h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack'), copyButtons(feed)),
@@ -324,7 +323,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
     app.append(
       h(
         'section',
-        { class: 'card', 'aria-labelledby': 'watching-title' },
+        { class: 'block', 'aria-labelledby': 'watching-title' },
         h('h2', { id: 'watching-title' }, 'Watching'),
         h('p', { class: 'muted' }, `No admirers in the last ${feed.days} days. The feed will pick up new issues.`),
         h('ul', { class: 'chips compact' }, feed.watching.map((w) => h('li', { class: 'chip' }, h('code', {}, w)))),
@@ -336,10 +335,19 @@ async function renderResults(stack: string, days: number): Promise<void> {
 /** How many CVEs each priority tile links before pointing at the full list. */
 const TILE_SHOWN = 3;
 
-/** Traffic-light tiles: how many results sit at each priority, and links to the first few. */
+/**
+ * A strip split by how many results sit at each priority, then one column per
+ * priority with its count, meaning and links to the first few CVEs.
+ */
 function riskSummary(feed: Feed): HTMLElement {
   const groups = byPriority(feed.results);
-  return h(
+  // The strip repeats the counts below, so screen readers skip it.
+  const strip = h(
+    'div',
+    { class: 'risk-strip', 'aria-hidden': 'true' },
+    PRIORITIES.filter((p) => feed.priorities[p] > 0).map((p) => h('span', { class: RISK[p].light, style: `flex-grow: ${feed.priorities[p]}` })),
+  );
+  const ledger = h(
     'ul',
     { class: 'risk-summary', 'aria-label': 'Results by priority' },
     PRIORITIES.map((p) => {
@@ -348,8 +356,7 @@ function riskSummary(feed: Feed): HTMLElement {
       return h(
         'li',
         { class: `risk-tile ${RISK[p].light}${n === 0 ? ' empty' : ''}` },
-        h('span', { class: 'risk-count' }, String(n)),
-        h('span', { class: 'risk-label' }, RISK[p].label),
+        h('span', { class: 'risk-head' }, h('span', { class: 'risk-count' }, String(n)), h('span', { class: 'risk-label' }, RISK[p].label)),
         h('span', { class: 'risk-note small' }, RISK[p].note),
         shown.length > 0
           ? h(
@@ -364,6 +371,7 @@ function riskSummary(feed: Feed): HTMLElement {
       );
     }),
   );
+  return h('div', { class: 'risk' }, strip, ledger);
 }
 
 /** A link that opens in a new tab, or plain text when the URL isn't http(s). */
@@ -380,7 +388,7 @@ function renderFixFirst(feed: Feed): HTMLElement {
   const list = (from: number, to: number) => h('ol', { class: 'fix-list', start: from + 1 }, items.slice(from, to).map(renderFixItem));
   return h(
     'section',
-    { class: 'card fix-first', 'aria-labelledby': 'fix-title' },
+    { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
     h('h2', { id: 'fix-title' }, 'Fix first'),
     h('p', { class: 'muted small' }, 'Each item in your stack, ranked by what fixing it removes: the most urgent priority first, then the total risk score of its CVEs.'),
     list(0, FIX_SHOWN),
@@ -519,7 +527,7 @@ function renderChanges(feed: Feed): HTMLElement {
   const groups = groupChanges(feed.changes, feed.results);
   const section = h(
     'section',
-    { class: 'card changes', 'aria-labelledby': 'changes-title' },
+    { class: 'block changes', 'aria-labelledby': 'changes-title' },
     h('h2', { id: 'changes-title' }, 'What changed this week'),
   );
   if (groups.length === 0) {
@@ -602,7 +610,7 @@ function renderResult(r: Result): HTMLElement {
       h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
     ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
-    r.reasons.length > 0 ? h('p', { class: 'why small' }, h('strong', {}, 'Why: '), r.reasons.join(' · ')) : null,
+    r.reasons.length > 0 ? h('p', { class: 'why small' }, h('strong', {}, 'Why: '), r.reasons.join('; ')) : null,
     h(
       'p',
       { class: 'facts row wrap small' },
@@ -611,7 +619,7 @@ function renderResult(r: Result): HTMLElement {
         ? h(
             'span',
             { class: 'badge', title: 'Predicted probability of exploitation in the next 30 days' },
-            `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? ` · ${ordinal(Math.round(e.epssPercentile * 100))} pct` : ''}`,
+            `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`,
           )
         : h('span', { class: 'badge muted' }, 'No EPSS yet'),
       e.knownRansomware ? h('span', { class: 'pill red' }, 'Ransomware') : null,
@@ -619,7 +627,7 @@ function renderResult(r: Result): HTMLElement {
       h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match'),
     ),
     e.kevAddedAt
-      ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? ` · federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
+      ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
       : null,
     h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m)])),
     r.fixedVersions.length > 0 ? h('p', { class: 'small' }, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
@@ -670,7 +678,7 @@ async function renderFreshness(): Promise<void> {
     el.replaceChildren(
       'Data freshness: ',
       ...Object.entries(health.sources).flatMap(([k, s], i) => [
-        i > 0 ? ' · ' : '',
+        i > 0 ? ', ' : '',
         h('span', { class: s.health === 'ok' ? '' : 'stale' }, `${names[k] ?? k} ${s.lastSuccessAt ? ago(s.lastSuccessAt) : 'never'}${s.health === 'stale' ? ' (stale)' : ''}`),
       ]),
     );

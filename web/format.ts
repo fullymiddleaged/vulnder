@@ -94,7 +94,7 @@ export function groupChanges(changes: Change[], results: Result[]): ChangeGroup[
   );
 }
 
-/** "2 added to KEV · 1 EPSS jump · 3 fixes released · 12 new CVEs", counting CVEs, not events. */
+/** "2 added to KEV, 1 EPSS jump, 3 fixes released, 12 new CVEs", counting CVEs, not events. */
 export function changeCounts(groups: ChangeGroup[]): string {
   const count = (t: Change['type']) => groups.filter((g) => g.events.some((e) => e.type === t)).length;
   const parts: [number, string, string][] = [
@@ -103,7 +103,7 @@ export function changeCounts(groups: ChangeGroup[]): string {
     [count('fix_released'), 'fix released', 'fixes released'],
     [count('published'), 'new CVE', 'new CVEs'],
   ];
-  return parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(' · ');
+  return parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(', ');
 }
 
 /** The detail for one event, e.g. "2026-10-02, federal due date 2026-10-23" or "3.1% → 42.0% on 2026-10-04". */

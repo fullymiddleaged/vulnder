@@ -8,3 +8,7 @@ The test fixture test/fixtures/injection/corpus.json contains text from
 garak (https://github.com/NVIDIA/garak), licensed under the Apache License 2.0,
 and from PayloadsAllTheThings (https://github.com/swisskyrepo/PayloadsAllTheThings),
 licensed under the MIT License. See test/fixtures/injection/README.md.
+
+The fonts in public/fonts are Atkinson Hyperlegible Next and Atkinson
+Hyperlegible Mono (https://github.com/googlefonts/atkinson-hyperlegible-next),
+licensed under the SIL Open Font License 1.1. See the OFL files beside them.

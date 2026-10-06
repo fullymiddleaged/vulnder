@@ -7,6 +7,7 @@
     <meta name="description" content="See the vulnerabilities that matter for your stack, ranked by real-world exploitation. No account needed." />
     <title>Vulnder</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
     <script type="module" src="/app.js"></script>
@@ -28,7 +29,7 @@
     </header>
 
     <main id="app" tabindex="-1">
-      <noscript><p class="card">The stack builder needs JavaScript. The JSON feed, Atom feed and badge work without it: see docs/STACK_FORMAT.md in the repository for the URL format.</p></noscript>
+      <noscript><p class="block">The stack builder needs JavaScript. The JSON feed, Atom feed and badge work without it: see docs/STACK_FORMAT.md in the repository for the URL format.</p></noscript>
     </main>
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
