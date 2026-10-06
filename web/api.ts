@@ -18,8 +18,11 @@ export interface ResolveResponse {
   format?: string;
   chips: Chip[];
   droppedTransitive: number;
-  /** Who the stack probably belongs to; only used to order close matches. */
-  profile: { profile: 'enterprise' | 'smb' | 'home' | 'cloud' | 'developer' | null; confidence: number };
+  /** What kind of stack this looks like; only used to order close matches. */
+  profile: {
+    scale: { value: 'enterprise' | 'smb' | 'home' | null; confidence: number };
+    hosting: { value: 'cloud' | 'on_prem' | null; confidence: number };
+  };
 }
 
 export interface Result {

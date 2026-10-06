@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates } from '../resolve/catalog';
-import { extractCandidates, type Extraction, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
+import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
+import { looksLikeInjection } from '../resolve/injection';
+import { blocks, fitTargets, judgeFit, screenText } from '../resolve/jev';
 import { parseManifest } from '../resolve/manifests';
+import { canRank, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
 import { PREFIXES } from '../stack/format';
@@ -17,14 +20,21 @@ import type { AppEnv } from '../types';
  * - Model calls (parse-cache misses) have daily caps, per client and in total,
  *   so the Workers AI allowance can't be used up by one client or a crowd.
  * - Text that parses as a manifest is handled without the model.
+ * - Free text aimed at an AI is refused: first by a phrase screen, then by Jev
+ *   (jev.ts), which also reads the stack's scale and hosting so close matches
+ *   can be ordered by fit.
  * - Neither the text nor the stack is stored or logged. The parse cache is
- *   keyed by a hash of the normalised text and holds only the parsed items.
+ *   keyed by a hash of the normalised text and holds only the parsed items
+ *   and the profile.
  */
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_MANIFEST_TEXT = 200_000;
 const PARSE_CACHE_SECONDS = 7 * 86_400;
-/** About 13 neurons a parse: the total default stays inside the free 10,000 a day. */
+/**
+ * A parse is about 13 neurons of extraction, so 600 a day stays inside the free
+ * 10,000. Jev is billed separately, in AI Gateway credits (about $0.0001 a parse).
+ */
 const DEFAULT_PARSE_PER_CLIENT = 30;
 const DEFAULT_PARSE_TOTAL = 600;
 const MANUAL_HINT = 'add items manually or paste a manifest';
@@ -85,25 +95,28 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   if (!check.success) return c.json({ error: 'verification failed; reload the page and try again', codes: check.errors }, 403);
 
   let candidates: Candidate[];
-  // Manifests are classified by rules alone.
-  let modelHint: Extraction['profile'] = null;
+  // Only free text gets a profile; manifests keep catalog order.
+  let profile = NO_PROFILE;
+  let text: string | null = null;
   let source: 'manifest' | 'model';
   let format: string | undefined;
   if (body.candidates) {
     candidates = body.candidates as Candidate[];
     source = 'manifest';
   } else {
-    const text = body.text!;
-    const manifest = parseManifest(text, body.filename);
+    const input = body.text!;
+    const manifest = parseManifest(input, body.filename);
     if (manifest) {
       candidates = manifest.candidates;
       source = 'manifest';
       format = manifest.format;
     } else {
+      text = input;
       if (text.length > MAX_TEXT_CHARS) {
         return c.json({ error: `descriptions are limited to ${MAX_TEXT_CHARS} characters; paste a manifest file instead` }, 413);
       }
       if (!text.trim()) return c.json({ error: 'nothing to resolve' }, 400);
+      if (looksLikeInjection(text)) return c.json(BLOCKED, 422);
       source = 'model';
       const quota = () =>
         takeDailyQuota(
@@ -114,8 +127,9 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
           new Date(),
         );
       try {
-        ({ candidates, profile: modelHint } = await cachedExtraction(c.env, text, quota));
+        ({ candidates, profile } = await cachedParse(c.env, text, quota));
       } catch (err) {
+        if (err instanceof InjectionBlocked) return c.json(BLOCKED, 422);
         if (err instanceof QuotaExceeded && err.result === 'client-limit') {
           return c.json({ error: `you've reached today's limit for free-text parsing; ${MANUAL_HINT}`, fallback: 'manual' }, 429);
         }
@@ -127,9 +141,20 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     }
   }
 
-  const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates, { modelHint });
-  return c.json({ source, format, ...result }, 200, { 'Cache-Control': 'no-store' });
+  const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates);
+  let chips = result.chips;
+  if (text !== null && canRank(profile)) {
+    const targets = fitTargets(chips);
+    if (targets.length > 0) chips = orderByFit(chips, await cachedFit(c.env, text, profile, targets));
+  }
+  return c.json({ source, format, ...result, chips, profile }, 200, { 'Cache-Control': 'no-store' });
 });
+
+const BLOCKED = {
+  error: `that reads like instructions for an AI rather than a list of what you run; describe your stack, or ${MANUAL_HINT}`,
+  fallback: 'manual',
+  reason: 'injection',
+} as const;
 
 class QuotaExceeded extends Error {
   constructor(readonly result: Exclude<QuotaResult, 'ok'>) {
@@ -138,24 +163,76 @@ class QuotaExceeded extends Error {
   }
 }
 
-/** A cached parse, or a model call once the daily quota allows it. */
-async function cachedExtraction(env: Env, text: string, quota: () => Promise<QuotaResult>): Promise<Extraction> {
-  const key = new Request(`https://parse-cache.vulnder.invalid/v1/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
-  const cache = await caches.open('vulnder-parse').catch(() => null);
+class InjectionBlocked extends Error {
+  constructor() {
+    super('injection');
+    this.name = 'InjectionBlocked';
+  }
+}
+
+interface Parse {
+  candidates: Candidate[];
+  profile: StackProfile;
+}
+
+const cacheHeaders = { 'Cache-Control': `max-age=${PARSE_CACHE_SECONDS}` };
+
+async function openParseCache(): Promise<Cache | null> {
+  return caches.open('vulnder-parse').catch(() => null);
+}
+
+/**
+ * A cached parse, or, once the daily quota allows: Jev screens the text, then
+ * the extraction model lists its components. A refusal is cached too, so
+ * repeating the text costs nothing.
+ */
+async function cachedParse(env: Env, text: string, quota: () => Promise<QuotaResult>): Promise<Parse> {
+  const key = new Request(`https://parse-cache.vulnder.invalid/v2/${encodeURIComponent(env.AI_MODEL)}/${await sha256Hex(normalizeInput(text))}`);
+  const cache = await openParseCache();
   const hit = cache ? await cache.match(key) : undefined;
-  // Older cache entries may predate the grounding check, so apply it on hits too.
-  if (hit) return keepMentioned(parseModelOutput({ response: await hit.json() }), text);
+  if (hit) {
+    const entry = (await hit.json()) as { blocked?: unknown; profile?: unknown };
+    if (entry.blocked === true) throw new InjectionBlocked();
+    return { ...keepMentioned(parseModelOutput({ response: entry }), text), profile: parseProfile(entry.profile) };
+  }
 
   const allowed = await quota();
   if (allowed !== 'ok') throw new QuotaExceeded(allowed);
-  const extraction = await extractCandidates(env.AI, env.AI_MODEL, text);
+  // Fails open: without an answer, the fence and grounding still apply.
+  const screen = await screenText(env.AI, text);
+  if (blocks(screen)) {
+    if (cache) await cache.put(key, Response.json({ blocked: true }, { headers: cacheHeaders }));
+    throw new InjectionBlocked();
+  }
+  const profile = screen?.profile ?? NO_PROFILE;
+  const { candidates } = await extractCandidates(env.AI, env.AI_MODEL, text);
   if (cache) {
-    const items = extraction.candidates.map((c) =>
+    const items = candidates.map((c) =>
       c.kind === 'package'
         ? { name: c.name, version: c.version, type: 'package', ecosystem: c.ecosystem, vendor: null }
         : { name: c.name, version: c.version, type: 'product', ecosystem: null, vendor: c.vendor },
     );
-    await cache.put(key, Response.json({ items, profile: extraction.profile }, { headers: { 'Cache-Control': `max-age=${PARSE_CACHE_SECONDS}` } }));
+    await cache.put(key, Response.json({ items, profile }, { headers: cacheHeaders }));
   }
-  return extraction;
+  return { candidates, profile };
+}
+
+/**
+ * Jev's fit for each close match, cached by text and the matches asked
+ * about. It follows a parse of the same text, so the parse's quota covers it;
+ * a repeat costs nothing unless the catalog has changed the matches.
+ */
+async function cachedFit(env: Env, text: string, profile: StackProfile, targets: { item: string; label: string }[]): Promise<Map<string, number>> {
+  const asked = await sha256Hex(targets.map((t) => t.item).join('\n'));
+  const key = new Request(`https://parse-cache.vulnder.invalid/fit/v1/${await sha256Hex(normalizeInput(text))}/${asked}`);
+  const cache = await openParseCache();
+  const hit = cache ? await cache.match(key) : undefined;
+  if (hit) {
+    const stored = (await hit.json()) as unknown;
+    if (Array.isArray(stored)) return new Map(stored.filter((e): e is [string, number] => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'number'));
+  }
+  const fit = await judgeFit(env.AI, text, profile, targets);
+  // Nothing is cached when Jev didn't answer, so the next request asks again.
+  if (cache && fit.size > 0) await cache.put(key, Response.json([...fit], { headers: cacheHeaders }));
+  return fit;
 }

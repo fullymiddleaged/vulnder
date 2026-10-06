@@ -47,7 +47,9 @@
     "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
     // Daily caps on free-text parses that reach the model (cached parses are
     // free): per client, and in total. A parse is about 13 neurons, so 600 a
-    // day stays inside the free plan's 10,000 neurons.
+    // day stays inside the free plan's 10,000 neurons. Jev (prompt-injection
+    // screening and close-match ordering) is billed in AI Gateway credits,
+    // not neurons; without credits it is skipped and parsing still works.
     "PARSE_DAILY_PER_CLIENT": "30",
     "PARSE_DAILY_TOTAL": "600",
     // Turnstile site key (public). This is Cloudflare's always-pass test key for

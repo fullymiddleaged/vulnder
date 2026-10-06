@@ -30,6 +30,10 @@ Each result also has a confidence label:
 - **Version confirmed**: you gave a version, and [OSV](https://osv.dev) says that exact version is affected.
 - **Product match**: the product is named as affected, but the version is unknown or couldn't be checked.
 
+A vague name like "Cisco switches" becomes several close matches, in catalog order (most-affected first). When your description makes the stack's scale (enterprise, small business or home) or hosting (cloud or on-premises) clear, [Jev](https://developers.cloudflare.com/ai/models/typesafe/jev/) on Workers AI judges how well each close match fits it, and they're sorted by that, so a home lab sees small-business gear before data-centre switches. That only changes the order; it never hides a match. Manifests aren't sent to Jev and keep catalog order.
+
+Free text that reads like instructions for an AI rather than a list of what you run is refused: first by a phrase check, then by Jev. Text that gets past both still can't add anything: the extraction model's answer is checked against your words, and components you didn't name are dropped. If Jev is unavailable, parsing carries on without the second check and close matches keep catalog order.
+
 The page opens with **What changed this week**: newly published issues, KEV additions, EPSS jumps and fix releases for your stack.
 
 ## Feeds and badge
@@ -49,7 +53,7 @@ https://vulnder.dev/badge.svg?s=…     "N known-exploited CVEs", green at zero
 
 A list of what you run is useful to an attacker, so Vulnder keeps as little as it can:
 
-- **Your stack and your text are not stored.** Free text goes to Workers AI only to pick out component names. The parsed result is cached under a SHA-256 hash of the normalised text; the text itself is never cached.
+- **Your stack and your text are not stored.** Free text goes to Workers AI only to pick out component names and, through Jev (zero data retention), to screen it and judge which close matches fit. The parsed result is cached under a SHA-256 hash of the normalised text; the text itself is never cached.
 - **Manifests stay on your machine.** Files are parsed in your browser, and only package names and versions are sent.
 - **Stack URLs are not logged.** Workers Logs redact query strings (`observability.redact_query_string`), and the code never logs request bodies or `s`.
 - **IP addresses are not stored.** Rate limits use the IP only as a key. The daily cap on free-text parsing counts a SHA-256 hash of the IP with a random salt that's deleted at the end of each UTC day, along with that day's counts.
@@ -85,6 +89,10 @@ npm run dev                           # http://localhost:8787
 
 Free-text parsing calls Workers AI, which needs a Cloudflare login even during `wrangler dev`. Without one, manifests and manually added items still work.
 
+Jev is billed in [AI Gateway credits](https://developers.cloudflare.com/ai-gateway/), not neurons. Without credits its calls fail with "Insufficient AI Gateway credits", and parsing carries on without it (see above).
+
+`npm run update-injection-corpus` refreshes the prompt-injection test corpus (`test/fixtures/injection/corpus.json`) from [garak](https://github.com/NVIDIA/garak) (Apache-2.0) and [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings) (MIT), at the commits pinned in the script.
+
 Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run record-fixtures` to refresh the recorded upstream samples that tests use. Tests never touch the network.
 
 ## Deploying
@@ -92,7 +100,7 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 1. `npx wrangler d1 create vulnder`, then put the returned `database_id` in both D1 entries in `wrangler.jsonc`.
 2. Set `BASE_URL` (and `DISPLAY_NAME` if you like) in `wrangler.jsonc`. Feed links, badge links and Atom IDs are built from it.
 3. Create a [Turnstile widget](https://developers.cloudflare.com/turnstile/), put its site key in `TURNSTILE_SITE_KEY`, and run `npx wrangler secret put TURNSTILE_SECRET_KEY`.
-4. `npm run db:migrate:remote`, then `npm run backfill -- --remote`.
+4. `npm run db:migrate:remote`, then `npm run backfill -- --remote`. Optionally, buy AI Gateway credits so Jev can screen free text and order close matches (about $0.0001 a parse, at $0.042 per million input tokens).
 5. Deploy, choosing how ingest runs:
    - **Free plan:** `npx wrangler deploy`. The Worker can't run ingest itself (50 subrequests, 10 ms CPU), so `.github/workflows/ingest.yml` runs it hourly from GitHub Actions. Add the `CLOUDFLARE_API_TOKEN` (with D1 edit permission) and `CLOUDFLARE_ACCOUNT_ID` repository secrets. GitHub turns off scheduled workflows after 60 days without repository activity; `/api/health` shows sources as stale when that happens.
    - **Workers Paid:** `npx wrangler deploy --env paid`, which adds an hourly cron trigger. Set `GITHUB_TOKEN` as a Worker secret (Workers egress IPs are shared, and the unauthenticated GitHub limit is 60 requests an hour), then disable the Actions workflow.
@@ -102,7 +110,7 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 | Name | Kind | Purpose |
 |---|---|---|
 | `DB` | D1 | All data |
-| `AI` | Workers AI | Free-text extraction only (10,000 free neurons a day) |
+| `AI` | Workers AI | Free text only: extraction (10,000 free neurons a day) and Jev (AI Gateway credits) |
 | `RESOLVE_LIMITER` | Rate limiting | Per-IP limit on `POST /api/resolve` (20 a minute) |
 | `FEED_LIMITER` | Rate limiting | Per-IP limit on feed, Atom and badge requests that miss the cache (60 a minute) |
 | `ASSETS` | Static assets | The front end in `public/` |

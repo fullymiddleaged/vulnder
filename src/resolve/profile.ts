@@ -1,173 +1,76 @@
+import { z } from 'zod';
+import type { Chip } from './catalog';
+
 /**
- * Who a stack probably belongs to. The guess only reorders close matches, so a
- * home user asking about "Cisco switches" sees small-business gear first and an
- * enterprise sees Catalyst and Nexus first. It never hides or adds an item,
- * and exact matches are left alone.
+ * What kind of stack a description is about, on two axes: scale (enterprise,
+ * small business or home) and hosting (cloud or on-premises). Jev reads both
+ * from the person's own words (jev.ts); manifests get no profile.
  *
- * The classifier is a plain function of non-identifying signals, so another
- * classifier (for example a hosted one) can be swapped in and compared.
+ * The profile decides only whether close matches are worth reordering. When
+ * one axis is clear enough, Jev judges how well each close match fits the
+ * description, and fixed logic sorts by that: a home lab asking about "Cisco
+ * switches" sees small-business gear first. Nothing is hidden or added, and
+ * exact matches are left alone.
  */
 
-export const PROFILES = ['enterprise', 'smb', 'home', 'cloud', 'developer'] as const;
-export type Profile = (typeof PROFILES)[number];
+export const SCALES = ['enterprise', 'smb', 'home'] as const;
+export type Scale = (typeof SCALES)[number];
+export const HOSTINGS = ['cloud', 'on_prem'] as const;
+export type Hosting = (typeof HOSTINGS)[number];
 
-export interface ProfileSignals {
-  /** Exactly resolved products. */
-  products: { vendor: string; product: string }[];
-  /** Vendors behind vague inputs ("Netgear router"), which only have close matches. */
-  vendors: string[];
-  /** Direct package dependencies. */
-  directPackages: number;
-  /** What the extraction model said about the text; always null for manifests. */
-  modelHint: Profile | null;
-}
-
-export interface ProfileGuess {
-  profile: Profile | null;
-  /** 0 to 1: how much the evidence agrees, scaled down when there is little of it. */
+export interface AxisGuess<T> {
+  value: T | null;
+  /** 0 to 1: Jev's confidence in the value. */
   confidence: number;
 }
 
-export type ProfileClassifier = (signals: ProfileSignals) => ProfileGuess | Promise<ProfileGuess>;
+export interface StackProfile {
+  scale: AxisGuess<Scale>;
+  hosting: AxisGuess<Hosting>;
+}
 
-/** Below this, close matches keep their catalog order. */
+export const NO_PROFILE: StackProfile = { scale: { value: null, confidence: 0 }, hosting: { value: null, confidence: 0 } };
+
+/** Below this, an axis doesn't count as known. */
 export const MIN_RANK_CONFIDENCE = 0.5;
 
-/**
- * Segment tags: which kinds of stack a product usually turns up in. The first
- * entry matching the vendor (and the product pattern, if any) wins, so
- * specific entries come before a vendor's catch-all. Patterns are tested
- * against catalog product keys, which may repeat the vendor (`cisco_ios_xe_software`).
- */
-export interface Segment {
-  vendor: string;
-  product?: RegExp;
-  profiles: Profile[];
+/** A close match Jev wasn't asked about fits as well as a coin toss. */
+export const NEUTRAL_FIT = 0.5;
+
+const confidence = z.number().min(0).max(1);
+const StoredProfile = z.object({
+  scale: z.object({ value: z.enum(SCALES).nullable(), confidence }),
+  hosting: z.object({ value: z.enum(HOSTINGS).nullable(), confidence }),
+});
+
+/** A profile read back from the parse cache, or no profile if it doesn't validate. */
+export function parseProfile(raw: unknown): StackProfile {
+  const parsed = StoredProfile.safeParse(raw);
+  return parsed.success ? parsed.data : NO_PROFILE;
 }
 
-export const SEGMENTS: Segment[] = [
-  { vendor: 'cisco', product: /small_business|(^|_)(rv|sg|cbs|spa)\d|meraki|business_\d{3}/, profiles: ['smb', 'home'] },
-  { vendor: 'cisco', profiles: ['enterprise'] },
-  { vendor: 'microsoft', product: /azure|entra|exchange_online|microsoft_365|copilot|fabric/, profiles: ['cloud'] },
-  { vendor: 'microsoft', product: /visual_studio|(^|_)net_\d|asp_?net|powershell|kiota|typescript/, profiles: ['developer'] },
-  { vendor: 'microsoft', product: /exchange_server|sharepoint|skype_for_business|dynamics|active_directory|sql_server|windows_server/, profiles: ['enterprise', 'smb'] },
-  { vendor: 'microsoft', product: /xbox|age_of_empires|hevc_video|pc_manager/, profiles: ['home'] },
-  { vendor: 'google', product: /cloud|gke|gvisor|kubernetes/, profiles: ['cloud'] },
-  { vendor: 'google', product: /nest|pixel|android|chromecast|home/, profiles: ['home'] },
-  { vendor: 'google', product: /protobuf|(^|_)go_|cel_go|tink|adk|mcp_toolbox/, profiles: ['developer'] },
-  { vendor: 'amazon', product: /kiro|strands|ion_|deep_java|mcp_server/, profiles: ['developer'] },
-  { vendor: 'amazon', profiles: ['cloud'] },
-  { vendor: 'aws', profiles: ['cloud'] },
-  { vendor: 'kubernetes', profiles: ['cloud'] },
-  { vendor: 'docker', profiles: ['cloud', 'developer'] },
-  { vendor: 'hashicorp', profiles: ['cloud'] },
-  { vendor: 'redhat', product: /openshift/, profiles: ['cloud'] },
-  { vendor: 'vercel', profiles: ['cloud'] },
-  { vendor: 'cloudflare', profiles: ['cloud'] },
-  { vendor: 'atlassian', product: /data_center|_server/, profiles: ['enterprise'] },
-  { vendor: 'atlassian', product: /sourcetree/, profiles: ['developer'] },
-  { vendor: 'fortinet', product: /fortios|fortigate|fortiwifi/, profiles: ['enterprise', 'smb'] },
-  { vendor: 'fortinet', profiles: ['enterprise'] },
-  { vendor: 'juniper', profiles: ['enterprise'] },
-  { vendor: 'palo_alto_networks', profiles: ['enterprise'] },
-  { vendor: 'paloaltonetworks', profiles: ['enterprise'] },
-  { vendor: 'checkpoint', profiles: ['enterprise'] },
-  { vendor: 'check_point', profiles: ['enterprise'] },
-  { vendor: 'f5', profiles: ['enterprise'] },
-  { vendor: 'citrix', profiles: ['enterprise'] },
-  { vendor: 'ivanti', profiles: ['enterprise'] },
-  { vendor: 'vmware', profiles: ['enterprise'] },
-  { vendor: 'broadcom', profiles: ['enterprise'] },
-  { vendor: 'sap', profiles: ['enterprise'] },
-  { vendor: 'oracle', product: /e_business|peoplesoft|weblogic|fusion|database_server|jd_edwards/, profiles: ['enterprise'] },
-  { vendor: 'servicenow', profiles: ['enterprise'] },
-  { vendor: 'splunk', profiles: ['enterprise'] },
-  { vendor: 'solarwinds', profiles: ['enterprise', 'smb'] },
-  { vendor: 'zohocorp', product: /manageengine/, profiles: ['enterprise', 'smb'] },
-  { vendor: 'veeam', profiles: ['enterprise', 'smb'] },
-  { vendor: 'sonicwall', profiles: ['smb'] },
-  { vendor: 'sophos', profiles: ['smb'] },
-  { vendor: 'watchguard', profiles: ['smb'] },
-  { vendor: 'draytek', profiles: ['smb'] },
-  { vendor: 'connectwise', profiles: ['smb'] },
-  { vendor: 'kaseya', profiles: ['smb'] },
-  { vendor: 'wordpress', profiles: ['smb'] },
-  { vendor: 'zyxel', profiles: ['smb', 'home'] },
-  { vendor: 'mikrotik', profiles: ['smb', 'home'] },
-  { vendor: 'ubiquiti', profiles: ['smb', 'home'] },
-  { vendor: 'synology', profiles: ['home', 'smb'] },
-  { vendor: 'qnap', profiles: ['home', 'smb'] },
-  { vendor: 'tp_link', profiles: ['home'] },
-  { vendor: 'netgear', profiles: ['home'] },
-  { vendor: 'd_link', profiles: ['home'] },
-  { vendor: 'asus', profiles: ['home'] },
-  { vendor: 'linksys', profiles: ['home'] },
-  { vendor: 'tenda', profiles: ['home'] },
-  { vendor: 'totolink', profiles: ['home'] },
-  { vendor: 'wavlink', profiles: ['home'] },
-  { vendor: 'plex', profiles: ['home'] },
-  { vendor: 'home_assistant', profiles: ['home'] },
-  { vendor: 'github', profiles: ['developer'] },
-  { vendor: 'gitlab', profiles: ['developer'] },
-  { vendor: 'jenkins', profiles: ['developer'] },
-  { vendor: 'jetbrains', profiles: ['developer'] },
-  { vendor: 'git_scm', profiles: ['developer'] },
-  { vendor: 'nodejs', profiles: ['developer'] },
-  { vendor: 'python', profiles: ['developer'] },
-];
-
-/** The segment tags for a catalog product, or none. */
-export function segmentsOf(vendor: string, product?: string): Profile[] {
-  const hit = SEGMENTS.find((s) => s.vendor === vendor && (s.product === undefined ? true : product !== undefined && s.product.test(product)));
-  return hit?.profiles ?? [];
+/** True when at least one axis is known well enough to judge fit against. */
+export function canRank(profile: StackProfile): boolean {
+  return [profile.scale, profile.hosting].some((a) => a.value !== null && a.confidence >= MIN_RANK_CONFIDENCE);
 }
 
-/** Vendor-wide tags only (entries without a product pattern), for vague inputs. */
-function vendorSegments(vendor: string): Profile[] {
-  return SEGMENTS.find((s) => s.vendor === vendor && s.product === undefined)?.profiles ?? [];
-}
-
-const WEIGHT = { product: 1, vendor: 0.5, package: 1, modelHint: 3 } as const;
-/** Evidence worth this much counts as fully supported. */
-const FULL_EVIDENCE = 3;
-
-/** The default classifier: weighted votes from segment tags, packages and the model's hint. */
-export function rulesClassifier(signals: ProfileSignals): ProfileGuess {
-  const scores = new Map<Profile, number>();
-  const vote = (profiles: Profile[], weight: number) => {
-    for (const p of profiles) scores.set(p, (scores.get(p) ?? 0) + weight / profiles.length);
-  };
-  for (const { vendor, product } of signals.products) vote(segmentsOf(vendor, product), WEIGHT.product);
-  for (const vendor of signals.vendors) vote(vendorSegments(vendor), WEIGHT.vendor);
-  if (signals.directPackages > 0) vote(['developer'], signals.directPackages * WEIGHT.package);
-  if (signals.modelHint) vote([signals.modelHint], WEIGHT.modelHint);
-
-  const ranked = [...scores].sort((a, b) => b[1] - a[1]);
-  const total = ranked.reduce((sum, [, s]) => sum + s, 0);
-  const [top, second] = ranked;
-  if (!top || total === 0 || (second && second[1] === top[1])) return { profile: null, confidence: 0 };
-  const confidence = (top[1] / total) * Math.min(1, total / FULL_EVIDENCE);
-  return { profile: top[0], confidence: Math.round(confidence * 100) / 100 };
-}
-
-export function classifyProfile(signals: ProfileSignals, classifier: ProfileClassifier = rulesClassifier): ProfileGuess | Promise<ProfileGuess> {
-  return classifier(signals);
+/** Chips whose items are all close matches, with more than one to order. */
+export function rankableChips(chips: Chip[]): Chip[] {
+  return chips.filter((chip) => chip.items.length > 1 && chip.items.every((i) => i.close));
 }
 
 /**
- * Close matches that fit the profile first, then untagged ones, then ones
- * tagged for other kinds of stack. The sort is stable, so catalog order holds
- * within each group.
+ * Each rankable chip's close matches, best fit first. Items without a fit
+ * count as neutral, and the sort is stable, so catalog order breaks ties.
  */
-export function rankByProfile<T>(items: T[], profile: Profile, keyOf: (item: T) => { vendor: string; product?: string } | null): T[] {
-  const rank = (item: T) => {
-    const key = keyOf(item);
-    const tags = key ? segmentsOf(key.vendor, key.product) : [];
-    if (tags.includes(profile)) return 0;
-    return tags.length === 0 ? 1 : 2;
-  };
-  return items
-    .map((item) => ({ item, r: rank(item) }))
-    .sort((a, b) => a.r - b.r)
-    .map(({ item }) => item);
+export function orderByFit(chips: Chip[], fit: ReadonlyMap<string, number>): Chip[] {
+  const rankable = new Set(rankableChips(chips));
+  return chips.map((chip) => {
+    if (!rankable.has(chip)) return chip;
+    const items = chip.items
+      .map((item) => ({ item, fit: fit.get(item.item) ?? NEUTRAL_FIT }))
+      .sort((a, b) => b.fit - a.fit)
+      .map(({ item }) => item);
+    return { ...chip, items };
+  });
 }

@@ -1,80 +1,60 @@
 import { describe, expect, it } from 'vitest';
-import { classifyProfile, rankByProfile, rulesClassifier, segmentsOf, type ProfileSignals } from '../src/resolve/profile';
+import type { Chip } from '../src/resolve/catalog';
+import { canRank, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
 
-const none: ProfileSignals = { products: [], vendors: [], directPackages: 0, modelHint: null };
+const close = (item: string) => ({ item, label: item, close: true, known: true });
+const exact = (item: string) => ({ item, label: item, close: false, known: true });
 
-describe('segmentsOf', () => {
-  it('prefers a specific entry over the vendor catch-all', () => {
-    expect(segmentsOf('cisco', 'cisco_small_business_rv_series_routers')).toEqual(['smb', 'home']);
-    expect(segmentsOf('cisco', 'cisco_ios_xe_software')).toEqual(['enterprise']);
-    expect(segmentsOf('microsoft', 'azure_key_vault')).toEqual(['cloud']);
-  });
+const SWITCHES: Chip = { input: 'Cisco switches', status: 'resolved', items: ['?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/small_business_switches'].map(close) };
+const NGINX: Chip = { input: 'nginx', status: 'resolved', items: ['?p:f5/nginx', '?p:nginx/nginx'].map(close) };
+const POSTGRES: Chip = { input: 'Postgres', status: 'resolved', items: [exact('p:postgresql/postgresql')] };
+const ONE_CLOSE: Chip = { input: 'Grafanna', status: 'resolved', items: [close('?p:grafana/grafana')] };
 
-  it('returns nothing for untagged products', () => {
-    expect(segmentsOf('postgresql', 'postgresql')).toEqual([]);
-    expect(segmentsOf('microsoft', 'windows')).toEqual([]);
-  });
-});
+const home: StackProfile = { scale: { value: 'home', confidence: 0.9 }, hosting: { value: null, confidence: 0 } };
 
-describe('rulesClassifier', () => {
-  it('makes no guess without evidence or on a tie', () => {
-    expect(rulesClassifier(none)).toEqual({ profile: null, confidence: 0 });
-    expect(
-      rulesClassifier({ ...none, products: [{ vendor: 'netgear', product: 'r7000' }, { vendor: 'aws', product: 'aws_load_balancer_controller' }] }),
-    ).toEqual({ profile: null, confidence: 0 });
-  });
-
-  it('calls a lockfile a developer stack', () => {
-    expect(rulesClassifier({ ...none, directPackages: 40 })).toEqual({ profile: 'developer', confidence: 1 });
-  });
-
-  it('reads home gear from exact products and vague vendors', () => {
-    const guess = rulesClassifier({
-      ...none,
-      products: [{ vendor: 'tp_link', product: 'archer_ax21' }, { vendor: 'synology', product: 'diskstation_manager' }],
-      vendors: ['netgear'],
-    });
-    // home: 1 + 0.5 + 0.5 = 2; smb: 0.5 → 0.8 agreement × 2.5/3 evidence.
-    expect(guess).toEqual({ profile: 'home', confidence: 0.67 });
-  });
-
-  it('scales confidence down when there is little evidence', () => {
-    expect(rulesClassifier({ ...none, vendors: ['cisco'] })).toEqual({ profile: 'enterprise', confidence: 0.17 });
-  });
-
-  it('lets the model hint outweigh a single product', () => {
-    const guess = rulesClassifier({ ...none, products: [{ vendor: 'cisco', product: 'ios_xe' }], modelHint: 'home' });
-    expect(guess.profile).toBe('home');
-    expect(guess.confidence).toBe(0.75);
-  });
-
-  it('can be swapped for another classifier', async () => {
-    const guess = await classifyProfile(none, async () => ({ profile: 'cloud', confidence: 0.9 }));
-    expect(guess).toEqual({ profile: 'cloud', confidence: 0.9 });
+describe('canRank', () => {
+  it('needs one axis known with enough confidence', () => {
+    expect(canRank(NO_PROFILE)).toBe(false);
+    expect(canRank(home)).toBe(true);
+    expect(canRank({ ...home, scale: { value: 'home', confidence: 0.49 } })).toBe(false);
+    expect(canRank({ scale: { value: null, confidence: 0 }, hosting: { value: 'cloud', confidence: 0.5 } })).toBe(true);
   });
 });
 
-describe('rankByProfile', () => {
-  const key = (s: string) => {
-    const [vendor, product] = s.split('/');
-    return vendor && product ? { vendor, product } : null;
-  };
+describe('rankableChips', () => {
+  it('picks chips with several close matches and nothing exact', () => {
+    expect(rankableChips([SWITCHES, POSTGRES, ONE_CLOSE, NGINX])).toEqual([SWITCHES, NGINX]);
+  });
+});
 
-  it('puts fitting items first, untagged next, other profiles last, keeping order within each', () => {
-    const items = ['cisco/ios_xe', 'postgresql/postgresql', 'cisco/small_business_switches', 'npm-package', 'cisco/nx_os', 'cisco/rv340_firmware'];
-    expect(rankByProfile(items, 'home', key)).toEqual([
-      'cisco/small_business_switches',
-      'cisco/rv340_firmware',
-      'postgresql/postgresql',
-      'npm-package',
-      'cisco/ios_xe',
-      'cisco/nx_os',
+describe('orderByFit', () => {
+  it('puts the best fit first, leaves other chips alone and never drops an item', () => {
+    const fit = new Map([
+      ['?p:cisco/ios_xe', 0.1],
+      ['?p:cisco/small_business_switches', 0.9],
+      ['?p:cisco/nx_os', 0.2],
+      ['p:postgresql/postgresql', 0],
     ]);
+    const [switches, postgres] = orderByFit([SWITCHES, POSTGRES], fit);
+    expect(switches!.items.map((i) => i.item)).toEqual(['?p:cisco/small_business_switches', '?p:cisco/nx_os', '?p:cisco/ios_xe']);
+    expect(postgres).toBe(POSTGRES);
+    // The input is not mutated.
+    expect(SWITCHES.items[0]!.item).toBe('?p:cisco/ios_xe');
   });
 
-  it('never drops or adds items', () => {
-    const items = ['cisco/ios_xe', 'cisco/nx_os'];
-    expect(rankByProfile(items, 'enterprise', key)).toEqual(items);
-    expect(rankByProfile([], 'home', key)).toEqual([]);
+  it('treats unjudged items as neutral and keeps catalog order for ties', () => {
+    const [switches] = orderByFit([SWITCHES], new Map([['?p:cisco/small_business_switches', 0.6]]));
+    expect(switches!.items.map((i) => i.item)).toEqual(['?p:cisco/small_business_switches', '?p:cisco/ios_xe', '?p:cisco/nx_os']);
+    expect(orderByFit([SWITCHES], new Map())[0]!.items).toEqual(SWITCHES.items);
+  });
+});
+
+describe('parseProfile', () => {
+  it('reads a stored profile and rejects anything malformed', () => {
+    expect(parseProfile(home)).toEqual(home);
+    expect(parseProfile({ scale: { value: 'mars', confidence: 1 }, hosting: { value: null, confidence: 0 } })).toEqual(NO_PROFILE);
+    expect(parseProfile({ scale: { value: 'home', confidence: 2 }, hosting: { value: null, confidence: 0 } })).toEqual(NO_PROFILE);
+    expect(parseProfile(undefined)).toEqual(NO_PROFILE);
+    expect(parseProfile('home')).toEqual(NO_PROFILE);
   });
 });
