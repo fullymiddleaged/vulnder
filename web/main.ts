@@ -1,5 +1,6 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
+import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import { ago, CHANGE_LABEL, changeCounts, eventDetail, groupChanges, matchHeadline, ordinal, pct, shortSummary, type ChangeGroup } from './format';
@@ -128,6 +129,7 @@ function mountTurnstile(box: HTMLElement): void {
     if (!window.turnstile) return void setTimeout(tryRender, 200);
     turnstileWidget = window.turnstile.render(box, {
       sitekey: config!.turnstileSiteKey,
+      action: TURNSTILE_ACTION,
       callback: (token: string) => (turnstileToken = token),
       'expired-callback': () => (turnstileToken = null),
       'error-callback': () => (turnstileToken = null),

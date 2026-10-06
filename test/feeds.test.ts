@@ -242,6 +242,27 @@ describe('GET /api/feed', () => {
   });
 });
 
+describe('feed rate limit', () => {
+  it('limits cache misses per IP and never cached responses', async () => {
+    stubOsvFetch();
+    const limit = vi.fn(async () => ({ success: true }));
+    const e = { ...env, FEED_LIMITER: { limit } as unknown as RateLimit };
+    const url = `/api/feed?s=${encodeURIComponent('pypi:fastapi')}`;
+    const headers = { 'cf-connecting-ip': '203.0.113.9' };
+    expect((await app.request(url, { headers }, e)).status).toBe(200);
+    expect(limit.mock.calls).toEqual([[{ key: '203.0.113.9' }]]);
+
+    // A cached response is served without asking the limiter, even when it would refuse.
+    limit.mockResolvedValue({ success: false });
+    expect((await app.request(url, { headers }, e)).status).toBe(200);
+    expect(limit).toHaveBeenCalledTimes(1);
+
+    const miss = await app.request(`/badge.svg?s=${encodeURIComponent('pypi:fastapi,npm:next')}`, { headers }, e);
+    expect(miss.status).toBe(429);
+    expect(miss.headers.get('Retry-After')).toBe('60');
+  });
+});
+
 describe('GET /feed.xml', () => {
   it('has one entry per event, with IDs built from the base URL', async () => {
     stubOsvFetch();

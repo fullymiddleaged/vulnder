@@ -47,6 +47,7 @@ A list of what you run is useful to an attacker, so Vulnder keeps as little as i
 - **Your stack and your text are not stored.** Free text goes to Workers AI only to pick out component names. The parsed result is cached under a SHA-256 hash of the normalised text; the text itself is never cached.
 - **Manifests stay on your machine.** Files are parsed in your browser, and only package names and versions are sent.
 - **Stack URLs are not logged.** Workers Logs redact query strings (`observability.redact_query_string`), and the code never logs request bodies or `s`.
+- **IP addresses are not stored.** Rate limits use the IP only as a key. The daily cap on free-text parsing counts a SHA-256 hash of the IP with a random salt that's deleted at the end of each UTC day, along with that day's counts.
 - **No tracking.** There are no analytics or third-party scripts, apart from Cloudflare Turnstile on the submit form.
 - **No referrer leaks.** Pages and links send no `Referer`, so clicking an advisory doesn't hand your stack URL to another site.
 - **What Cloudflare can see.** Vulnder runs on Cloudflare, which processes every request, including the stack in the URL. Feed responses are cached in Cloudflare's cache under the canonical stack. If that is too much exposure, self-host.
@@ -98,11 +99,13 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 | `DB` | D1 | All data |
 | `AI` | Workers AI | Free-text extraction only (10,000 free neurons a day) |
 | `RESOLVE_LIMITER` | Rate limiting | Per-IP limit on `POST /api/resolve` (20 a minute) |
+| `FEED_LIMITER` | Rate limiting | Per-IP limit on feed, Atom and badge requests that miss the cache (60 a minute) |
 | `ASSETS` | Static assets | The front end in `public/` |
 | `BASE_URL`, `DISPLAY_NAME` | Vars | Public URL and name |
 | `INGEST_RUNTIME` | Var | `actions` (free plan) or `worker` (Paid cron) |
 | `AI_MODEL` | Var | Workers AI model ID (default `@cf/google/gemma-4-26b-a4b-it`) |
-| `TURNSTILE_SITE_KEY` | Var | Public Turnstile key |
+| `PARSE_DAILY_PER_CLIENT`, `PARSE_DAILY_TOTAL` | Vars | Daily caps on free-text parses that reach the model (defaults 30 and 600; cached parses are free) |
+| `TURNSTILE_SITE_KEY` | Var | Public Turnstile key. Tokens must come from `BASE_URL`'s hostname |
 | `TURNSTILE_SECRET_KEY` | Secret | Required; `/api/resolve` refuses requests without it |
 | `GITHUB_TOKEN` | Secret | Optional; raises the GitHub API limit |
 

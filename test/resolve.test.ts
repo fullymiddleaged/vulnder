@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
 import { resolveCandidates, similarity } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
-import { SITEVERIFY_URL } from '../src/resolve/turnstile';
+import { SITEVERIFY_URL, verifyTurnstile } from '../src/resolve/turnstile';
 import { resetDb, store } from './helpers/db';
 
 const BRIEF_EXAMPLE = 'Next.js on Vercel, Postgres 16, Redis, nginx, a couple of Cisco switches';
@@ -366,6 +366,30 @@ describe('POST /api/resolve', () => {
     expect(await res.json()).toMatchObject({ fallback: 'manual' });
   });
 
+  it('caps model calls per client per day, without counting cached parses', async () => {
+    stubTurnstile();
+    const e = { ...testEnv(async () => MODEL_REPLY), PARSE_DAILY_PER_CLIENT: '1' } as unknown as ReturnType<typeof testEnv>;
+    const first = `Redis ${++textSalt}`;
+    expect((await post({ text: first, turnstileToken: 't' }, e)).status).toBe(200);
+    expect((await post({ text: first, turnstileToken: 't' }, e)).status).toBe(200);
+    const capped = await post({ text: `nginx ${++textSalt}`, turnstileToken: 't' }, e);
+    expect(capped.status).toBe(429);
+    expect(await capped.json()).toMatchObject({ fallback: 'manual' });
+    // Another client is unaffected; manifests never count.
+    expect((await post({ text: `nginx ${textSalt}`, turnstileToken: 't' }, e, { 'cf-connecting-ip': '203.0.113.8' })).status).toBe(200);
+    expect((await post({ text: JSON.stringify({ dependencies: { next: '14.2.3' } }), turnstileToken: 't' }, e)).status).toBe(200);
+    expect((e.AI.run as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+  });
+
+  it('falls back to the manual path once the daily total is used', async () => {
+    stubTurnstile();
+    const e = { ...testEnv(async () => MODEL_REPLY), PARSE_DAILY_TOTAL: '1' } as unknown as ReturnType<typeof testEnv>;
+    expect((await post({ text: `Redis ${++textSalt}`, turnstileToken: 't' }, e)).status).toBe(200);
+    const res = await post({ text: `Redis ${++textSalt}`, turnstileToken: 't' }, e, { 'cf-connecting-ip': '203.0.113.8' });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ fallback: 'manual' });
+  });
+
   it('rejects failed Turnstile checks', async () => {
     stubTurnstile(false);
     const res = await post({ text: 'Redis', turnstileToken: 'bad' }, testEnv(async () => MODEL_REPLY));
@@ -394,5 +418,37 @@ describe('POST /api/resolve', () => {
     expect((await post({ turnstileToken: 't', text: 'x'.repeat(2001) }, e)).status).toBe(413);
     const raw = await app.request('/api/resolve', { method: 'POST', body: '{not json', headers: { 'content-type': 'application/json' } }, e);
     expect(raw.status).toBe(400);
+  });
+});
+
+describe('verifyTurnstile', () => {
+  const PROD_SECRET = '0x4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const reply = (body: Record<string, unknown>) => (async () => Response.json(body)) as unknown as typeof fetch;
+  const expect_ = { hostname: 'vulnder.dev', action: 'resolve' };
+
+  it('accepts a token minted on our hostname for our action', async () => {
+    const fetchImpl = reply({ success: true, hostname: 'vulnder.dev', action: 'resolve' });
+    expect(await verifyTurnstile(fetchImpl, PROD_SECRET, 'tok', null, expect_)).toEqual({ success: true, errors: [] });
+  });
+
+  it('refuses tokens from another hostname or action', async () => {
+    expect(await verifyTurnstile(reply({ success: true, hostname: 'evil.example', action: 'resolve' }), PROD_SECRET, 'tok', null, expect_)).toEqual({
+      success: false,
+      errors: ['hostname-mismatch'],
+    });
+    expect(await verifyTurnstile(reply({ success: true, hostname: 'vulnder.dev', action: 'login' }), PROD_SECRET, 'tok', null, expect_)).toEqual({
+      success: false,
+      errors: ['action-mismatch'],
+    });
+  });
+
+  it('skips those checks for Cloudflare test secrets, which answer localhost/test', async () => {
+    const fetchImpl = reply({ success: true, hostname: 'localhost', action: 'test' });
+    expect((await verifyTurnstile(fetchImpl, '1x0000000000000000000000000000000AA', 'tok', null, expect_)).success).toBe(true);
+  });
+
+  it('passes on siteverify failures', async () => {
+    const fetchImpl = reply({ success: false, 'error-codes': ['timeout-or-duplicate'] });
+    expect(await verifyTurnstile(fetchImpl, PROD_SECRET, 'tok', null, expect_)).toEqual({ success: false, errors: ['timeout-or-duplicate'] });
   });
 });

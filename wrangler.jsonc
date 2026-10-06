@@ -45,6 +45,11 @@
     "INGEST_RUNTIME": "actions",
     // Workers AI model for free-text extraction. Must support json_schema output.
     "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+    // Daily caps on free-text parses that reach the model (cached parses are
+    // free): per client, and in total. A parse is about 13 neurons, so 600 a
+    // day stays inside the free plan's 10,000 neurons.
+    "PARSE_DAILY_PER_CLIENT": "30",
+    "PARSE_DAILY_TOTAL": "600",
     // Turnstile site key (public). This is Cloudflare's always-pass test key for
     // local development; set your own for a deployment. The matching secret,
     // TURNSTILE_SECRET_KEY, goes in .dev.vars locally and `wrangler secret put` remotely.
@@ -54,9 +59,14 @@
   // Free-text parsing only. Free plan: 10,000 neurons a day.
   "ai": { "binding": "AI" },
 
-  // Per-IP limit on POST /api/resolve (Turnstile is the main gate). The IP is
-  // used only as the limiter key and never logged. Periods can be 10 or 60 s.
-  "ratelimits": [{ "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
+  // Per-IP limits (the IP is used only as the limiter key and never logged).
+  // Periods can be 10 or 60 s. RESOLVE_LIMITER: POST /api/resolve, where
+  // Turnstile is the main gate. FEED_LIMITER: feed, Atom and badge requests
+  // that miss the cache; cached responses are never limited.
+  "ratelimits": [
+    { "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ],
 
   "d1_databases": [
     {
@@ -79,11 +89,16 @@
         "BASE_URL": "https://vulnder.dev",
         "INGEST_RUNTIME": "worker",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+        "PARSE_DAILY_PER_CLIENT": "30",
+        "PARSE_DAILY_TOTAL": "600",
         // Replace with the production Turnstile site key before deploying.
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
       },
       "ai": { "binding": "AI" },
-      "ratelimits": [{ "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
+      "ratelimits": [
+        { "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+        { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+      ],
       "d1_databases": [
         {
           "binding": "DB",

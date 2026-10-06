@@ -11,7 +11,8 @@ import type { AppEnv } from '../types';
  * GET /api/feed, /feed.xml and /badge.svg for a stack in `s`.
  * Responses are cached in the Cache API, keyed on the canonical stack, the
  * window and the data version, so they invalidate whenever ingest writes.
- * Nothing here logs the stack.
+ * Cache misses do the real work (D1 queries and OSV lookups), so they are
+ * rate-limited per IP; hits are not. Nothing here logs the stack.
  */
 
 export const DEFAULT_DAYS = 30;
@@ -73,6 +74,10 @@ async function cached(
   // Cached responses have immutable headers; copy so middleware can add to them.
   if (hit) return new Response(hit.body, hit);
 
+  if (c.env.FEED_LIMITER) {
+    const { success } = await c.env.FEED_LIMITER.limit({ key: c.req.header('cf-connecting-ip') ?? 'unknown' });
+    if (!success) return c.json({ error: 'too many new feed requests; try again in a minute' }, 429, { 'Retry-After': '60' });
+  }
   const res = await build(dataVersion);
   res.headers.set('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
   if (cache && res.ok) {
