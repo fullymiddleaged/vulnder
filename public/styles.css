@@ -278,7 +278,31 @@ details[open] > summary .expand .when-open { display: inline; }
   .briefs { padding-left: 0.25rem; }
 }
 
+/* Loading: the logo scans. Fades in late so a fast response never flashes it. */
+main[aria-busy='true'] > :not(.loader) { display: none; }
+/* The status line still announces the wait to screen readers; the loader already says it on screen. */
+main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.loader { display: flex; align-items: center; gap: 1.5rem; padding: 2.5rem 0; animation: appear 0.25s 0.15s both; }
+.loader svg { width: 5rem; height: 5rem; flex: none; color: var(--accent); overflow: visible; }
+.loader h2 { font-size: clamp(1.7rem, 5vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+.loader p { margin: 0.3rem 0 0; }
+/* Circles the lens about its own centre without turning it, like a hand sweeping a magnifier. */
+.loader .lens { transform-box: view-box; transform-origin: 20px 20px; animation: sweep 1.8s linear infinite; }
+.loader .heart { transform-box: fill-box; transform-origin: center; animation: beat 1.2s ease-in-out infinite; }
+@keyframes appear { from { opacity: 0; } }
+@keyframes sweep {
+  from { transform: rotate(0deg) translateX(3px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(3px) rotate(-360deg); }
+}
+@keyframes beat {
+  0%, 45%, 100% { transform: scale(1); }
+  12% { transform: scale(1.22); }
+  26% { transform: scale(1.06); }
+  34% { transform: scale(1.16); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .expand::after { transition: none; }
   .risk-strip span { animation: none; }
+  .loader, .loader .lens, .loader .heart { animation: none; }
 }

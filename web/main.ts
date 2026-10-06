@@ -152,6 +152,51 @@ function mountTurnstile(box: HTMLElement): void {
   tryRender();
 }
 
+// ---------- Loading ----------
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svg(tag: string, attrs: Record<string, string>, ...children: Element[]): SVGElement {
+  const el = document.createElementNS(SVG_NS, tag) as SVGElement;
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.append(...children);
+  return el;
+}
+
+/** The logo at work: the magnifier circles as if scanning while the heart beats. */
+function loader(title: string, detail: string): HTMLElement {
+  const mark = svg(
+    'svg',
+    { viewBox: '0 0 48 48', 'aria-hidden': 'true', focusable: 'false' },
+    svg(
+      'g',
+      { class: 'lens', fill: 'currentColor' },
+      svg('path', { 'fill-rule': 'evenodd', d: 'M20 3a17 17 0 1 0 0.01 0ZM20 8.5a11.5 11.5 0 1 1-0.01 0Z' }),
+      svg('path', { d: 'M31.5 35.5l4-4 10 10a2.8 2.8 0 0 1-4 4Z' }),
+      svg('path', {
+        class: 'heart',
+        d: 'M20 27.7C14.96 24.1 12.44 21.22 12.44 17.62 12.44 15.1 14.24 13.3 16.58 13.3 18.02 13.3 19.28 14.2 20 15.46 20.72 14.2 21.98 13.3 23.42 13.3 25.76 13.3 27.56 15.1 27.56 17.62 27.56 21.22 25.04 24.1 20 27.7Z',
+      }),
+    ),
+  );
+  return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail)));
+}
+
+/**
+ * Shows the loader and hides the rest of the page until the returned function
+ * is called. The page underneath is left intact, so a failed request can show
+ * the form again as it was.
+ */
+function showBusy(title: string, detail: string): () => void {
+  const el = loader(title, detail);
+  app.setAttribute('aria-busy', 'true');
+  app.prepend(el);
+  return () => {
+    el.remove();
+    app.removeAttribute('aria-busy');
+  };
+}
+
 /** Shown once on the results page after a submit, e.g. names that matched nothing. */
 let pendingNote = '';
 
@@ -161,8 +206,10 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
   turnstileToken = null;
   window.turnstile?.reset(turnstileWidget);
   say('Working out what is in your stack…');
+  const done = showBusy('Reading your stack…', 'Picking out the software and devices you named.');
   try {
     const res = await resolve(body, token);
+    done();
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
     const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
     const notes = [
@@ -181,6 +228,7 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
     pendingNote = notes.join(' ');
     navigate(serializeStack(stack), 30);
   } catch (err) {
+    done();
     if (err instanceof ApiError && err.fallback === 'manual') {
       say(err.message);
       renderEdit([]);
@@ -292,11 +340,14 @@ function navigate(stack: string, days: number): void {
 
 async function renderResults(stack: string, days: number): Promise<void> {
   clear(app);
-  say('Loading…');
+  say('Finding matches…');
+  const done = showBusy('Finding matches…', 'Checking your stack against recent CVEs, CISA KEV and EPSS.');
   let feed: Feed;
   try {
     feed = await getFeed(stack, days);
+    done();
   } catch (err) {
+    done();
     say('');
     app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
     return;
