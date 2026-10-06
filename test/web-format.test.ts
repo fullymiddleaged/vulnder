@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, changeCounts, describeChange, eventDetail, groupChanges, matchHeadline, ordinal, pct, shortSummary } from '../web/format';
+import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, matchHeadline, ordinal, pct, RISK, shortSummary } from '../web/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
   return {
@@ -16,6 +16,9 @@ function result(id: string, tier: Result['tier'], match: Result['match'] = 'exac
     fixedVersions: [],
     cvss: null,
     links: { advisory: null, patch: null },
+    priority: tier === 'exploited' ? 'act' : tier === 'likely' ? 'attend' : 'track',
+    score: 0,
+    reasons: [],
   };
 }
 
@@ -109,5 +112,57 @@ describe('what changed this week', () => {
     expect(shortSummary(null)).toBeNull();
     expect(shortSummary('### Impact\n\nA  short   one.')).toBe('Impact A short one.');
     expect(shortSummary('word '.repeat(100), 22)).toBe('word word word word…');
+  });
+});
+
+describe('priority display', () => {
+  it('maps priorities to traffic lights, with no green', () => {
+    expect(Object.entries(RISK).map(([p, r]) => [p, r.label, r.light])).toEqual([
+      ['act', 'Act', 'red'],
+      ['attend', 'Attend', 'amber'],
+      ['watch', 'Watch', 'yellow'],
+      ['track', 'Track', 'grey'],
+    ]);
+  });
+
+  it('uses the CVSS qualitative bands', () => {
+    expect([10, 9, 8.9, 7, 6.9, 4, 3.9, 0.1, 0].map(cvssSeverity)).toEqual(['Critical', 'Critical', 'High', 'High', 'Medium', 'Medium', 'Low', 'Low', 'None']);
+  });
+
+  it('shows small scores with a decimal so they do not all read as 0', () => {
+    expect([91, 10, 9.96, 0.9, 0].map(formatScore)).toEqual(['91', '10', '10.0', '0.9', '0.0']);
+  });
+
+  it('splits results by priority, keeping feed order', () => {
+    const groups = byPriority([
+      { ...result('CVE-1', 'backlog'), priority: 'watch' },
+      { ...result('CVE-2', 'exploited'), priority: 'act' },
+      { ...result('CVE-3', 'backlog'), priority: 'watch' },
+    ]);
+    expect(Object.fromEntries(Object.entries(groups).map(([p, rs]) => [p, rs.map((r) => r.id)]))).toEqual({
+      act: ['CVE-2'],
+      attend: [],
+      watch: ['CVE-1', 'CVE-3'],
+      track: [],
+    });
+  });
+});
+
+describe('componentGroups', () => {
+  it('attaches results to the fix-first list, in its order, with ranks and close marks', () => {
+    const results = [result('CVE-1', 'exploited'), result('CVE-2', 'backlog'), result('CVE-3', 'backlog')];
+    const counts = { act: 0, attend: 0, watch: 0, track: 0 };
+    const groups = componentGroups(
+      [
+        { item: 'p:cisco/ios_xe', score: 91, counts: { ...counts, act: 1 }, vulns: ['CVE-1'], fixable: 0 },
+        { item: '?p:f5/nginx', score: 2, counts: { ...counts, track: 2 }, vulns: ['CVE-3', 'CVE-2', 'CVE-missing'], fixable: 1 },
+      ],
+      results,
+    );
+    expect(groups.map((g) => [g.rank, g.component, g.close, g.results.map((r) => r.id)])).toEqual([
+      [1, 'p:cisco/ios_xe', false, ['CVE-1']],
+      [2, 'p:f5/nginx', true, ['CVE-3', 'CVE-2']],
+    ]);
+    expect(componentGroups([], results)).toEqual([]);
   });
 });

@@ -42,6 +42,22 @@ export interface Result {
   fixedVersions: string[];
   cvss: { score: number; vector: string | null } | null;
   links: { advisory: string | null; patch: string | null };
+  priority: Priority;
+  /** 0–100: orders results within a priority. */
+  score: number;
+  /** Why it got this priority, most important first. */
+  reasons: string[];
+}
+
+export type Priority = 'act' | 'attend' | 'watch' | 'track';
+
+export interface FixItem {
+  /** Stack item; a leading '?' marks a close match. */
+  item: string;
+  score: number;
+  counts: Record<Priority, number>;
+  vulns: string[];
+  fixable: number;
 }
 
 export interface Change {
@@ -60,6 +76,9 @@ export interface Feed {
   links: { page: string; json: string; atom: string; badge: string };
   versionCheckUnavailable: boolean;
   summary: Record<Result['tier'], number>;
+  priorities: Record<Priority, number>;
+  /** Matched stack items in the order to fix them. */
+  fixFirst: FixItem[];
   changes: Change[];
   results: Result[];
   watching: string[];

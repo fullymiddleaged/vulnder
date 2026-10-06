@@ -8,9 +8,13 @@
   --accent: #6b3fa0;
   --accent-fg: #ffffff;
   --exploited: #b3261e;
-  --likely: #a15c00;
+  --likely: #b45309;
+  --critical: #ca8a04;
+  --critical-ink: #854d0e;
+  --critical-on: #1c1b19;
   --backlog: #4a5560;
   --ok: #2e7d32;
+  --on-light: #ffffff;
   --focus: #1a73e8;
   --radius: 10px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -28,8 +32,12 @@
     --accent-fg: #141312;
     --exploited: #ff8a80;
     --likely: #ffb74d;
+    --critical: #fde047;
+    --critical-ink: #fde047;
+    --critical-on: #141312;
     --backlog: #b0bec5;
     --ok: #81c784;
+    --on-light: #141312;
     --focus: #8ab4f8;
   }
 }
@@ -106,19 +114,46 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 .copy { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .notice { border-left: 4px solid var(--likely); padding-left: 0.75rem; }
 
+/* Traffic lights. Colour carries risk and nothing else; green is kept for good news. */
+.red { --light: var(--exploited); }
+.amber { --light: var(--likely); }
+.red, .amber, .yellow, .grey { --ink: var(--light); }
+/* Yellow is too light for white text or small text on white: darker ink, dark text on fills. */
+.yellow { --light: var(--critical); --ink: var(--critical-ink); --on-light: var(--critical-on); }
+.grey { --light: var(--backlog); }
+.light { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--light); flex: none; }
+.pill { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; border-radius: 999px; padding: 0.1rem 0.6rem; background: var(--light); color: var(--on-light); }
+
+.risk-summary { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+@media (max-width: 48rem) { .risk-summary { grid-template-columns: repeat(2, 1fr); } }
+.risk-tile { display: grid; align-content: start; border: 1px solid var(--light); border-top-width: 6px; border-radius: var(--radius); padding: 0.6rem 1rem 0.75rem; background: color-mix(in srgb, var(--light) 8%, var(--card)); }
+.risk-tile.empty { opacity: 0.55; }
+.risk-count { font-size: 2rem; font-weight: 800; line-height: 1.1; color: var(--ink); }
+.risk-label { font-weight: 700; }
+.risk-note { color: var(--muted); }
+
+.grouping { border: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.grouping legend { float: left; margin-right: 0.25rem; padding: 0; }
+.segment { position: relative; }
+.segment input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segment span { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 0.3rem 0.9rem; background: var(--card); }
+.segment input:checked + span { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.segment input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.results-view { display: grid; gap: 1rem; }
+
 .tier h2 { display: flex; align-items: center; gap: 0.5rem; }
-.tier .count { font-size: 0.85rem; border-radius: 999px; padding: 0 0.6rem; color: var(--card); }
-.tier.exploited .count { background: var(--exploited); }
-.tier.likely .count { background: var(--likely); }
-.tier.backlog .count { background: var(--backlog); }
+.tier .count { font-size: 0.85rem; border-radius: 999px; padding: 0 0.6rem; background: var(--light); color: var(--on-light); }
 .results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
-.result { background: var(--card); border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); padding: 0.75rem 1rem; }
-.tier.exploited .result { border-left-color: var(--exploited); }
-.tier.likely .result { border-left-color: var(--likely); }
-.tier.backlog .result { border-left-color: var(--backlog); }
+.result { background: color-mix(in srgb, var(--light) 5%, var(--card)); border: 1px solid var(--border); border-left: 6px solid var(--light); border-radius: var(--radius); padding: 0.75rem 1rem; }
+
+.component { background: var(--card); border: 1px solid var(--border); border-left: 6px solid var(--light); border-radius: var(--radius); padding: 0.4rem 1rem; }
+.component summary { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; cursor: pointer; padding: 0.35rem 0; font-weight: 600; }
+.component .tally { margin-left: auto; display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.component[open] > .results { margin: 0.4rem 0 0.75rem; }
 .result p { margin: 0.3rem 0; }
 .result .title { font-weight: 500; }
 .evidence { font-size: 0.9rem; }
+.badge.severity { color: var(--fg); }
 .badge { font-size: 0.75rem; border-radius: 999px; padding: 0.1rem 0.6rem; border: 1px solid currentColor; }
 .badge.version_confirmed { color: var(--ok); }
 .badge.product_match { color: var(--muted); }
@@ -130,6 +165,8 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 
 @media (max-width: 36rem) {
   .row { flex-wrap: wrap; }
+  .risk-summary { grid-template-columns: 1fr; }
+  .component .tally { margin-left: 0; }
   .brand { font-size: 1.35rem; }
 }
 
@@ -138,12 +175,10 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 .chip.close { border-style: dashed; }
 .badge.match-exact { color: var(--fg); }
 .badge.match-close { color: var(--likely); border-style: dashed; }
-.result .badge + .badge { margin-left: 0.4rem; }
+.result .row { gap: 0.4rem 0.6rem; }
 .change-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.75rem; }
 .change { border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); padding: 0.6rem 0.9rem; background: var(--bg); }
-.change.exploited { border-left-color: var(--exploited); }
-.change.likely { border-left-color: var(--likely); }
-.change.backlog { border-left-color: var(--backlog); }
+.change { border-left-color: var(--light); }
 .change h3 { margin: 0.3rem 0; }
 .change h3 .title { font-weight: 500; }
 .change p { margin: 0.3rem 0; }
@@ -152,7 +187,16 @@ button.icon { min-height: auto; padding: 0 0.4rem; border: none; background: non
 .event.kev_added { border-color: var(--exploited); color: var(--exploited); }
 .event.epss_crossed { border-color: var(--likely); color: var(--likely); }
 .event.fix_released { border-color: var(--ok); color: var(--ok); }
-.badge.tier-exploited { color: var(--exploited); }
-.badge.tier-likely { color: var(--likely); }
-.badge.tier-backlog { color: var(--backlog); }
 .more summary { cursor: pointer; margin-top: 0.75rem; color: var(--accent); }
+
+/* Fix first: stack items in the order to work on them. */
+.fix-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.5rem; }
+.fix-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-left: 6px solid var(--light); border-radius: var(--radius); background: color-mix(in srgb, var(--light) 5%, var(--card)); }
+.fix-item .tally { margin-left: auto; display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.rank { display: inline-grid; place-items: center; min-width: 1.75rem; height: 1.75rem; border-radius: 50%; background: var(--light); color: var(--on-light); font-weight: 800; font-size: 0.85rem; flex: none; }
+.score { font-size: 0.8rem; font-weight: 700; border: 2px solid var(--light, var(--border)); border-radius: 6px; padding: 0 0.45rem; white-space: nowrap; }
+.why { margin: 0.3rem 0; }
+.why strong { color: var(--ink); }
+.facts { gap: 0.35rem 0.5rem; margin: 0.4rem 0; }
+.badge.muted { color: var(--muted); border-style: dashed; }
+@media (max-width: 36rem) { .fix-item .tally { margin-left: 0; } }

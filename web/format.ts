@@ -1,4 +1,4 @@
-import type { Change, Result } from './api';
+import type { Change, FixItem, Priority, Result } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
 
@@ -131,4 +131,57 @@ export function shortSummary(text: string | null, max = 220): string | null {
   if (!text) return null;
   const clean = text.replace(/\s+/g, ' ').replace(/^#+\s*/, '').trim();
   return clean.length <= max ? clean : `${clean.slice(0, max).replace(/\s+\S*$/, '')}…`;
+}
+
+/**
+ * Traffic lights for each priority. Colour carries priority and nothing else;
+ * green is kept for good news such as a released fix.
+ */
+export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'yellow' | 'grey'; note: string }> = {
+  act: { label: 'Act', light: 'red', note: 'Being exploited: on CISA KEV, or CISA reports active exploitation.' },
+  attend: { label: 'Attend', light: 'amber', note: 'Likely to be exploited: EPSS of 10% or more, or a working exploit that is easy to use or gives full control.' },
+  watch: { label: 'Watch', light: 'yellow', note: 'Severe if exploited: CVSS 9.0 or more, or a public proof-of-concept exploit.' },
+  track: { label: 'Track', light: 'grey', note: 'Affects your stack, with no exploitation signal and lower severity.' },
+};
+
+/** Results by priority, keeping feed order within each. */
+export function byPriority(results: Result[]): Record<Priority, Result[]> {
+  const out: Record<Priority, Result[]> = { act: [], attend: [], watch: [], track: [] };
+  for (const r of results) out[r.priority].push(r);
+  return out;
+}
+
+/** CVSS v3/v4 qualitative severity, for the CVSS badge. */
+export function cvssSeverity(score: number): 'Critical' | 'High' | 'Medium' | 'Low' | 'None' {
+  if (score >= 9) return 'Critical';
+  if (score >= 7) return 'High';
+  if (score >= 4) return 'Medium';
+  if (score > 0) return 'Low';
+  return 'None';
+}
+
+/** "87", or "4.2" below 10, so small scores don't all read as 0. */
+export function formatScore(score: number): string {
+  return score >= 10 ? String(Math.round(score)) : score.toFixed(1);
+}
+
+export interface ComponentGroup extends FixItem {
+  /** The stack item, without the close-match mark. */
+  component: string;
+  close: boolean;
+  /** 1-based position in the fix-first order. */
+  rank: number;
+  results: Result[];
+}
+
+/** The fix-first list with each item's results attached, in the server's order. */
+export function componentGroups(fixFirst: FixItem[], results: Result[]): ComponentGroup[] {
+  const byId = new Map(results.map((r) => [r.id, r]));
+  return fixFirst.map((f, i) => ({
+    ...f,
+    component: f.item.replace(/^\?/, ''),
+    close: f.item.startsWith('?'),
+    rank: i + 1,
+    results: f.vulns.flatMap((id) => byId.get(id) ?? []),
+  }));
 }

@@ -1,9 +1,26 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
-import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Result } from './api';
+import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type FixItem, type Priority, type Result } from './api';
 import { clear, h, safeHref } from './dom';
-import { ago, CHANGE_LABEL, changeCounts, eventDetail, groupChanges, matchHeadline, ordinal, pct, shortSummary, type ChangeGroup } from './format';
+import {
+  ago,
+  byPriority,
+  CHANGE_LABEL,
+  changeCounts,
+  componentGroups,
+  cvssSeverity,
+  eventDetail,
+  formatScore,
+  groupChanges,
+  matchHeadline,
+  ordinal,
+  pct,
+  RISK,
+  shortSummary,
+  type ChangeGroup,
+  type ComponentGroup,
+} from './format';
 
 declare global {
   interface Window {
@@ -20,12 +37,7 @@ const EXAMPLES = [
   { label: 'Office network', text: 'Cisco IOS XE switches, FortiGate firewall, Microsoft Exchange, VMware vCenter' },
 ];
 const MAX_TEXT = 2000;
-const TIER_TITLE: Record<Result['tier'], string> = { exploited: 'Exploited', likely: 'Likely', backlog: 'Backlog' };
-const TIER_NOTE: Record<Result['tier'], string> = {
-  exploited: 'On the CISA Known Exploited Vulnerabilities list.',
-  likely: 'EPSS of 10% or more: a predicted probability of exploitation in the next 30 days.',
-  backlog: 'Matched your stack, with neither signal.',
-};
+const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
 const app = document.getElementById('app')!;
 const status = document.getElementById('status')!;
@@ -294,19 +306,18 @@ async function renderResults(stack: string, days: number): Promise<void> {
   const headline = matchHeadline(feed.results.length, feed.days);
   app.append(
     h('section', { class: 'headline', 'aria-labelledby': 'match-title' }, h('h2', { id: 'match-title' }, headline.title), h('p', { class: 'muted' }, headline.subtitle)),
-    renderChanges(feed),
   );
-  for (const tier of ['exploited', 'likely', 'backlog'] as const) {
-    const list = feed.results.filter((r) => r.tier === tier);
-    app.append(
-      h(
-        'section',
-        { class: `tier ${tier}`, 'aria-labelledby': `tier-${tier}` },
-        h('h2', { id: `tier-${tier}` }, `${TIER_TITLE[tier]} `, h('span', { class: 'count' }, String(list.length))),
-        h('p', { class: 'muted small' }, TIER_NOTE[tier]),
-        list.length === 0 ? h('p', { class: 'muted' }, 'Nothing here.') : h('ol', { class: 'results' }, list.map(renderResult)),
-      ),
-    );
+  // Priorities at a glance, what to fix first, the week's changes, then every result.
+  if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
+  app.append(renderChanges(feed));
+  if (feed.results.length > 0) {
+    const view = h('div', { class: 'results-view' });
+    const draw = (grouping: Grouping) => {
+      clear(view);
+      view.append(...(grouping === 'component' ? renderByComponent(componentGroups(feed.fixFirst, feed.results)) : renderByPriority(feed.results)));
+    };
+    app.append(groupingToggle(draw), view);
+    draw(savedGrouping());
   }
   if (feed.watching.length > 0) {
     app.append(
@@ -319,6 +330,133 @@ async function renderResults(stack: string, days: number): Promise<void> {
       ),
     );
   }
+}
+
+/** Traffic-light tiles: how many results sit at each priority. */
+function riskSummary(feed: Feed): HTMLElement {
+  return h(
+    'ul',
+    { class: 'risk-summary', 'aria-label': 'Results by priority' },
+    PRIORITIES.map((p) => {
+      const n = feed.priorities[p];
+      return h(
+        'li',
+        { class: `risk-tile ${RISK[p].light}${n === 0 ? ' empty' : ''}` },
+        h('span', { class: 'risk-count' }, String(n)),
+        h('span', { class: 'risk-label' }, RISK[p].label),
+        h('span', { class: 'risk-note small' }, RISK[p].note),
+      );
+    }),
+  );
+}
+
+/** How many fix-first items show before the rest fold away. */
+const FIX_SHOWN = 5;
+
+function renderFixFirst(feed: Feed): HTMLElement {
+  const items = feed.fixFirst;
+  const list = (from: number, to: number) => h('ol', { class: 'fix-list', start: from + 1 }, items.slice(from, to).map((f, i) => renderFixItem(f, from + i + 1)));
+  return h(
+    'section',
+    { class: 'card fix-first', 'aria-labelledby': 'fix-title' },
+    h('h2', { id: 'fix-title' }, 'Fix first'),
+    h('p', { class: 'muted small' }, 'Each item in your stack, ranked by what fixing it removes: the most urgent priority first, then the total risk score of its CVEs.'),
+    list(0, FIX_SHOWN),
+    items.length > FIX_SHOWN ? h('details', { class: 'more' }, h('summary', {}, `Show ${items.length - FIX_SHOWN} more`), list(FIX_SHOWN, items.length)) : null,
+  );
+}
+
+function renderFixItem(f: FixItem, rank: number): HTMLElement {
+  const worst = PRIORITIES.find((p) => f.counts[p] > 0) ?? 'track';
+  const total = f.vulns.length;
+  return h(
+    'li',
+    { class: `fix-item ${RISK[worst].light}` },
+    h('span', { class: 'rank', 'aria-hidden': 'true' }, String(rank)),
+    h('code', {}, f.item.replace(/^\?/, '')),
+    f.item.startsWith('?') ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+    h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(f.score)}`),
+    tally(f.counts),
+    h('span', { class: 'small muted' }, f.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${f.fixable} of ${total} with a fix`),
+  );
+}
+
+function tally(counts: Record<Priority, number>): HTMLElement {
+  return h(
+    'span',
+    { class: 'tally' },
+    PRIORITIES.filter((p) => counts[p] > 0).map((p) => h('span', { class: `pill ${RISK[p].light}` }, `${counts[p]} ${RISK[p].label.toLowerCase()}`)),
+  );
+}
+
+type Grouping = 'risk' | 'component';
+const GROUPING_KEY = 'vulnder:grouping';
+
+function savedGrouping(): Grouping {
+  try {
+    return localStorage.getItem(GROUPING_KEY) === 'component' ? 'component' : 'risk';
+  } catch {
+    return 'risk';
+  }
+}
+
+function groupingToggle(draw: (g: Grouping) => void): HTMLElement {
+  const current = savedGrouping();
+  const option = (value: Grouping, label: string) =>
+    h(
+      'label',
+      { class: 'segment' },
+      h('input', {
+        type: 'radio',
+        name: 'grouping',
+        value,
+        checked: value === current,
+        onchange: () => {
+          try {
+            localStorage.setItem(GROUPING_KEY, value);
+          } catch {
+            // Private windows can refuse storage; the choice still applies now.
+          }
+          draw(value);
+        },
+      }),
+      h('span', {}, label),
+    );
+  return h('fieldset', { class: 'grouping' }, h('legend', { class: 'small muted' }, 'Group results'), option('risk', 'By priority'), option('component', 'By component'));
+}
+
+function renderByPriority(results: Result[]): HTMLElement[] {
+  const groups = byPriority(results);
+  return PRIORITIES.map((p) =>
+    h(
+      'section',
+      { class: `tier ${RISK[p].light}`, 'aria-labelledby': `tier-${p}` },
+      h('h2', { id: `tier-${p}` }, h('span', { class: 'light', 'aria-hidden': 'true' }), `${RISK[p].label} `, h('span', { class: 'count' }, String(groups[p].length))),
+      h('p', { class: 'muted small' }, RISK[p].note),
+      groups[p].length === 0 ? h('p', { class: 'muted' }, 'Nothing here.') : h('ol', { class: 'results' }, groups[p].map(renderResult)),
+    ),
+  );
+}
+
+/** One collapsible group per stack item, in fix-first order; urgent groups start open. */
+function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
+  return groups.map((g) => {
+    const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+    return h(
+      'details',
+      { class: `component ${RISK[worst].light}`, open: g.counts.act + g.counts.attend > 0 },
+      h(
+        'summary',
+        {},
+        h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
+        h('code', {}, g.component),
+        g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+        h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
+        tally(g.counts),
+      ),
+      h('ol', { class: 'results' }, g.results.map(renderResult)),
+    );
+  });
 }
 
 /** How many change cards show before the rest fold away. */
@@ -361,7 +499,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
   const summary = shortSummary(r?.summary ?? null);
   return h(
     'li',
-    { class: `change ${r?.tier ?? 'backlog'}` },
+    { class: `change ${RISK[r?.priority ?? 'track'].light}` },
     h(
       'ul',
       { class: 'events', 'aria-label': 'What happened' },
@@ -377,7 +515,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
       ? h(
           'p',
           { class: 'small row wrap' },
-          h('span', { class: `badge tier-${r.tier}` }, TIER_TITLE[r.tier]),
+          h('span', { class: `pill ${RISK[r.priority].light}` }, RISK[r.priority].label),
           h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
           h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m.replace(/^\?/, ''))])),
         )
@@ -399,18 +537,37 @@ function renderResult(r: Result): HTMLElement {
   const advisory = safeHref(r.links.advisory);
   const patch = safeHref(r.links.patch);
   const e = r.evidence;
-  const evidence =
-    r.tier === 'exploited'
-      ? `On CISA KEV since ${e.kevAddedAt?.slice(0, 10)}${e.kevDueDate ? ` · federal due date ${e.kevDueDate.slice(0, 10)}` : ''}${e.knownRansomware ? ' · used in ransomware campaigns' : ''}`
-      : e.epss !== null
-        ? `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? ` (${ordinal(Math.round(e.epssPercentile * 100))} percentile)` : ''}, predicted probability of exploitation in the next 30 days`
-        : 'No EPSS score yet';
+  const light = RISK[r.priority].light;
   return h(
     'li',
-    { class: 'result' },
-    h('div', { class: 'row wrap' }, h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id), h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'), h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match')),
+    { class: `result ${light}` },
+    h(
+      'div',
+      { class: 'row wrap' },
+      h('span', { class: `pill ${light}` }, RISK[r.priority].label),
+      h('span', { class: 'score', title: 'Risk score, 0 to 100: orders results within a priority' }, `Risk ${formatScore(r.score)}`),
+      h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
+    ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
-    h('p', { class: 'evidence' }, evidence),
+    r.reasons.length > 0 ? h('p', { class: 'why small' }, h('strong', {}, 'Why: '), r.reasons.join(' · ')) : null,
+    h(
+      'p',
+      { class: 'facts row wrap small' },
+      r.cvss ? h('span', { class: 'badge' }, `CVSS ${r.cvss.score.toFixed(1)} ${cvssSeverity(r.cvss.score).toLowerCase()}`) : h('span', { class: 'badge muted' }, 'No CVSS'),
+      e.epss !== null
+        ? h(
+            'span',
+            { class: 'badge', title: 'Predicted probability of exploitation in the next 30 days' },
+            `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? ` · ${ordinal(Math.round(e.epssPercentile * 100))} pct` : ''}`,
+          )
+        : h('span', { class: 'badge muted' }, 'No EPSS yet'),
+      e.knownRansomware ? h('span', { class: 'pill red' }, 'Ransomware') : null,
+      h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
+      h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match'),
+    ),
+    e.kevAddedAt
+      ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? ` · federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
+      : null,
     h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m)])),
     r.fixedVersions.length > 0 ? h('p', { class: 'small' }, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
     h(
@@ -418,7 +575,6 @@ function renderResult(r: Result): HTMLElement {
       { class: 'small links' },
       advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
-      r.cvss ? h('span', { class: 'muted' }, `CVSS ${r.cvss.score.toFixed(1)}`) : null,
     ),
   );
 }
