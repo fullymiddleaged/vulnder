@@ -9,7 +9,7 @@ export const TURNSTILE_ACTION = 'resolve';
 const TEST_SECRET = /^[123]x0+AA$/;
 
 export interface TurnstileExpectations {
-  /** Where the widget must have been served, e.g. vulnder.dev. */
+  /** Where the widget must have been served, e.g. vulnder.com. */
   hostname?: string;
   action?: string;
 }

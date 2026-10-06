@@ -54,6 +54,22 @@ describe('screen', () => {
     expect(blocks(null)).toBe(false);
   });
 
+  it('reads a reply recorded from the Workers AI binding', () => {
+    const recorded = {
+      state: 'Completed',
+      result: {
+        model: 'jev-1.13.0',
+        answers: {
+          injection: { type: 'noul', noul: 0.02 },
+          scale: { type: 'choice', choice: 'smb', probabilities: { unclear: 0.01, smb: 0.99, home: 0, enterprise: 0 }, confidence: 0.98 },
+          hosting: { type: 'choice', choice: 'on_prem', probabilities: { cloud: 0, on_prem: 1, unclear: 0 }, confidence: 1 },
+        },
+        usage: { input_tokens: 567, output_tokens: 107 },
+      },
+    };
+    expect(parseScreen(recorded)).toEqual({ injection: 0.02, profile: { scale: { value: 'smb', confidence: 0.98 }, hosting: { value: 'on_prem', confidence: 1 } } });
+  });
+
   it('accepts the REST wrapper and rejects malformed replies', () => {
     expect(parseScreen({ result: jevReply({ injection: noul(0.9) }) })!.injection).toBe(0.9);
     expect(parseScreen(null)).toBeNull();

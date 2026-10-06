@@ -39,10 +39,10 @@ The page opens with **What changed this week**: newly published issues, KEV addi
 ## Feeds and badge
 
 ```
-https://vulnder.dev/?s=npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16
-https://vulnder.dev/api/feed?s=…      JSON: changes and the tiered list
-https://vulnder.dev/feed.xml?s=…      Atom: one entry per change
-https://vulnder.dev/badge.svg?s=…     "N known-exploited CVEs", green at zero
+https://vulnder.com/?s=npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16
+https://vulnder.com/api/feed?s=…      JSON: changes and the tiered list
+https://vulnder.com/feed.xml?s=…      Atom: one entry per change
+https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 ```
 
 `days` (1–90, default 30) widens or narrows the window. The `s` format is a versioned public contract, documented in [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md). A stack can hold up to 200 items; self-host for anything larger.

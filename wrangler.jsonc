@@ -37,9 +37,11 @@
 
   "vars": {
     // Display name and public base URL. Self-hosters change these; feed links,
-    // badge links and Atom IDs are all built from BASE_URL.
+    // badge links and Atom IDs are all built from BASE_URL, and Turnstile
+    // tokens must come from its hostname. For local dev, override it in
+    // .dev.vars with BASE_URL=http://localhost:8787.
     "DISPLAY_NAME": "Vulnder",
-    "BASE_URL": "http://localhost:8787",
+    "BASE_URL": "https://vulnder.com",
     // "actions": ingest runs outside the Worker (free plan). "worker": the cron
     // handler runs ingest (Paid plan).
     "INGEST_RUNTIME": "actions",
@@ -57,6 +59,9 @@
     // TURNSTILE_SECRET_KEY, goes in .dev.vars locally and `wrangler secret put` remotely.
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
   },
+
+  // Served on the apex domain; Wrangler creates the DNS record and certificate.
+  "routes": [{ "pattern": "vulnder.com", "custom_domain": true }],
 
   // Free-text parsing only. Free plan: 10,000 neurons a day.
   "ai": { "binding": "AI" },
@@ -85,10 +90,11 @@
     "paid": {
       "name": "vulnder",
       "triggers": { "crons": ["17 * * * *"] },
+      "routes": [{ "pattern": "vulnder.com", "custom_domain": true }],
       "observability": { "enabled": true, "redact_query_string": true },
       "vars": {
         "DISPLAY_NAME": "Vulnder",
-        "BASE_URL": "https://vulnder.dev",
+        "BASE_URL": "https://vulnder.com",
         "INGEST_RUNTIME": "worker",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
         "PARSE_DAILY_PER_CLIENT": "30",

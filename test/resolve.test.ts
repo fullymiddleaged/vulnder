@@ -487,10 +487,10 @@ describe('Jev at request time', () => {
 describe('verifyTurnstile', () => {
   const PROD_SECRET = '0x4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const reply = (body: Record<string, unknown>) => (async () => Response.json(body)) as unknown as typeof fetch;
-  const expect_ = { hostname: 'vulnder.dev', action: 'resolve' };
+  const expect_ = { hostname: 'vulnder.com', action: 'resolve' };
 
   it('accepts a token minted on our hostname for our action', async () => {
-    const fetchImpl = reply({ success: true, hostname: 'vulnder.dev', action: 'resolve' });
+    const fetchImpl = reply({ success: true, hostname: 'vulnder.com', action: 'resolve' });
     expect(await verifyTurnstile(fetchImpl, PROD_SECRET, 'tok', null, expect_)).toEqual({ success: true, errors: [] });
   });
 
@@ -499,7 +499,7 @@ describe('verifyTurnstile', () => {
       success: false,
       errors: ['hostname-mismatch'],
     });
-    expect(await verifyTurnstile(reply({ success: true, hostname: 'vulnder.dev', action: 'login' }), PROD_SECRET, 'tok', null, expect_)).toEqual({
+    expect(await verifyTurnstile(reply({ success: true, hostname: 'vulnder.com', action: 'login' }), PROD_SECRET, 'tok', null, expect_)).toEqual({
       success: false,
       errors: ['action-mismatch'],
     });

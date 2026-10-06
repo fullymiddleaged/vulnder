@@ -97,7 +97,7 @@ const Choice = z.object({
 });
 const Answers = z.object({ answers: z.record(z.string(), z.unknown()) });
 
-/** The answers object, from the binding's reply or the REST API's { result } wrapper. */
+/** The answers object; the binding and the REST API both wrap it in { result }. */
 function answersOf(raw: unknown): Record<string, unknown> | null {
   const body = (raw as { result?: unknown } | null)?.result ?? raw;
   const parsed = Answers.safeParse(body);
