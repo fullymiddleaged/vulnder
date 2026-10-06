@@ -1,7 +1,9 @@
 # Copy to .dev.vars for local development. Never commit .dev.vars.
 # Feed and badge links point here locally instead of at the public site.
 BASE_URL=http://localhost:8787
-# Cloudflare's always-pass Turnstile test secret, for local development only.
+# Cloudflare's always-pass Turnstile test keys, for local development only:
+# the production widget only works on vulnder.com.
+TURNSTILE_SITE_KEY=1x00000000000000000000AA
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 # Optional: raises the GitHub API limit from 60/h to 5,000/h.
 GITHUB_TOKEN=

@@ -54,10 +54,11 @@
     // not neurons; without credits it is skipped and parsing still works.
     "PARSE_DAILY_PER_CLIENT": "30",
     "PARSE_DAILY_TOTAL": "600",
-    // Turnstile site key (public). This is Cloudflare's always-pass test key for
-    // local development; set your own for a deployment. The matching secret,
-    // TURNSTILE_SECRET_KEY, goes in .dev.vars locally and `wrangler secret put` remotely.
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+    // Turnstile site key (public: every visitor's browser gets it). The widget
+    // only works on vulnder.com, so local dev overrides it in .dev.vars with
+    // Cloudflare's always-pass test key. The matching secret, TURNSTILE_SECRET_KEY,
+    // is a Worker secret (dashboard or `wrangler secret put`), never in this file.
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFPH90_hA9uyf8E9"
   },
 
   // Served on the apex domain; Wrangler creates the DNS record and certificate.
@@ -96,14 +97,13 @@
         "DISPLAY_NAME": "Vulnder",
         "BASE_URL": "https://vulnder.com",
         "INGEST_RUNTIME": "worker",
-        "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
         // D1 statements one cron run may make. D1's documented limit is 1,000
         // per invocation; raise this only if Cloudflare confirms a higher one.
         "CRON_MAX_D1_QUERIES": "900",
+        "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
         "PARSE_DAILY_PER_CLIENT": "30",
         "PARSE_DAILY_TOTAL": "600",
-        // Replace with the production Turnstile site key before deploying.
-        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAFPH90_hA9uyf8E9"
       },
       "ai": { "binding": "AI" },
       "ratelimits": [
