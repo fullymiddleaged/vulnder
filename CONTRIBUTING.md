@@ -63,4 +63,4 @@ Add a recorder for your source to [`scripts/record-fixtures.ts`](scripts/record-
 
 ## Licence
 
-By contributing, you agree that your contributions are licensed under the [MIT licence](LICENSE).
+By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE), as its section 5 describes.

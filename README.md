@@ -4,9 +4,7 @@
 
 <!-- Screenshot: add docs/screenshot.png once the app is deployed. -->
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/vulnder)
-
-<sub>Before using the button, replace `OWNER` with the GitHub account that hosts this repository.</sub>
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/fullymiddleaged/vulnder)
 
 ## How it ranks things
 
@@ -132,4 +130,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contributions are new da
 
 ## Licence
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE). Copyright 2026 Pete Salmond ([@fullymiddleaged](https://github.com/fullymiddleaged)). If you redistribute Vulnder or a derivative, keep the [NOTICE](NOTICE) file with it.
+
+The licence covers the code, not the name: "Vulnder" and its logo identify this project, so please give a fork or public deployment its own name.

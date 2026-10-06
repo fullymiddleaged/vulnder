@@ -1,0 +1,10 @@
+Vulnder
+Copyright 2026 Pete Salmond (https://github.com/fullymiddleaged)
+
+This product includes software developed by Pete Salmond and the Vulnder
+contributors.
+
+The test fixture test/fixtures/injection/corpus.json contains text from
+garak (https://github.com/NVIDIA/garak), licensed under the Apache License 2.0,
+and from PayloadsAllTheThings (https://github.com/swisskyrepo/PayloadsAllTheThings),
+licensed under the MIT License. See test/fixtures/injection/README.md.
