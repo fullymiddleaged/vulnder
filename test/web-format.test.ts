@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, matchHeadline, ordinal, pct, RISK, shortSummary } from '../web/format';
+import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, matchHeadline, ordinal, pct, preview, RISK, shortSummary } from '../web/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
   return {
@@ -164,5 +164,14 @@ describe('componentGroups', () => {
       [2, 'p:f5/nginx', true, ['CVE-3', 'CVE-2']],
     ]);
     expect(componentGroups([], results)).toEqual([]);
+  });
+});
+
+describe('preview', () => {
+  it('shows the first few and counts the rest, but never hides just one', () => {
+    expect(preview([], 3)).toEqual({ shown: [], rest: 0 });
+    expect(preview([1, 2, 3], 3)).toEqual({ shown: [1, 2, 3], rest: 0 });
+    expect(preview([1, 2, 3, 4], 3)).toEqual({ shown: [1, 2, 3, 4], rest: 0 });
+    expect(preview([1, 2, 3, 4, 5], 3)).toEqual({ shown: [1, 2, 3], rest: 2 });
   });
 });

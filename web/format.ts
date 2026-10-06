@@ -151,6 +151,11 @@ export function byPriority(results: Result[]): Record<Priority, Result[]> {
   return out;
 }
 
+/** The first `max` items and how many are left out; never leaves out just one, since "+1 more" takes the space the item would. */
+export function preview<T>(items: T[], max: number): { shown: T[]; rest: number } {
+  return items.length <= max + 1 ? { shown: items, rest: 0 } : { shown: items.slice(0, max), rest: items.length - max };
+}
+
 /** CVSS v3/v4 qualitative severity, for the CVSS badge. */
 export function cvssSeverity(score: number): 'Critical' | 'High' | 'Medium' | 'Low' | 'None' {
   if (score >= 9) return 'Critical';

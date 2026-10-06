@@ -1,7 +1,7 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
-import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type FixItem, type Priority, type Result } from './api';
+import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Priority, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import {
   ago,
@@ -16,6 +16,7 @@ import {
   matchHeadline,
   ordinal,
   pct,
+  preview,
   RISK,
   shortSummary,
   type ChangeGroup,
@@ -311,7 +312,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
-    const view = h('div', { class: 'results-view' });
+    const view = h('div', { class: 'results-view', id: 'results' });
     const draw = (grouping: Grouping) => {
       clear(view);
       view.append(...(grouping === 'component' ? renderByComponent(componentGroups(feed.fixFirst, feed.results)) : renderByPriority(feed.results)));
@@ -332,30 +333,51 @@ async function renderResults(stack: string, days: number): Promise<void> {
   }
 }
 
-/** Traffic-light tiles: how many results sit at each priority. */
+/** How many CVEs each priority tile links before pointing at the full list. */
+const TILE_SHOWN = 3;
+
+/** Traffic-light tiles: how many results sit at each priority, and links to the first few. */
 function riskSummary(feed: Feed): HTMLElement {
+  const groups = byPriority(feed.results);
   return h(
     'ul',
     { class: 'risk-summary', 'aria-label': 'Results by priority' },
     PRIORITIES.map((p) => {
       const n = feed.priorities[p];
+      const { shown, rest } = preview(groups[p], TILE_SHOWN);
       return h(
         'li',
         { class: `risk-tile ${RISK[p].light}${n === 0 ? ' empty' : ''}` },
         h('span', { class: 'risk-count' }, String(n)),
         h('span', { class: 'risk-label' }, RISK[p].label),
         h('span', { class: 'risk-note small' }, RISK[p].note),
+        shown.length > 0
+          ? h(
+              'ul',
+              { class: 'tile-vulns small', 'aria-label': `${RISK[p].label} CVEs` },
+              shown.map((r) => h('li', {}, externalLink(r.links.advisory, r.id))),
+              rest > 0
+                ? h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }) }, `+${rest} more below`))
+                : null,
+            )
+          : null,
       );
     }),
   );
+}
+
+/** A link that opens in a new tab, or plain text when the URL isn't http(s). */
+function externalLink(url: string | null, label: string): HTMLElement | string {
+  const href = safeHref(url);
+  return href ? h('a', { href, rel: 'noreferrer noopener', target: '_blank' }, label) : label;
 }
 
 /** How many fix-first items show before the rest fold away. */
 const FIX_SHOWN = 5;
 
 function renderFixFirst(feed: Feed): HTMLElement {
-  const items = feed.fixFirst;
-  const list = (from: number, to: number) => h('ol', { class: 'fix-list', start: from + 1 }, items.slice(from, to).map((f, i) => renderFixItem(f, from + i + 1)));
+  const items = componentGroups(feed.fixFirst, feed.results);
+  const list = (from: number, to: number) => h('ol', { class: 'fix-list', start: from + 1 }, items.slice(from, to).map(renderFixItem));
   return h(
     'section',
     { class: 'card fix-first', 'aria-labelledby': 'fix-title' },
@@ -366,18 +388,49 @@ function renderFixFirst(feed: Feed): HTMLElement {
   );
 }
 
-function renderFixItem(f: FixItem, rank: number): HTMLElement {
-  const worst = PRIORITIES.find((p) => f.counts[p] > 0) ?? 'track';
-  const total = f.vulns.length;
+/** One stack item; expands to its CVEs with their links, so nobody has to hunt for them further down. */
+function renderFixItem(g: ComponentGroup): HTMLElement {
+  const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  const total = g.vulns.length;
   return h(
     'li',
     { class: `fix-item ${RISK[worst].light}` },
-    h('span', { class: 'rank', 'aria-hidden': 'true' }, String(rank)),
-    h('code', {}, f.item.replace(/^\?/, '')),
-    f.item.startsWith('?') ? h('span', { class: 'badge match-close' }, 'Close match') : null,
-    h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(f.score)}`),
-    tally(f.counts),
-    h('span', { class: 'small muted' }, f.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${f.fixable} of ${total} with a fix`),
+    h(
+      'details',
+      {},
+      h(
+        'summary',
+        {},
+        h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
+        h('code', {}, g.component),
+        g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+        h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
+        tally(g.counts),
+        h('span', { class: 'small muted' }, g.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${g.fixable} of ${total} with a fix`),
+        h('span', { class: 'expand small' }, h('span', { class: 'when-closed' }, `Show ${total === 1 ? 'CVE' : `${total} CVEs`}`), h('span', { class: 'when-open' }, 'Hide')),
+      ),
+      h('ol', { class: 'briefs' }, g.results.map(renderBrief)),
+    ),
+  );
+}
+
+/** A CVE in a line or two: priority, linked ID, title, why, and the fix. */
+function renderBrief(r: Result): HTMLElement {
+  const light = RISK[r.priority].light;
+  const advisory = safeHref(r.links.advisory);
+  // Some vendors (MSRC) give one page for both; the ID already links to it.
+  const patch = safeHref(r.links.patch) === advisory ? null : safeHref(r.links.patch);
+  return h(
+    'li',
+    { class: `brief ${light}` },
+    h('p', { class: 'row wrap' }, h('span', { class: `pill ${light}` }, RISK[r.priority].label), h('strong', {}, externalLink(r.links.advisory, r.id)), r.title ? h('span', { class: 'title' }, r.title) : null),
+    h(
+      'p',
+      { class: 'small links' },
+      r.reasons.length > 0 ? h('span', {}, r.reasons[0]) : null,
+      r.fixedVersions.length > 0 ? h('span', {}, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : h('span', { class: 'muted' }, 'No fixed version listed'),
+      patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
+    ),
   );
 }
 
