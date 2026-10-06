@@ -14,12 +14,14 @@ Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stak
 |---|---|
 | **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. |
 | **Attend** (amber) | [EPSS](https://www.first.org/epss) of 0.10 or more, CVSS 9.0 or more that an attacker can reach (below), or a proof-of-concept exploit that is automatable or gives total control. EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that it has happened. |
-| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, or automatable with total technical impact. |
-| **Track** (grey) | Everything else: it affects your stack, but CVSS is under 8.0 and nothing suggests exploitation. |
+| **Watch** (yellow) | CVSS 8.0 or more, CVSS 7.0 or more within reach on an internet-facing item (below), a proof-of-concept exploit, or automatable with total technical impact. |
+| **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
 
 A CVSS score says how bad a bug is, not whether anyone can get at it. So a critical goes to Attend only when its CVSS vector says it's reachable over the network with no login and no user action, or CISA judges it automatable. Criticals that need local access, a login or someone's help go to Watch instead. A critical with no CVSS 3 or 4 vector stays in Attend. From CVSS 7.0 up, each result says which of these applies ("Reachable over the network without a login", "Needs a login and user action").
 
-Within a priority, results are ordered by a 0–100 risk score: threat (1 for KEV, otherwise EPSS, at least 0.2 with a proof-of-concept exploit, 0.01 before EPSS has scored it) × impact (CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS), × 1.25 if automatable and × 1.2 if used in ransomware, capped at 100. It's a heuristic for ordering, not a probability. Exploitation status, automatability and technical impact come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment) data in CVE records. Every result lists why it got its priority.
+You can mark items in your stack as internet-facing, on the Edit page or with `!` in the link (see [STACK_FORMAT.md](docs/STACK_FORMAT.md)). On those items, a bug that is reachable with no login and no user action, or that CISA judges automatable, counts for more: CVSS 7.0 or more goes to Watch, its score gets × 1.25, and its reasons say "Internet-facing". A missing vector gets no benefit of the doubt here. The mark only reorders results; it never hides one. It also goes into the link, so a shared link says which of your systems face the internet.
+
+Within a priority, results are ordered by a 0–100 risk score: threat (1 for KEV, otherwise EPSS, at least 0.2 with a proof-of-concept exploit, 0.01 before EPSS has scored it) × impact (CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS), × 1.25 if automatable, × 1.25 if internet-facing and within reach, and × 1.2 if used in ransomware, capped at 100. It's a heuristic for ordering, not a probability. Exploitation status, automatability and technical impact come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment) data in CVE records. Every result lists why it got its priority.
 
 **Fix first** ranks the items in your stack: the one with the most urgent priority first, then by the total risk score of its CVEs, since one upgrade usually closes several.
 

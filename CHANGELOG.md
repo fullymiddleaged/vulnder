@@ -4,6 +4,10 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ## [Unreleased]
 
+### Added
+
+- Mark stack items as **internet-facing**, with a toggle on the Edit page or `!` in front of an item in the link (`!p:f5/nginx`). On those items, a bug an attacker can reach with no login or user action ranks higher: CVSS 7.0 or more goes to Watch and its score is raised. Older deployments reject links that use `!`.
+
 ### Changed
 
 - The most urgent priority is now labelled **Act now** (was Act). The feed's `priority` value is still `act`.

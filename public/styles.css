@@ -146,6 +146,11 @@ button.link { border: none; background: none; padding: 0; min-height: auto; font
 .chip.ambiguous { border-color: var(--likely); }
 .chip.unrecognised { opacity: 0.75; }
 .chips.compact .chip { padding: 0.1rem 0.65rem; }
+/* Internet-facing: a toggle on the Edit page, a quiet label elsewhere. */
+button.expose { min-height: 1.75rem; padding: 0 0.55rem; border-radius: 999px; font-size: 0.8rem; color: var(--muted); background: transparent; border-style: dashed; }
+button.expose[aria-pressed='true'] { color: var(--accent-fg); background: var(--accent); border: 1px solid var(--accent); font-weight: 700; }
+.exposed-mark { color: var(--accent); font-weight: 700; }
+.badge.exposed { color: var(--accent); }
 .add { margin-top: 0.5rem; }
 .add input { flex: 1; }
 .copy { display: flex; flex-wrap: wrap; gap: 0.4rem; }

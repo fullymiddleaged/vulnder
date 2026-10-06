@@ -33,13 +33,21 @@ const PREFIX_FOR: Record<string, string> = Object.fromEntries(Object.entries(PRE
 /**
  * `close` marks a close match: something the user's words loosely fit (e.g. one
  * of several Cisco switch products for "Cisco switches"), shown but labelled.
+ * `exposed` marks an item reachable from the internet, which raises the
+ * priority of bugs an attacker could reach on it.
  */
+export interface Marks {
+  close?: boolean;
+  exposed?: boolean;
+}
 export type StackItem =
-  | { kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null; close?: boolean }
-  | { kind: 'product'; vendor: string; product: string; version: string | null; close?: boolean };
+  | ({ kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null } & Marks)
+  | ({ kind: 'product'; vendor: string; product: string; version: string | null } & Marks);
 
 /** Marks a close match in the URL: `?p:nginx/nginx`. */
 const CLOSE_MARK = '?';
+/** Marks an internet-facing item: `!p:f5/nginx`. Written before the close mark: `!?p:f5/nginx`. */
+const EXPOSED_MARK = '!';
 
 export class StackFormatError extends Error {
   constructor(
@@ -91,38 +99,48 @@ export function serializeStack(items: StackItem[]): string {
 }
 
 export function formatItem(item: StackItem): string {
-  return `${item.close ? CLOSE_MARK : ''}${identity(item)}`;
+  return `${item.exposed ? EXPOSED_MARK : ''}${item.close ? CLOSE_MARK : ''}${identity(item)}`;
 }
 
-/** The item without its close-match mark. */
-function identity(item: StackItem): string {
+/** The item without its marks. */
+export function identity(item: StackItem): string {
   const base = item.kind === 'package' ? `${PREFIX_FOR[item.ecosystem]}:${escape(item.name)}` : `p:${escape(item.vendor)}/${escape(item.product)}`;
   return item.version ? `${base}@${escape(item.version)}` : base;
 }
 
 /**
  * Deduplicates and sorts, so equivalent stacks share one URL and one cache
- * entry. When the same item is both exact and close, exact wins.
+ * entry. When the same item appears more than once, exact beats close and
+ * internet-facing beats not.
  */
 export function canonicalize(items: StackItem[]): StackItem[] {
   const byKey = new Map<string, StackItem>();
   for (const item of items) {
     const key = identity(item);
     const prev = byKey.get(key);
-    if (!prev || (prev.close && !item.close)) byKey.set(key, item.close ? { ...item, close: true } : withoutClose(item));
+    byKey.set(key, withMarks(item, { close: !!item.close && (!prev || !!prev.close), exposed: !!item.exposed || !!prev?.exposed }));
   }
   return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, item]) => item);
 }
 
-function withoutClose(item: StackItem): StackItem {
-  const { close: _close, ...rest } = item;
-  return rest as StackItem;
+/** The item with exactly these marks; a false mark is left out, not stored as false. */
+export function withMarks(item: StackItem, marks: Marks): StackItem {
+  const { close: _close, exposed: _exposed, ...rest } = item;
+  return { ...rest, ...(marks.close && { close: true }), ...(marks.exposed && { exposed: true }) } as StackItem;
 }
 
 function parseItem(raw: string): StackItem | null {
-  const close = raw.startsWith(CLOSE_MARK);
-  const item = parseExactItem(close ? raw.slice(CLOSE_MARK.length) : raw);
-  return item && close ? { ...item, close: true } : item;
+  let rest = raw;
+  const marks: Marks = {};
+  // Each mark at most once, in either order.
+  for (let i = 0; i < 2; i++) {
+    if (!marks.exposed && rest.startsWith(EXPOSED_MARK)) marks.exposed = true;
+    else if (!marks.close && rest.startsWith(CLOSE_MARK)) marks.close = true;
+    else break;
+    rest = rest.slice(1);
+  }
+  const item = parseExactItem(rest);
+  return item && withMarks(item, marks);
 }
 
 function parseExactItem(text: string): StackItem | null {

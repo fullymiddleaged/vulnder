@@ -46,6 +46,30 @@ describe('parseStack', () => {
     expect(serializeStack(parseStack('p:cisco/ios_xe,?p:cisco/ios_xe'))).toBe('p:cisco/ios_xe');
   });
 
+  it('marks internet-facing items with a leading !, written before the close mark', () => {
+    expect(parseStack('!p:f5/nginx@1.25,npm:next')).toEqual([
+      { kind: 'package', ecosystem: 'npm', name: 'next', version: null },
+      { kind: 'product', vendor: 'f5', product: 'nginx', version: '1.25', exposed: true },
+    ]);
+    expect(parseStack('?!p:f5/nginx')).toEqual([{ kind: 'product', vendor: 'f5', product: 'nginx', version: null, close: true, exposed: true }]);
+    expect(serializeStack(parseStack('?!p:f5/nginx'))).toBe('!?p:f5/nginx');
+    expect(serializeStack(parseStack('!?p:f5/nginx'))).toBe('!?p:f5/nginx');
+  });
+
+  it('keeps the internet-facing mark when the same item appears with and without it', () => {
+    expect(serializeStack(parseStack('p:f5/nginx,!p:f5/nginx'))).toBe('!p:f5/nginx');
+    expect(serializeStack(parseStack('!p:f5/nginx,p:f5/nginx'))).toBe('!p:f5/nginx');
+    // Exact and internet-facing combine from separate copies.
+    expect(serializeStack(parseStack('!?p:f5/nginx,p:f5/nginx'))).toBe('!p:f5/nginx');
+    expect(serializeStack(parseStack('?p:f5/nginx,!?p:f5/nginx'))).toBe('!?p:f5/nginx');
+  });
+
+  it('rejects a mark given twice or on its own', () => {
+    for (const bad of ['!!p:f5/nginx', '??p:f5/nginx', '!?!p:f5/nginx', '!', '?!', '! p:f5/nginx']) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
+  });
+
   it('unescapes commas and percent signs', () => {
     const items = parseStack('p:acme/widget%2C%20pro');
     expect(items).toEqual([{ kind: 'product', vendor: 'acme', product: 'widget_20pro', version: null }]);

@@ -199,6 +199,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     let unverified = false;
     const matched = new Set<string>();
     let exact = false;
+    let exposed = false;
     const fixes = new Set<string>();
 
     for (const r of rows) {
@@ -209,6 +210,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
             confirmed = true;
             matched.add(formatItem(item));
             if (!item.close) exact = true;
+            if (item.exposed) exposed = true;
             if (r.fixed_version) fixes.add(r.fixed_version);
           }
           // Checked and not affected: this row does not count as a match.
@@ -217,12 +219,15 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
         unverified = true;
         matched.add(formatItem(item));
         if (!item.close) exact = true;
+        if (item.exposed) exposed = true;
         if (r.fixed_version) fixes.add(r.fixed_version);
       }
     }
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
-    results.push(toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort()));
+    results.push(
+      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed),
+    );
   }
 
   results.sort(compareResults);
@@ -250,7 +255,14 @@ export function tierOf(v: { kev_added_at: string | null; epss: number | null }):
   return 'backlog';
 }
 
-function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', matched: string[], fixedVersions: string[]): MatchedVuln {
+function toResult(
+  v: VulnRow,
+  confidence: Confidence,
+  match: 'exact' | 'close',
+  matched: string[],
+  fixedVersions: string[],
+  exposed: boolean,
+): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
   const { priority, score, reasons } = assess({
@@ -259,6 +271,7 @@ function toResult(v: VulnRow, confidence: Confidence, match: 'exact' | 'close', 
     epss: v.epss,
     cvss: v.cvss_score,
     cvssVector: v.cvss_vector,
+    exposed,
     ssvc,
   });
   return {

@@ -51,7 +51,13 @@ function seedPatches(): VulnPatch[] {
       source: 'cve',
       id: 'CVE-2026-1003',
       aliases: [],
-      fields: { title: 'PostgreSQL privilege escalation', publishedAt: daysAgo(20), cvssScore: 8.8, refs: [{ url: 'https://nvd.nist.gov/vuln/detail/CVE-2026-1003' }] },
+      fields: {
+        title: 'PostgreSQL privilege escalation',
+        publishedAt: daysAgo(20),
+        cvssScore: 8.8,
+        cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N',
+        refs: [{ url: 'https://nvd.nist.gov/vuln/detail/CVE-2026-1003' }],
+      },
       affected: [{ kind: 'product', vendor: 'postgresql', product: 'postgresql', ranges: [], fixedVersion: null }],
     },
     { source: 'epss', id: 'CVE-2026-1003', aliases: [], fields: { epss: 0.01, epssPercentile: 0.6, epssDate: daysAgo(1).slice(0, 10) } },
@@ -154,6 +160,16 @@ describe('matchStack', () => {
       ['CVE-2026-1002', 'likely', 'exact'],
     ]);
     expect(res.results[1]!.matched).toEqual(['?p:cisco/ios_xe']);
+  });
+
+  it('raises bugs open to attack on items marked internet-facing', async () => {
+    const plain = await matchStack(store(), parseStack('p:postgresql/postgresql@16'), { now: NOW, days: 30, osv: fakeOsv() });
+    const exposed = await matchStack(store(), parseStack('!p:postgresql/postgresql@16'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(plain.results.map((r) => [r.id, r.score, r.reasons.includes('Internet-facing')])).toEqual([['CVE-2026-1003', 0.9, false]]);
+    expect(exposed.results.map((r) => [r.id, r.score, r.reasons.includes('Internet-facing'), r.matched])).toEqual([
+      ['CVE-2026-1003', 1.1, true, ['!p:postgresql/postgresql@16']],
+    ]);
+    expect(exposed.fixFirst.map((f) => f.item)).toEqual(['!p:postgresql/postgresql@16']);
   });
 
   it('widens the window with days', async () => {

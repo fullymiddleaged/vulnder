@@ -1,5 +1,5 @@
 import { parseManifest } from '../src/resolve/manifests';
-import { parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
+import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Priority, type Result } from './api';
 import { clear, h, safeHref } from './dom';
@@ -12,6 +12,7 @@ import {
   cvssSeverity,
   eventDetail,
   formatScore,
+  itemMarks,
   groupChanges,
   matchHeadline,
   ordinal,
@@ -19,6 +20,7 @@ import {
   preview,
   RISK,
   shortSummary,
+  withItemMarks,
   type ChangeGroup,
   type ComponentGroup,
 } from './format';
@@ -198,15 +200,26 @@ function renderEdit(initial: string[]): void {
   const draw = () => {
     clear(list);
     items.forEach((item, i) => {
-      const close = item.startsWith('?');
-      const shown = close ? item.slice(1) : item;
+      const { name, close, exposed } = itemMarks(item);
       list.append(
         h(
           'li',
           { class: `chip ${close ? 'close' : 'resolved'}` },
-          h('code', {}, shown),
+          h('code', {}, name),
           close ? h('span', { class: 'muted small' }, ' close match') : null,
-          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${shown}`, onclick: () => (items.splice(i, 1), draw()) }, '×'),
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'expose',
+              'aria-pressed': String(exposed),
+              'aria-label': `${name} is internet-facing`,
+              title: 'Reachable from the internet. Bugs an attacker could reach on it rank higher.',
+              onclick: () => ((items[i] = withItemMarks(name, { close, exposed: !exposed })), draw()),
+            },
+            'Internet-facing',
+          ),
+          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, '×'),
         ),
       );
     });
@@ -222,7 +235,7 @@ function renderEdit(initial: string[]): void {
       onsubmit: (e: Event) => {
         e.preventDefault();
         try {
-          for (const item of parseStack(addInput.value)) items.push(serializeStack([{ ...item, close: undefined }]));
+          for (const item of parseStack(addInput.value)) items.push(serializeStack([withMarks(item, { exposed: item.exposed })]));
           addInput.value = '';
           say('');
           draw();
@@ -256,7 +269,11 @@ function renderEdit(initial: string[]): void {
       'section',
       { class: 'block', 'aria-labelledby': 'edit-title' },
       h('h2', { id: 'edit-title' }, 'Edit your stack'),
-      h('p', { class: 'muted' }, 'Remove anything that is not yours and add what is missing. Close matches are products your description loosely fits. Items with nothing reported are still watched.'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Remove anything that is not yours and add what is missing. Close matches are products your description loosely fits. Mark what the internet can reach, so bugs an attacker could get at there rank higher. Items with nothing reported are still watched.',
+      ),
       list,
       addForm,
       h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '.'),
@@ -297,7 +314,18 @@ async function renderResults(stack: string, days: number): Promise<void> {
       'section',
       { class: 'block summary', 'aria-labelledby': 'stack-title' },
       h('div', { class: 'row' }, h('h2', { id: 'stack-title' }, 'Your stack'), daySelect),
-      h('ul', { class: 'chips compact' }, items.map((i) => h('li', { class: `chip ${i.close ? 'close' : 'resolved'}`, title: i.close ? 'Close match' : null }, h('code', {}, serializeStack([{ ...i, close: undefined }]))))),
+      h(
+        'ul',
+        { class: 'chips compact' },
+        items.map((i) =>
+          h(
+            'li',
+            { class: `chip ${i.close ? 'close' : 'resolved'}`, title: i.close ? 'Close match' : null },
+            h('code', {}, identity(i)),
+            i.exposed ? h('span', { class: 'exposed-mark small' }, 'Internet-facing') : null,
+          ),
+        ),
+      ),
       h('div', { class: 'row wrap' }, h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack'), copyButtons(feed)),
       feed.versionCheckUnavailable ? h('p', { class: 'notice' }, 'Version checks are unavailable right now, so every match is shown as a product match.') : null,
     ),
@@ -326,7 +354,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
         { class: 'block', 'aria-labelledby': 'watching-title' },
         h('h2', { id: 'watching-title' }, 'Watching'),
         h('p', { class: 'muted' }, `No admirers in the last ${feed.days} days. The feed will pick up new issues.`),
-        h('ul', { class: 'chips compact' }, feed.watching.map((w) => h('li', { class: 'chip' }, h('code', {}, w)))),
+        h('ul', { class: 'chips compact' }, feed.watching.map((w) => h('li', { class: 'chip' }, h('code', {}, itemMarks(w).name)))),
       ),
     );
   }
@@ -412,6 +440,7 @@ function renderFixItem(g: ComponentGroup): HTMLElement {
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
         h('code', {}, g.component),
         g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+        g.exposed ? h('span', { class: 'badge exposed' }, 'Internet-facing') : null,
         h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
         tally(g.counts),
         h('span', { class: 'small muted' }, g.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${g.fixable} of ${total} with a fix`),
@@ -512,6 +541,7 @@ function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
         h('code', {}, g.component),
         g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+        g.exposed ? h('span', { class: 'badge exposed' }, 'Internet-facing') : null,
         h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
         tally(g.counts),
       ),
@@ -578,7 +608,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
           { class: 'small row wrap' },
           h('span', { class: `pill ${RISK[r.priority].light}` }, RISK[r.priority].label),
           h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
-          h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m.replace(/^\?/, ''))])),
+          h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
         )
       : null,
     summary ? h('p', { class: 'small' }, summary) : null,
@@ -629,7 +659,7 @@ function renderResult(r: Result): HTMLElement {
     e.kevAddedAt
       ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
       : null,
-    h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, m)])),
+    h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
     r.fixedVersions.length > 0 ? h('p', { class: 'small' }, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
     h(
       'p',

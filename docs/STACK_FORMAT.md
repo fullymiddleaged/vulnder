@@ -55,6 +55,14 @@ For packages, a version lets Vulnder check whether that exact version is affecte
 
 An item starting with `?` is a **close match**: something your description loosely fits rather than names outright. For example, "Cisco switches" becomes `?p:cisco/ios_xe,?p:cisco/nx_os,…`. Close matches are shown, labelled "Close match", and ranked after exact matches in the same tier. If the same item appears both with and without `?`, the exact one wins. Older URLs without `?` items mean exactly what they did before.
 
+### Internet-facing items
+
+An item starting with `!` is **internet-facing**: reachable from the internet. For example, `!p:f5/nginx@1.27`. Bugs on it that an attacker can reach with no login or user action rank higher (see the README). It never hides or adds a result.
+
+When an item is both internet-facing and a close match, `!` comes first: `!?p:f5/nginx`. Either order is accepted on input. If the same item appears with and without `!`, the `!` wins. Each mark may appear only once per item.
+
+Older Vulnder deployments reject `!` items rather than misreading them.
+
 ### Escaping
 
 Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled by normal URL encoding of the query value.
@@ -64,7 +72,7 @@ Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled 
 Vulnder rewrites every stack into one canonical form, so equivalent stacks share a URL and a cache entry:
 
 - package names are normalised the way their registry compares them (for example, PyPI names follow PEP 503, so `Django_REST.framework` becomes `django-rest-framework`, and npm names are lowercased);
-- duplicate items are removed;
+- duplicate items are removed, keeping the strongest marks (exact over `?`, `!` over none);
 - items are sorted.
 
 The JSON feed returns the canonical value as `stack`.

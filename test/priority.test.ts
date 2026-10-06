@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
-const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, cvss: null, cvssVector: null, ssvc: null };
+const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
   exploitation,
   automatable,
@@ -61,6 +61,17 @@ describe('assess: priority bands', () => {
     expect(assess({ ...critical, cvssVector: 'AV:N/AC:L/Au:N/C:C/I:C/A:C' }).priority).toBe('attend');
   });
 
+  it('watches CVSS 7.0 or more on an internet-facing item when the bug is open to attack', () => {
+    const exposed = { ...base, exposed: true, cvssVector: OPEN };
+    expect(assess({ ...exposed, cvss: 7.0 }).priority).toBe('watch');
+    expect(assess({ ...exposed, cvss: 6.9 }).priority).toBe('track');
+    expect(assess({ ...exposed, exposed: false, cvss: 7.0 }).priority).toBe('track');
+    expect(assess({ ...exposed, cvss: 7.0, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H' }).priority).toBe('track');
+    // Exposure needs positive evidence: a missing vector gets no benefit of the doubt here.
+    expect(assess({ ...exposed, cvss: 7.0, cvssVector: null }).priority).toBe('track');
+    expect(assess({ ...exposed, cvss: 7.0, cvssVector: null, ssvc: ssvc('none', 'yes') }).priority).toBe('watch');
+  });
+
   it('watches CVSS 8.0 to 8.9, a bare PoC, or automatable with total impact', () => {
     expect(assess({ ...base, cvss: 8.0, epss: 0.001 }).priority).toBe('watch');
     expect(assess({ ...base, cvss: 8.9, epss: 0.09 }).priority).toBe('watch');
@@ -92,6 +103,15 @@ describe('assess: score and reasons', () => {
     expect(assess({ ...base, epss: 0.4, cvss: 5, ssvc: ssvc('none', 'yes') }).score).toBe(25);
     expect(assess({ ...base, kevAddedAt: 'x', knownRansomware: true, cvss: 5 }).score).toBe(60);
     expect(assess({ ...base, kevAddedAt: 'x', knownRansomware: true, cvss: 10, ssvc: ssvc('active', 'yes') }).score).toBe(100);
+  });
+
+  it('boosts a bug open to attack on an internet-facing item, and says so', () => {
+    const open = { ...base, epss: 0.4, cvss: 5, cvssVector: OPEN };
+    expect(assess({ ...open, exposed: true }).score).toBe(25);
+    expect(assess(open).score).toBe(20);
+    expect(assess({ ...open, exposed: true, cvssVector: 'CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' }).score).toBe(20);
+    expect(assess({ ...open, exposed: true, cvss: 7.5 }).reasons).toEqual(['EPSS 40%', 'Internet-facing', 'Reachable over the network without a login', 'CVSS 7.5 (high)']);
+    expect(assess({ ...open, cvss: 7.5 }).reasons).not.toContain('Internet-facing');
   });
 
   it('explains itself, most important first', () => {

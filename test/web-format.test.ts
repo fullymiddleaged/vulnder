@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, matchHeadline, ordinal, pct, preview, RISK, shortSummary } from '../web/format';
+import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
   return {
@@ -155,15 +156,33 @@ describe('componentGroups', () => {
     const groups = componentGroups(
       [
         { item: 'p:cisco/ios_xe', score: 91, counts: { ...counts, act: 1 }, vulns: ['CVE-1'], fixable: 0 },
-        { item: '?p:f5/nginx', score: 2, counts: { ...counts, track: 2 }, vulns: ['CVE-3', 'CVE-2', 'CVE-missing'], fixable: 1 },
+        { item: '!?p:f5/nginx', score: 2, counts: { ...counts, track: 2 }, vulns: ['CVE-3', 'CVE-2', 'CVE-missing'], fixable: 1 },
       ],
       results,
     );
-    expect(groups.map((g) => [g.rank, g.component, g.close, g.results.map((r) => r.id)])).toEqual([
-      [1, 'p:cisco/ios_xe', false, ['CVE-1']],
-      [2, 'p:f5/nginx', true, ['CVE-3', 'CVE-2']],
+    expect(groups.map((g) => [g.rank, g.component, g.close, g.exposed, g.results.map((r) => r.id)])).toEqual([
+      [1, 'p:cisco/ios_xe', false, false, ['CVE-1']],
+      [2, 'p:f5/nginx', true, true, ['CVE-3', 'CVE-2']],
     ]);
     expect(componentGroups([], results)).toEqual([]);
+  });
+});
+
+describe('item marks', () => {
+  it('splits a stack item into its name and marks', () => {
+    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: false, close: false });
+    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: false, close: true });
+    expect(itemMarks('!p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: true, close: false });
+    expect(itemMarks('!?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', exposed: true, close: true });
+  });
+
+  it('writes the marks back in canonical order, matching the stack format', () => {
+    expect(withItemMarks('p:f5/nginx', { exposed: true, close: true })).toBe('!?p:f5/nginx');
+    expect(withItemMarks('p:f5/nginx', { exposed: false, close: false })).toBe('p:f5/nginx');
+    for (const s of ['!?p:f5/nginx', '?p:f5/nginx', '!p:f5/nginx', 'p:f5/nginx']) {
+      const m = itemMarks(s);
+      expect(withItemMarks(m.name, m)).toBe(serializeStack(parseStack(s)));
+    }
   });
 });
 

@@ -140,8 +140,8 @@ export function shortSummary(text: string | null, max = 220): string | null {
 export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'yellow' | 'grey'; note: string }> = {
   act: { label: 'Act now', light: 'red', note: 'Being exploited: on CISA KEV, or CISA reports active exploitation.' },
   attend: { label: 'Attend', light: 'amber', note: 'Likely to be exploited, or critical and within reach: EPSS of 10% or more, CVSS 9.0 or more with no login or user action needed, or a working exploit that is easy to use or gives full control.' },
-  watch: { label: 'Watch', light: 'yellow', note: 'High severity or a public exploit: CVSS 8.0 or more, or a proof-of-concept exploit.' },
-  track: { label: 'Track', light: 'grey', note: 'Affects your stack, but CVSS is under 8.0 and nothing suggests exploitation.' },
+  watch: { label: 'Watch', light: 'yellow', note: 'High severity or a public exploit: CVSS 8.0 or more, 7.0 or more within reach on an internet-facing item, or a proof-of-concept exploit.' },
+  track: { label: 'Track', light: 'grey', note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation.' },
 };
 
 /** Results by priority, keeping feed order within each. */
@@ -170,10 +170,22 @@ export function formatScore(score: number): string {
   return score >= 10 ? String(Math.round(score)) : score.toFixed(1);
 }
 
+/** A stack item as the feed writes it, split into its name and its marks (`!` internet-facing, `?` close match). */
+export function itemMarks(item: string): { name: string; exposed: boolean; close: boolean } {
+  const m = /^(!?)(\??)(.*)$/s.exec(item)!;
+  return { name: m[3]!, exposed: m[1] === '!', close: m[2] === '?' };
+}
+
+/** The item written back with the given marks, in canonical order. */
+export function withItemMarks(name: string, marks: { exposed: boolean; close: boolean }): string {
+  return `${marks.exposed ? '!' : ''}${marks.close ? '?' : ''}${name}`;
+}
+
 export interface ComponentGroup extends FixItem {
-  /** The stack item, without the close-match mark. */
+  /** The stack item, without its marks. */
   component: string;
   close: boolean;
+  exposed: boolean;
   /** 1-based position in the fix-first order. */
   rank: number;
   results: Result[];
@@ -182,11 +194,15 @@ export interface ComponentGroup extends FixItem {
 /** The fix-first list with each item's results attached, in the server's order. */
 export function componentGroups(fixFirst: FixItem[], results: Result[]): ComponentGroup[] {
   const byId = new Map(results.map((r) => [r.id, r]));
-  return fixFirst.map((f, i) => ({
-    ...f,
-    component: f.item.replace(/^\?/, ''),
-    close: f.item.startsWith('?'),
-    rank: i + 1,
-    results: f.vulns.flatMap((id) => byId.get(id) ?? []),
-  }));
+  return fixFirst.map((f, i) => {
+    const { name, close, exposed } = itemMarks(f.item);
+    return {
+      ...f,
+      component: name,
+      close,
+      exposed,
+      rank: i + 1,
+      results: f.vulns.flatMap((id) => byId.get(id) ?? []),
+    };
+  });
 }

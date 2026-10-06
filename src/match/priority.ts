@@ -11,14 +11,15 @@ import type { Ssvc } from '../ingest/types';
  *     attend  EPSS of 10% or more, CVSS 9.0 or more that an attacker can
  *             reach (see reach()), or a proof-of-concept exploit that is
  *             automatable or gives total control
- *     watch   CVSS 8.0 or more, a proof-of-concept exploit, or automatable
+ *     watch   CVSS 8.0 or more, CVSS 7.0 or more open to attack on an
+ *             internet-facing item, a proof-of-concept exploit, or automatable
  *             with total control
  *     track   everything else: affected, but nothing above applies
  *   A critical score alone says how bad a bug is, not whether anyone can get
  *   at it: one that needs local access, a login or a user's help waits in
  *   Watch unless something else lifts it.
  * - A 0–100 score that orders results within a band and ranks components:
- *   threat × impact × ease × ransomware, in the shape Grype uses (threat from
+ *   threat × impact × ease × exposure × ransomware, in the shape Grype uses (threat from
  *   KEV or EPSS, 1% while EPSS hasn't scored it; impact from CVSS). It is a heuristic for ordering, not a
  *   calibrated probability.
  */
@@ -40,6 +41,8 @@ export interface Signals {
   cvss: number | null;
   cvssVector: string | null;
   ssvc: Ssvc | null;
+  /** A stack item it matched is marked internet-facing. */
+  exposed: boolean;
 }
 
 const CRITICAL_CVSS = 9;
@@ -54,6 +57,8 @@ const POC_THREAT = 0.2;
 const UNKNOWN_IMPACT = 0.5;
 const TOTAL_IMPACT = 0.9;
 const AUTOMATABLE_BOOST = 1.25;
+/** An internet-facing item with a bug open to attack: the same weight as automatable. */
+const EXPOSED_BOOST = 1.25;
 const RANSOMWARE_BOOST = 1.2;
 
 export function assess(s: Signals): Assessment {
@@ -69,18 +74,23 @@ export function assess(s: Signals): Assessment {
   // CISA judging it automatable means an attacker gets there unaided, whatever
   // the vector says. With no vector to read, a critical keeps the benefit of the doubt.
   const reachable = automatable || access === null || access.barriers.length === 0;
+  // On an item facing the internet, only positive evidence that the bug is open
+  // to attack counts: no benefit of the doubt for a missing vector.
+  const exposedOpen = s.exposed && (automatable || (access !== null && access.barriers.length === 0));
+  const high = s.cvss !== null && s.cvss >= HIGH_CVSS;
 
   const priority: Priority = active
     ? 'act'
     : likely || (critical && reachable) || (poc && (automatable || totalImpact))
       ? 'attend'
-      : severe || poc || (automatable && totalImpact)
+      : severe || (high && exposedOpen) || poc || (automatable && totalImpact)
         ? 'watch'
         : 'track';
 
   const threat = active ? 1 : Math.max(s.epss ?? UNSCORED_THREAT, poc ? POC_THREAT : 0);
   const impact = Math.max(s.cvss !== null ? s.cvss / 10 : UNKNOWN_IMPACT, totalImpact ? TOTAL_IMPACT : 0);
-  const raw = threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
+  const raw =
+    threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (exposedOpen ? EXPOSED_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
 
   const reasons: string[] = [];
@@ -91,7 +101,8 @@ export function assess(s: Signals): Assessment {
   if (poc) reasons.push('Proof-of-concept exploit');
   if (automatable) reasons.push('Automatable');
   if (totalImpact) reasons.push('Total technical impact');
-  if (access && s.cvss !== null && s.cvss >= HIGH_CVSS) reasons.push(describeAccess(access.barriers));
+  if (exposedOpen) reasons.push('Internet-facing');
+  if (access && high) reasons.push(describeAccess(access.barriers));
   if (s.cvss !== null) reasons.push(`CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
   return { priority, score, reasons };
 }
