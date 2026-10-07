@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Chip } from './catalog';
+import { isEdgeChip, type Chip } from './catalog';
 import { MAX_TEXT_CHARS } from './extract';
 import { HOSTINGS, rankableChips, SCALES, type AxisGuess, type StackProfile } from './profile';
 
@@ -189,9 +189,13 @@ export function fitTargets(chips: Chip[]): { item: string; label: string }[] {
   return [...seen].slice(0, MAX_FIT_QUESTIONS).map(([item, label]) => ({ item, label }));
 }
 
-/** The components worth asking about exposure: each resolved chip's input, once, up to the cap. */
+/**
+ * The components worth asking about exposure: each resolved chip's input,
+ * once, up to the cap. Edge products are left out: they're marked by what
+ * they are (isEdgeChip), so asking would only cost a question.
+ */
 export function exposureTargets(chips: Chip[]): string[] {
-  const inputs = chips.filter((c) => c.status === 'resolved' && c.items.length > 0).map((c) => c.input);
+  const inputs = chips.filter((c) => c.status === 'resolved' && c.items.length > 0 && !isEdgeChip(c)).map((c) => c.input);
   return [...new Set(inputs)].slice(0, MAX_EXPOSURE_QUESTIONS);
 }
 

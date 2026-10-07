@@ -503,6 +503,8 @@ describe('Jev at request time', () => {
     const e = testEnv(async () => FORTI_REPLY, true, async () => Promise.reject(new Error('2021: Insufficient AI Gateway credits')));
     const text = (await (await post({ text: `A FortiGate for the office ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
     expect(text.chips.map((c) => c.items.map((i) => i.item))).toEqual([['!p:fortinet/fortios']]);
+    // The screen only: with nothing left to judge, there's no second Jev call.
+    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
     const listed = (await (
       await post({ turnstileToken: 't', candidates: [{ kind: 'product', name: 'fortigate', vendor: 'fortinet', version: null, direct: true }] }, e)
     ).json()) as Body;

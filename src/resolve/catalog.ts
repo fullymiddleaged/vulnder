@@ -212,6 +212,11 @@ export function isEdgeProduct(item: StackItem): boolean {
   return !!pattern && pattern.test(product) && !EDGE_EXCLUDE.test(product);
 }
 
+/** True when every item of a chip is an edge product, so marking it needs no judgement. */
+export function isEdgeChip(chip: Chip): boolean {
+  return chip.items.length > 0 && chip.items.every((i) => isEdgeProduct(parseStack(i.item)[0]!));
+}
+
 function stripVendor(product: string, vendor: string): string {
   return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
 }

@@ -155,6 +155,13 @@ describe('exposure', () => {
     expect(exposureTargets(many)).toHaveLength(MAX_EXPOSURE_QUESTIONS);
   });
 
+  it('skips components made only of edge products, which are marked without asking', () => {
+    const forti: Chip = { input: 'FortiGate', status: 'resolved', items: [item('p:fortinet/fortios')] };
+    const mixed: Chip = { input: 'Cisco gear', status: 'resolved', items: [item('?p:cisco/ios_xe'), item('?p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software')] };
+    expect(exposureTargets([forti, mixed, ...chips])).toEqual(['Cisco gear', 'nginx', 'Postgres']);
+    expect(exposureTargets([forti])).toEqual([]);
+  });
+
   it('puts exposure questions after fit questions, in the same call, with cleaned names', () => {
     const req = judgeRequest('x', home, ['Cisco IOS XE'], ['nginx', 'Evil"\nname']);
     expect(Object.keys(req.questions)).toEqual(['p0', 'e0', 'e1']);
