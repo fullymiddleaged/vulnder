@@ -148,10 +148,10 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   if (text !== null) {
     const fitAsk = canRank(profile) ? fitTargets(chips) : [];
     const exposureAsk = exposureTargets(chips);
-    if (fitAsk.length + exposureAsk.length > 0) {
-      const { fit, exposure } = await cachedJudgement(c.env, text, profile, fitAsk, exposureAsk);
-      chips = markExposed(orderByFit(chips, fit), exposure);
-    }
+    const { fit, exposure } =
+      fitAsk.length + exposureAsk.length > 0 ? await cachedJudgement(c.env, text, profile, fitAsk, exposureAsk) : { fit: new Map(), exposure: new Map() };
+    // Edge products are marked even when Jev doesn't answer.
+    chips = markExposed(orderByFit(chips, fit), exposure);
   }
   return c.json({ source, format, ...result, chips, profile }, 200, { 'Cache-Control': 'no-store' });
 });

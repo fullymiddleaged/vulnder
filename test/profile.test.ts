@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Chip } from '../src/resolve/catalog';
+import { isEdgeProduct, type Chip } from '../src/resolve/catalog';
 import { canRank, EXPOSED_AT, markExposed, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
+import { parseStack } from '../src/stack/format';
 
 const close = (item: string) => ({ item, label: item, close: true, known: true });
 const exact = (item: string) => ({ item, label: item, close: false, known: true });
@@ -82,5 +83,63 @@ describe('markExposed', () => {
   it('keeps a mark already on an item', () => {
     const already: Chip = { input: 'edge', status: 'resolved', items: [{ ...exact('!p:f5/nginx'), exposed: true }] };
     expect(items(markExposed([already], new Map([['edge', 0.9]])))).toEqual([[['!p:f5/nginx', true]]]);
+  });
+});
+
+describe('isEdgeProduct', () => {
+  const edge = (item: string) => isEdgeProduct(parseStack(item)[0]!);
+
+  it('knows gateways, edge firewalls and ADCs by their catalog keys', () => {
+    for (const item of [
+      'p:fortinet/fortios@7.4',
+      'p:fortinet/fortiproxy',
+      'p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software',
+      'p:cisco/cisco_secure_firewall_threat_defense_ftd_software',
+      'p:palo_alto_networks/pan_os',
+      'p:ivanti/connect_secure',
+      'p:citrix/netscaler_adc_and_netscaler_gateway',
+      'p:f5/big_ip',
+      'p:sonicwall/sma1000',
+      'p:watchguard/fireware_os',
+      'p:zyxel/usg_flex_series_firmware',
+      'p:openvpn/access_server',
+      // A repeated vendor prefix is stripped before anchored patterns are tested.
+      'p:fortinet/fortinet_fortios',
+    ]) {
+      expect(edge(item), item).toBe(true);
+    }
+  });
+
+  it('leaves out their consoles and clients, inside gear, packages and unknown vendors', () => {
+    for (const item of [
+      'p:cisco/cisco_secure_firewall_management_center_fmc',
+      'p:checkpoint/quantum_security_management',
+      'p:palo_alto_networks/globalprotect_app',
+      'p:palo_alto_networks/prisma_access_agent',
+      'p:f5/big_ip_next_central_manager',
+      'p:ivanti/connect_secure_client',
+      'p:cisco/ios_xe',
+      'p:f5/nginx',
+      'p:postgresql/postgresql',
+      'npm:fortios',
+      'p:__proto__/fortios',
+      'p:constructor/pan_os',
+    ]) {
+      expect(edge(item), item).toBe(false);
+    }
+  });
+});
+
+describe('markExposed: edge products', () => {
+  it('marks edge products without Jev, and only those among close matches', () => {
+    const cisco: Chip = { input: 'Cisco gear', status: 'resolved', items: ['?p:cisco/ios_xe', '?p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software'].map(close) };
+    const marked = markExposed([cisco, POSTGRES], new Map());
+    expect(marked[0]!.items.map((i) => i.item)).toEqual(['?p:cisco/ios_xe', '!?p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software']);
+    expect(marked[1]).toBe(POSTGRES);
+  });
+
+  it('marks an edge product even when Jev says the text does not', () => {
+    const forti: Chip = { input: 'FortiGate VPN', status: 'resolved', items: [exact('p:fortinet/fortios')] };
+    expect(markExposed([forti], new Map([['FortiGate VPN', 0.1]]))[0]!.items[0]!.item).toBe('!p:fortinet/fortios');
   });
 });

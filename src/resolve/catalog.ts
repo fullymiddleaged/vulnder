@@ -2,7 +2,7 @@ import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '..
 import type { Store } from '../ingest/store';
 import { formatItem, isStackVersion, parseStack, type StackItem } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
-import { ALIASES, CATEGORIES } from './aliases';
+import { ALIASES, CATEGORIES, EDGE_EXCLUDE, EDGE_PRODUCTS } from './aliases';
 import type { Candidate } from './types';
 
 /**
@@ -204,6 +204,14 @@ function vendorGuesses(c: ProductCandidate): string[] {
 }
 
 /** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
+/** True for a product that faces the internet by what it is (EDGE_PRODUCTS). */
+export function isEdgeProduct(item: StackItem): boolean {
+  if (item.kind !== 'product') return false;
+  const pattern = ownValue(EDGE_PRODUCTS, item.vendor);
+  const product = stripVendor(item.product, item.vendor);
+  return !!pattern && pattern.test(product) && !EDGE_EXCLUDE.test(product);
+}
+
 function stripVendor(product: string, vendor: string): string {
   return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
 }

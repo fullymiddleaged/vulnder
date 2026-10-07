@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Chip } from './catalog';
+import { isEdgeProduct, type Chip } from './catalog';
 import { formatItem, parseStack, withMarks } from '../stack/format';
 
 /**
@@ -84,17 +84,20 @@ export function orderByFit(chips: Chip[], fit: ReadonlyMap<string, number>): Chi
 export const EXPOSED_AT = 0.7;
 
 /**
- * Marks every item of each chip whose input Jev judged internet-facing.
+ * Marks items internet-facing: every item of a chip whose input Jev judged
+ * internet-facing, and any item that faces the internet by what it is (a VPN
+ * gateway, an edge firewall), whatever Jev said or if it didn't answer.
  * Nothing is added, removed or reordered; the person can untick a mark on the
  * Edit page.
  */
 export function markExposed(chips: Chip[], exposure: ReadonlyMap<string, number>): Chip[] {
   return chips.map((chip) => {
-    if ((exposure.get(chip.input) ?? 0) < EXPOSED_AT) return chip;
+    const judged = (exposure.get(chip.input) ?? 0) >= EXPOSED_AT;
     const items = chip.items.map((i) => {
       const parsed = parseStack(i.item)[0]!;
+      if (!judged && !isEdgeProduct(parsed)) return i;
       return { ...i, item: formatItem(withMarks(parsed, { close: parsed.close, exposed: true })), exposed: true as const };
     });
-    return { ...chip, items };
+    return items.some((item, n) => item !== chip.items[n]) ? { ...chip, items } : chip;
   });
 }

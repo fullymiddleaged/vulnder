@@ -8,6 +8,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 - Mark stack items as **internet-facing**, with a toggle on the Edit page or `!` in front of an item in the link (`!p:f5/nginx`). On those items, a bug an attacker can reach with no login or user action ranks higher: CVSS 7.0 or more goes to Watch and its score is raised. Older deployments reject links that use `!`.
 - When you describe your stack in words, Jev marks the components your description says face the internet (for example "nginx in front"). The results page lists what it marked; untick any of them under Edit stack. Manifests are never marked automatically.
+- Products that face the internet by what they are (VPN and remote-access gateways, edge firewalls, ADCs and mail gateways, such as FortiGate, Cisco ASA, PAN-OS and NetScaler) are marked internet-facing from a description even when Jev doesn't mark them or isn't available.
 - A loader, built from the logo, while your stack is read and while matches load. It stays still if your system asks for reduced motion.
 
 ### Changed

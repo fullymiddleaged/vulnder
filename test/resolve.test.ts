@@ -496,6 +496,19 @@ describe('Jev at request time', () => {
     expect(aiCalls(e, JEV_MODEL)).toHaveLength(2);
   });
 
+  it('marks edge products from text even when Jev is down, but never from a manifest', async () => {
+    stubTurnstile();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const FORTI_REPLY = { response: { items: [{ name: 'FortiGate', version: null, type: 'product', ecosystem: null, vendor: 'Fortinet' }] } };
+    const e = testEnv(async () => FORTI_REPLY, true, async () => Promise.reject(new Error('2021: Insufficient AI Gateway credits')));
+    const text = (await (await post({ text: `A FortiGate for the office ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
+    expect(text.chips.map((c) => c.items.map((i) => i.item))).toEqual([['!p:fortinet/fortios']]);
+    const listed = (await (
+      await post({ turnstileToken: 't', candidates: [{ kind: 'product', name: 'fortigate', vendor: 'fortinet', version: null, direct: true }] }, e)
+    ).json()) as Body;
+    expect(listed.chips.map((c) => c.items.map((i) => i.item))).toEqual([['p:fortinet/fortios']]);
+  });
+
   it('never sends a manifest to Jev', async () => {
     stubTurnstile();
     const e = testEnv(async () => MODEL_REPLY);

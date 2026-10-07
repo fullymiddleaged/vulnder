@@ -141,3 +141,30 @@ export const CATEGORIES: Category[] = [
     },
   },
 ];
+
+/**
+ * Products that face the internet by what they are: VPN and remote-access
+ * gateways, edge firewalls, application delivery controllers, web
+ * application firewalls and mail gateways. Running one means exposing it,
+ * and they make up much of CISA KEV, so they're marked internet-facing
+ * without asking Jev. Patterns are tested like category patterns, against
+ * product keys after stripping a repeated vendor prefix.
+ */
+export const EDGE_PRODUCTS: Record<string, RegExp> = {
+  checkpoint: /quantum_security_gateway/,
+  cisco: /adaptive_security|threat_defense|secure_email_gateway/,
+  citrix: /netscaler/,
+  f5: /^big_ip/,
+  fortinet: /^(fortios|fortigate|fortiproxy|fortiweb|fortimail)/,
+  ivanti: /connect_secure|policy_secure/,
+  openvpn: /^access_server$/,
+  palo_alto_networks: /^pan_os/,
+  paloaltonetworks: /^pan_os/,
+  pulsesecure: /pulse_connect_secure/,
+  sonicwall: /^(sonicos|sma)/,
+  watchguard: /^fireware/,
+  zyxel: /^(usg|zywall)/,
+};
+
+/** Their management consoles and client apps sit inside, so they never count. */
+export const EDGE_EXCLUDE = /manage(ment|r)|(^|_)(app|agent|client)(_|$)/;
