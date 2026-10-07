@@ -449,8 +449,8 @@ describe('Jev at request time', () => {
     const body = (await res.json()) as Body;
     expect(body.profile).toEqual({ scale: { value: null, confidence: 0 }, hosting: { value: null, confidence: 0 } });
     expect(body.chips[0]!.items.map((i) => i.item)).toEqual(['?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/industrial_ethernet_switches', '?p:cisco/small_business_switches']);
-    // One failed screen; no fit call without a profile.
-    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
+    // A failed screen, then a failed exposure question (no fit without a profile); nothing marked.
+    expect(aiCalls(e, JEV_MODEL)).toHaveLength(2);
   });
 
   it('orders close matches by Jev’s fit, without hiding any, and caches both calls', async () => {
@@ -464,16 +464,36 @@ describe('Jev at request time', () => {
       expect(body.chips[0]!.items.map((i) => i.item)).toEqual(['?p:cisco/small_business_switches', '?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/industrial_ethernet_switches']);
     }
     const jev = aiCalls(e, JEV_MODEL);
-    expect(jev.map(([, input]) => (isScreen(input as { questions: Record<string, unknown> }) ? 'screen' : 'fit'))).toEqual(['screen', 'fit']);
+    expect(jev.map(([, input]) => (isScreen(input as { questions: Record<string, unknown> }) ? 'screen' : 'judge'))).toEqual(['screen', 'judge']);
     expect(aiCalls(e, env.AI_MODEL)).toHaveLength(1);
   });
 
   it('asks about fit only when the profile is clear', async () => {
     stubTurnstile();
-    const e = testEnv(async () => SWITCHES_REPLY, true, async (input) => (isScreen(input) ? CLEAN_SCREEN : Promise.reject(new Error('no fit call expected'))));
+    const e = testEnv(async () => SWITCHES_REPLY, true, async (input) => (isScreen(input) ? CLEAN_SCREEN : jevReply({})));
     const body = (await (await post({ text: `Cisco switches ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
     expect(body.chips[0]!.items[0]!.item).toBe('?p:cisco/ios_xe');
-    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
+    // The second call asks only about exposure.
+    const judge = aiCalls(e, JEV_MODEL)[1]![1] as { questions: Record<string, unknown> };
+    expect(Object.keys(judge.questions)).toEqual(['e0']);
+  });
+
+  it('marks what Jev judges internet-facing, in one call, and caches it', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => MODEL_REPLY, true, async (input) => {
+      if (isScreen(input)) return CLEAN_SCREEN;
+      const questions = input.questions as Record<string, { instructions: string }>;
+      return jevReply(Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, noul(q.instructions.includes('"nginx"') ? 0.9 : 0.1)])));
+    });
+    const text = `${BRIEF_EXAMPLE} ${++textSalt}`;
+    for (let i = 0; i < 2; i++) {
+      const body = (await (await post({ text, turnstileToken: 't' }, e)).json()) as Body;
+      const items = body.chips.flatMap((c) => c.items.map((it) => it.item));
+      expect(items.filter((it) => it.startsWith('!'))).toEqual(['!?p:f5/nginx', '!?p:nginx/nginx']);
+      expect(items).toContain('p:postgresql/postgresql@16');
+    }
+    // One screen and one judgement, the second request served from the cache.
+    expect(aiCalls(e, JEV_MODEL)).toHaveLength(2);
   });
 
   it('never sends a manifest to Jev', async () => {

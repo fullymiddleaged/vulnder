@@ -18,12 +18,14 @@ import type { Candidate } from './types';
  */
 
 export interface ChipItem {
-  /** Canonical stack item (with a leading '?' when close). */
+  /** Canonical stack item (with a leading '?' when close, and '!' when internet-facing). */
   item: string;
   label: string;
   close: boolean;
   /** True when the catalog has vulnerabilities for it in the retention window. */
   known: boolean;
+  /** Set when Jev judged the component internet-facing; the item carries the '!' mark. */
+  exposed?: true;
 }
 
 export interface Chip {

@@ -10,11 +10,13 @@ import { HOSTINGS, rankableChips, SCALES, type AxisGuess, type StackProfile } fr
  *
  * - screen: before extraction, is the text aimed at an AI rather than
  *   describing a stack, and what scale and hosting does it describe?
- * - fit: after resolving, how well does each close match suit that stack?
+ * - judge: after resolving, how well does each close match suit that stack,
+ *   and does the text say each named component faces the internet?
  *
  * Both fail open: if Jev is unavailable, extraction still runs (the <stack>
- * fence and keepMentioned grounding still apply) and close matches keep
- * catalog order. Jev's output is schema-checked like any model output.
+ * fence and keepMentioned grounding still apply), close matches keep catalog
+ * order and nothing is marked internet-facing. Jev's output is
+ * schema-checked like any model output.
  */
 
 export const JEV_MODEL = 'typesafe/jev';
@@ -22,8 +24,11 @@ export const JEV_MODEL = 'typesafe/jev';
 /** Jev's injection probability at or above which the text is refused. */
 export const INJECTION_BLOCK = 0.85;
 
-/** Close matches asked about in one fit call; any beyond count as neutral. */
+/** Close matches asked about in one call; any beyond count as neutral. */
 export const MAX_FIT_QUESTIONS = 30;
+
+/** Components asked about exposure in one call; any beyond stay unmarked. */
+export const MAX_EXPOSURE_QUESTIONS = 30;
 
 const MAX_LABEL_CHARS = 120;
 
@@ -68,15 +73,20 @@ function cleanLabel(label: string): string {
   return label.replace(/[\p{C}"]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_LABEL_CHARS);
 }
 
-export function fitRequest(text: string, profile: StackProfile, labels: string[]) {
+/**
+ * One call after resolving, with two kinds of question: `p0…` asks how well
+ * each close match (a catalog label) fits the stack, and `e0…` asks whether
+ * each component the person named faces the internet, in their own words.
+ */
+export function judgeRequest(text: string, profile: StackProfile, labels: string[], components: string[]) {
   return {
     state: {
       description: text.slice(0, MAX_TEXT_CHARS),
       scale: profile.scale.value ?? 'unclear',
       hosting: profile.hosting.value ?? 'unclear',
     },
-    questions: Object.fromEntries(
-      labels.map((label, i) => [
+    questions: Object.fromEntries([
+      ...labels.map((label, i) => [
         `p${i}`,
         {
           type: 'noul',
@@ -84,7 +94,18 @@ export function fitRequest(text: string, profile: StackProfile, labels: string[]
           criteria: { true: 'Fits this kind of stack', false: 'Made for a different kind of stack' },
         },
       ]),
-    ),
+      ...components.map((name, i) => [
+        `e${i}`,
+        {
+          type: 'noul',
+          instructions: `Does the description say or clearly imply that "${cleanLabel(name)}" can be reached from the internet?`,
+          criteria: {
+            true: 'Yes: it serves the public or outside users, such as a website, public API, VPN gateway, mail server or edge firewall',
+            false: 'No, or the description does not say: internal systems, databases, or things reachable only from inside',
+          },
+        },
+      ]),
+    ]),
   };
 }
 
@@ -137,11 +158,14 @@ export function blocks(screen: Screen | null): boolean {
   return screen?.injection != null && screen.injection >= INJECTION_BLOCK;
 }
 
-/** Fit per question, in label order; null where Jev didn't answer. */
-export function parseFit(raw: unknown, count: number): (number | null)[] | null {
+/** Answers per question kind, in the order asked; null where Jev didn't answer one. */
+export function parseJudgement(raw: unknown, fitCount: number, exposureCount: number): { fit: (number | null)[]; exposure: (number | null)[] } | null {
   const answers = answersOf(raw);
   if (!answers) return null;
-  return Array.from({ length: count }, (_, i) => noul(answers, `p${i}`));
+  return {
+    fit: Array.from({ length: fitCount }, (_, i) => noul(answers, `p${i}`)),
+    exposure: Array.from({ length: exposureCount }, (_, i) => noul(answers, `e${i}`)),
+  };
 }
 
 async function runJev(ai: Ai, input: unknown): Promise<unknown> {
@@ -165,13 +189,32 @@ export function fitTargets(chips: Chip[]): { item: string; label: string }[] {
   return [...seen].slice(0, MAX_FIT_QUESTIONS).map(([item, label]) => ({ item, label }));
 }
 
-/** Jev's fit for each target item; empty if Jev is unavailable. */
-export async function judgeFit(ai: Ai, text: string, profile: StackProfile, targets: { item: string; label: string }[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  if (targets.length === 0) return out;
-  const fits = parseFit(await runJev(ai, fitRequest(text, profile, targets.map((t) => t.label))), targets.length);
-  fits?.forEach((fit, i) => {
-    if (fit !== null) out.set(targets[i]!.item, fit);
-  });
+/** The components worth asking about exposure: each resolved chip's input, once, up to the cap. */
+export function exposureTargets(chips: Chip[]): string[] {
+  const inputs = chips.filter((c) => c.status === 'resolved' && c.items.length > 0).map((c) => c.input);
+  return [...new Set(inputs)].slice(0, MAX_EXPOSURE_QUESTIONS);
+}
+
+export interface Judgement {
+  /** Fit per close-match item. */
+  fit: Map<string, number>;
+  /** Probability per chip input that it faces the internet. */
+  exposure: Map<string, number>;
+}
+
+/** Jev's fit for each close match and exposure for each component; empty maps if Jev is unavailable. */
+export async function judgeStack(
+  ai: Ai,
+  text: string,
+  profile: StackProfile,
+  fitAsk: { item: string; label: string }[],
+  exposureAsk: string[],
+): Promise<Judgement> {
+  const out: Judgement = { fit: new Map(), exposure: new Map() };
+  if (fitAsk.length + exposureAsk.length === 0) return out;
+  const raw = await runJev(ai, judgeRequest(text, profile, fitAsk.map((t) => t.label), exposureAsk));
+  const parsed = parseJudgement(raw, fitAsk.length, exposureAsk.length);
+  parsed?.fit.forEach((p, i) => p !== null && out.fit.set(fitAsk[i]!.item, p));
+  parsed?.exposure.forEach((p, i) => p !== null && out.exposure.set(exposureAsk[i]!, p));
   return out;
 }

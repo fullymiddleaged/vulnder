@@ -212,8 +212,10 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
     done();
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
     const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
+    const exposed = res.chips.filter((c) => c.items.some((i) => i.exposed)).map((c) => c.input);
     const notes = [
       unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. Use "Edit stack" to add them by hand.` : '',
+      exposed.length > 0 ? `Marked as internet-facing from your description: ${exposed.join(', ')}. Use "Edit stack" to change that.` : '',
       res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
     ].filter(Boolean);
     if (items.length === 0) {

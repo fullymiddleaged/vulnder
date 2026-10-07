@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Chip } from '../src/resolve/catalog';
-import { canRank, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
+import { canRank, EXPOSED_AT, markExposed, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
 
 const close = (item: string) => ({ item, label: item, close: true, known: true });
 const exact = (item: string) => ({ item, label: item, close: false, known: true });
@@ -56,5 +56,31 @@ describe('parseProfile', () => {
     expect(parseProfile({ scale: { value: 'home', confidence: 2 }, hosting: { value: null, confidence: 0 } })).toEqual(NO_PROFILE);
     expect(parseProfile(undefined)).toEqual(NO_PROFILE);
     expect(parseProfile('home')).toEqual(NO_PROFILE);
+  });
+});
+
+describe('markExposed', () => {
+  const items = (chips: Chip[]) => chips.map((c) => c.items.map((i) => [i.item, i.exposed ?? false]));
+
+  it('marks every item of a chip Jev judged internet-facing, from the threshold up', () => {
+    const marked = markExposed([NGINX, POSTGRES], new Map([['nginx', EXPOSED_AT], ['Postgres', EXPOSED_AT - 0.01]]));
+    expect(items(marked)).toEqual([
+      [
+        ['!?p:f5/nginx', true],
+        ['!?p:nginx/nginx', true],
+      ],
+      [['p:postgresql/postgresql', false]],
+    ]);
+  });
+
+  it('leaves chips alone without an answer, and never adds, drops or reorders items', () => {
+    expect(markExposed([SWITCHES, POSTGRES], new Map())).toEqual([SWITCHES, POSTGRES]);
+    const marked = markExposed([SWITCHES], new Map([['Cisco switches', 0.99]]));
+    expect(marked[0]!.items.map((i) => i.label)).toEqual(SWITCHES.items.map((i) => i.label));
+  });
+
+  it('keeps a mark already on an item', () => {
+    const already: Chip = { input: 'edge', status: 'resolved', items: [{ ...exact('!p:f5/nginx'), exposed: true }] };
+    expect(items(markExposed([already], new Map([['edge', 0.9]])))).toEqual([[['!p:f5/nginx', true]]]);
   });
 });

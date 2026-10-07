@@ -9,8 +9,8 @@ export interface AppConfig {
 export interface Chip {
   input: string;
   status: 'resolved' | 'unrecognised';
-  /** Exact items, or every close match for a vague name. Close items start with '?'. */
-  items: { item: string; label: string; close: boolean; known: boolean }[];
+  /** Exact items, or every close match for a vague name. Close items start with '?', internet-facing ones with '!'. */
+  items: { item: string; label: string; close: boolean; known: boolean; exposed?: true }[];
 }
 
 export interface ResolveResponse {

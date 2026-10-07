@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Chip } from './catalog';
+import { formatItem, parseStack, withMarks } from '../stack/format';
 
 /**
  * What kind of stack a description is about, on two axes: scale (enterprise,
@@ -71,6 +72,29 @@ export function orderByFit(chips: Chip[], fit: ReadonlyMap<string, number>): Chi
       .map((item) => ({ item, fit: fit.get(item.item) ?? NEUTRAL_FIT }))
       .sort((a, b) => b.fit - a.fit)
       .map(({ item }) => item);
+    return { ...chip, items };
+  });
+}
+
+/**
+ * Jev's answer at or above which a component is marked internet-facing. Its
+ * answers are calibrated, so this means fairly sure; a mark raises rankings
+ * and goes into the shareable link, so a guess shouldn't set one.
+ */
+export const EXPOSED_AT = 0.7;
+
+/**
+ * Marks every item of each chip whose input Jev judged internet-facing.
+ * Nothing is added, removed or reordered; the person can untick a mark on the
+ * Edit page.
+ */
+export function markExposed(chips: Chip[], exposure: ReadonlyMap<string, number>): Chip[] {
+  return chips.map((chip) => {
+    if ((exposure.get(chip.input) ?? 0) < EXPOSED_AT) return chip;
+    const items = chip.items.map((i) => {
+      const parsed = parseStack(i.item)[0]!;
+      return { ...i, item: formatItem(withMarks(parsed, { close: parsed.close, exposed: true })), exposed: true as const };
+    });
     return { ...chip, items };
   });
 }

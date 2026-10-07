@@ -5,9 +5,9 @@ import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates } from '../resolve/catalog';
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { looksLikeInjection } from '../resolve/injection';
-import { blocks, fitTargets, judgeFit, screenText } from '../resolve/jev';
+import { blocks, exposureTargets, fitTargets, judgeStack, screenText, type Judgement } from '../resolve/jev';
 import { parseManifest } from '../resolve/manifests';
-import { canRank, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
+import { canRank, markExposed, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
 import { PREFIXES } from '../stack/format';
@@ -22,7 +22,8 @@ import type { AppEnv } from '../types';
  * - Text that parses as a manifest is handled without the model.
  * - Free text aimed at an AI is refused: first by a phrase screen, then by Jev
  *   (jev.ts), which also reads the stack's scale and hosting so close matches
- *   can be ordered by fit.
+ *   can be ordered by fit, and which components face the internet so they
+ *   can be marked (the person can untick them on the Edit page).
  * - Neither the text nor the stack is stored or logged. The parse cache is
  *   keyed by a hash of the normalised text and holds only the parsed items
  *   and the profile.
@@ -143,9 +144,14 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
 
   const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates);
   let chips = result.chips;
-  if (text !== null && canRank(profile)) {
-    const targets = fitTargets(chips);
-    if (targets.length > 0) chips = orderByFit(chips, await cachedFit(c.env, text, profile, targets));
+  // Only free text gets judged: manifests aren't sent to Jev.
+  if (text !== null) {
+    const fitAsk = canRank(profile) ? fitTargets(chips) : [];
+    const exposureAsk = exposureTargets(chips);
+    if (fitAsk.length + exposureAsk.length > 0) {
+      const { fit, exposure } = await cachedJudgement(c.env, text, profile, fitAsk, exposureAsk);
+      chips = markExposed(orderByFit(chips, fit), exposure);
+    }
   }
   return c.json({ source, format, ...result, chips, profile }, 200, { 'Cache-Control': 'no-store' });
 });
@@ -218,21 +224,36 @@ async function cachedParse(env: Env, text: string, quota: () => Promise<QuotaRes
 }
 
 /**
- * Jev's fit for each close match, cached by text and the matches asked
- * about. It follows a parse of the same text, so the parse's quota covers it;
- * a repeat costs nothing unless the catalog has changed the matches.
+ * Jev's fit for each close match and exposure for each component, cached by
+ * text and what was asked. It follows a parse of the same text, so the
+ * parse's quota covers it; a repeat costs nothing unless the catalog has
+ * changed the matches.
  */
-async function cachedFit(env: Env, text: string, profile: StackProfile, targets: { item: string; label: string }[]): Promise<Map<string, number>> {
-  const asked = await sha256Hex(targets.map((t) => t.item).join('\n'));
-  const key = new Request(`https://parse-cache.vulnder.invalid/fit/v1/${await sha256Hex(normalizeInput(text))}/${asked}`);
+async function cachedJudgement(
+  env: Env,
+  text: string,
+  profile: StackProfile,
+  fitAsk: { item: string; label: string }[],
+  exposureAsk: string[],
+): Promise<Judgement> {
+  const asked = await sha256Hex(JSON.stringify([fitAsk.map((t) => t.item), exposureAsk]));
+  const key = new Request(`https://parse-cache.vulnder.invalid/judge/v1/${await sha256Hex(normalizeInput(text))}/${asked}`);
   const cache = await openParseCache();
   const hit = cache ? await cache.match(key) : undefined;
   if (hit) {
-    const stored = (await hit.json()) as unknown;
-    if (Array.isArray(stored)) return new Map(stored.filter((e): e is [string, number] => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'number'));
+    const stored = (await hit.json()) as { fit?: unknown; exposure?: unknown } | null;
+    return { fit: entries(stored?.fit), exposure: entries(stored?.exposure) };
   }
-  const fit = await judgeFit(env.AI, text, profile, targets);
+  const judged = await judgeStack(env.AI, text, profile, fitAsk, exposureAsk);
   // Nothing is cached when Jev didn't answer, so the next request asks again.
-  if (cache && fit.size > 0) await cache.put(key, Response.json([...fit], { headers: cacheHeaders }));
-  return fit;
+  if (cache && judged.fit.size + judged.exposure.size > 0) {
+    await cache.put(key, Response.json({ fit: [...judged.fit], exposure: [...judged.exposure] }, { headers: cacheHeaders }));
+  }
+  return judged;
+}
+
+/** A cached [key, probability] list read back as a map, dropping anything malformed. */
+function entries(stored: unknown): Map<string, number> {
+  if (!Array.isArray(stored)) return new Map();
+  return new Map(stored.filter((e): e is [string, number] => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'number'));
 }
