@@ -9,7 +9,7 @@ import { RAW_BASE, RELEASES_URL } from '../src/ingest/sources/cve';
 import { EPSS_URL } from '../src/ingest/sources/epss';
 import { ADVISORIES_URL } from '../src/ingest/sources/ghsa';
 import { KEV_URL } from '../src/ingest/sources/kev';
-import { sourceHealth } from '../src/routes/health';
+import { HEALTH_CACHE, HEALTH_CACHE_SECONDS, healthCacheKey, sourceHealth } from '../src/routes/health';
 import { FakeFetch, jsonResponse } from './helpers/fake-fetch';
 import { cveRecords, deltaZip, epssLatest, ghsaPage, kevFeed, releases, withMeta } from './helpers/fixtures';
 import { resetDb, rows, unlimitedBudget } from './helpers/db';
@@ -212,21 +212,34 @@ describe('health', () => {
     ).toBe('error');
   });
 
-  it('serves freshness and counts', async () => {
+  beforeEach(async () => {
+    await (await caches.open(HEALTH_CACHE)).delete(healthCacheKey(env));
+  });
+
+  it('serves freshness from the status rows, without counting tables', async () => {
     await ingest(upstreams());
     const res = await app.request('/api/health', {}, env);
     expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe(`public, max-age=${HEALTH_CACHE_SECONDS}`);
     const body = (await res.json()) as {
       status: string;
       sources: Record<string, { health: string; lastSuccessAt: string }>;
-      counts: Record<string, number>;
       dataVersion: number;
     };
     // NOW is in the past relative to the real clock, so these read as stale.
     expect(Object.keys(body.sources)).toEqual(['cve', 'ghsa', 'kev', 'epss']);
     expect(body.sources.cve!.lastSuccessAt).toBe(NOW.toISOString());
-    expect(body.counts.vulns).toBeGreaterThan(5);
+    expect(body).not.toHaveProperty('counts');
     expect(body.dataVersion).toBe(1);
+  });
+
+  it('serves repeat requests from the edge cache without reaching D1', async () => {
+    const first = await (await app.request('/api/health', {}, env)).json();
+    // A database that would fail every query proves the second reply never touched it.
+    const broken = { ...env, DB: { prepare: () => { throw new Error('D1 reached'); } } as unknown as D1Database };
+    const second = await app.request('/api/health', {}, broken);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual(first);
   });
 
   it('reports "never" on an empty database', async () => {

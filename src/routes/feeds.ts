@@ -7,6 +7,7 @@ import { createOsvClient } from '../match/osv';
 import { PRIORITIES } from '../match/priority';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
 import type { AppEnv } from '../types';
+import { openCache, putInBackground } from './cache';
 
 /**
  * GET /api/feed, /feed.xml and /badge.svg for a stack in `s`.
@@ -70,7 +71,7 @@ async function cached(
   const key = new Request(
     `${baseUrl(c.env)}/__cache/${route}?s=${encodeURIComponent(req.canonical)}&days=${req.days}&v=${dataVersion}`,
   );
-  const cache = await openCache();
+  const cache = await openCache('vulnder-feeds');
   const hit = cache ? await cache.match(key) : undefined;
   // Cached responses have immutable headers; copy so middleware can add to them.
   if (hit) return new Response(hit.body, hit);
@@ -81,23 +82,8 @@ async function cached(
   }
   const res = await build(dataVersion);
   res.headers.set('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
-  if (cache && res.ok) {
-    const put = cache.put(key, res.clone());
-    try {
-      c.executionCtx.waitUntil(put);
-    } catch {
-      await put; // no execution context (tests)
-    }
-  }
+  if (cache && res.ok) await putInBackground(c, cache, key, res);
   return res;
-}
-
-async function openCache(): Promise<Cache | null> {
-  try {
-    return await caches.open('vulnder-feeds');
-  } catch {
-    return null;
-  }
 }
 
 async function runMatch(c: Context<AppEnv>, req: StackRequest, now: Date): Promise<MatchResult> {

@@ -66,28 +66,25 @@ type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
 
 export async function resolveCandidates(store: Store, input: Candidate[]): Promise<ResolveResult> {
   const candidates = input.map(asResolvable);
-  // Exact catalog lookups for every package, in one query.
   const packageKeys = candidates.flatMap((c) => (c.kind === 'package' ? [`${c.ecosystem}:${normalizePackageName(c.ecosystem, c.name)}`] : []));
-  const knownPackages = new Set(
-    packageKeys.length === 0
-      ? []
-      : (
-          await store.all<{ key: string }>(
-            "SELECT key FROM catalog WHERE kind = 'package' AND key IN (SELECT value FROM json_each(?))",
-            [JSON.stringify([...new Set(packageKeys)])],
-          )
-        ).map((r) => r.key),
-  );
-
+  const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
   const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
   const queries = [...new Set(products.map((p) => normalizeKey(p.name)).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
-  const rows = queries.length === 0 ? [] : await productCandidates(store, queries);
   // Every product of each vendor named (or implied by the first word), for categories and vendor-only input.
   const vendors = [...new Set(products.flatMap((p) => vendorGuesses(p)))];
-  const byVendor = vendors.length === 0 ? [] : await productsByVendor(store, vendors);
 
-  const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
-  const knownAlias = await knownItems(store, aliasItems);
+  // Three independent queries, sent together. Each reads only index ranges:
+  // exact keys (packages and alias targets), name prefixes, vendor key prefixes.
+  const [known, rows, byVendor] = await Promise.all([
+    knownKeys(store, [...packageKeys.map((key) => ({ kind: 'package' as const, key })), ...aliasItems.map(catalogKey)]),
+    queries.length === 0 ? [] : productCandidates(store, queries),
+    vendors.length === 0 ? [] : productsByVendor(store, vendors),
+  ]);
+  const knownPackages = new Set(packageKeys.filter((key) => known.has(`package ${key}`)));
+  const knownAlias = new Set(aliasItems.filter((item) => {
+    const { kind, key } = catalogKey(item);
+    return known.has(`${kind} ${key}`);
+  }));
 
   const chips: Chip[] = [];
   let droppedTransitive = 0;
@@ -231,37 +228,51 @@ async function productCandidates(store: Store, queries: string[]): Promise<Catal
     const prefix = q.slice(0, q.length >= 6 ? 4 : 3);
     return [prefix, `${prefix}\u{10FFFF}`];
   });
-  return store.all<CatalogRow>(
-    `SELECT DISTINCT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
-     FROM json_each(?) j
-     JOIN catalog c ON c.normalized >= json_extract(j.value, '$[0]') AND c.normalized < json_extract(j.value, '$[1]')
-     LIMIT ${MAX_PREFIX_ROWS}`,
-    [JSON.stringify(ranges)],
-  );
+  return store.all<CatalogRow>(PREFIX_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS]);
 }
 
-/** All products of the given vendors, most-affected first. */
+/*
+ * D1 bills every row a query scans, so each of these must search an index,
+ * never scan the catalog; test/query-plans.test.ts checks their plans.
+ * CROSS JOIN fixes SQLite's join order, so the json_each list drives index
+ * lookups instead of the catalog driving a scan.
+ */
+
+/** Catalog rows whose normalized name falls in any [from, to) range. */
+export const PREFIX_SQL = `SELECT DISTINCT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
+  FROM json_each(?1) j
+  CROSS JOIN catalog c ON c.normalized >= json_extract(j.value, '$[0]') AND c.normalized < json_extract(j.value, '$[1]')
+  LIMIT ?2`;
+
+/** Products of the given vendors, most-affected first. Product keys are `vendor/product`, and '0' sorts right after '/'. */
+export const VENDOR_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
+  FROM json_each(?1) j
+  CROSS JOIN catalog c ON c.kind = 'product' AND c.key >= j.value || '/' AND c.key < j.value || '0'
+  ORDER BY c.count DESC, c.key LIMIT ?2`;
+
+/** Which of the given keys the catalog has. Naming both kinds lets the (kind, key) primary key answer it. */
+export const KNOWN_KEYS_SQL = `SELECT kind, key FROM catalog
+  WHERE kind IN ('package', 'product') AND key IN (SELECT value FROM json_each(?))`;
+
 async function productsByVendor(store: Store, vendors: string[]): Promise<CatalogRow[]> {
-  return store.all<CatalogRow>(
-    `SELECT kind, key, ecosystem, name, vendor, product, normalized, label, count FROM catalog
-     WHERE kind = 'product' AND vendor IN (SELECT value FROM json_each(?))
-     ORDER BY count DESC, key LIMIT ${MAX_PREFIX_ROWS}`,
-    [JSON.stringify(vendors)],
-  );
+  return store.all<CatalogRow>(VENDOR_SQL, [JSON.stringify(vendors), MAX_PREFIX_ROWS]);
 }
 
-/** The subset of stack items that have catalog entries. */
-async function knownItems(store: Store, items: string[]): Promise<Set<string>> {
-  if (items.length === 0) return new Set();
-  const keyed = items.map((item) => {
-    const p = parseStack(item)[0]!;
-    return [item, p.kind === 'package' ? `${p.ecosystem}:${p.name}` : `${p.vendor}/${p.product}`] as const;
-  });
-  const rows = await store.all<{ key: string }>('SELECT key FROM catalog WHERE key IN (SELECT value FROM json_each(?))', [
-    JSON.stringify(keyed.map(([, k]) => k)),
-  ]);
-  const found = new Set(rows.map((r) => r.key));
-  return new Set(keyed.filter(([, k]) => found.has(k)).map(([item]) => item));
+interface CatalogKey {
+  kind: 'package' | 'product';
+  key: string;
+}
+
+function catalogKey(item: string): CatalogKey {
+  const p = parseStack(item)[0]!;
+  return p.kind === 'package' ? { kind: 'package', key: `${p.ecosystem}:${p.name}` } : { kind: 'product', key: `${p.vendor}/${p.product}` };
+}
+
+/** `${kind} ${key}` for each of the given keys the catalog has. */
+async function knownKeys(store: Store, keys: CatalogKey[]): Promise<Set<string>> {
+  if (keys.length === 0) return new Set();
+  const rows = await store.all<CatalogKey>(KNOWN_KEYS_SQL, [JSON.stringify([...new Set(keys.map((k) => k.key))])]);
+  return new Set(rows.map((r) => `${r.kind} ${r.key}`));
 }
 
 function labelFor(item: string): string {

@@ -119,6 +119,25 @@ const itemKey = (item: StackItem) =>
   item.kind === 'package' ? `pkg:${item.ecosystem}:${item.name}` : `prod:${item.vendor}/${item.product}`;
 const rowKey = (r: AffectedRow) => (r.kind === 'package' ? `pkg:${r.ecosystem}:${r.package_name}` : `prod:${r.vendor}/${r.product}`);
 
+/*
+ * Feed queries. Each searches an index by the keys in the json_each list
+ * (test/query-plans.test.ts checks this), so a feed reads only the rows it uses.
+ * `since` is an ISO time computed here, never user text.
+ */
+const AFFECTED_COLS = 'vuln_id, source, kind, ecosystem, package_name, vendor, product, fixed_version';
+export const AFFECTED_PACKAGES_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'package'
+  AND (ecosystem, package_name) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
+export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'product'
+  AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
+export const vulnsInWindowSql = (since: string) =>
+  `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
+          epss_date, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs
+   FROM vulns WHERE id IN (SELECT value FROM json_each(?))
+     AND (published_at >= '${since}' OR last_event_at >= '${since}')`;
+export const eventsSinceSql = (since: string) =>
+  `SELECT vuln_id, type, occurred_at, detail FROM events
+   WHERE vuln_id IN (SELECT value FROM json_each(?)) AND occurred_at >= '${since}'`;
+
 export async function matchStack(store: Store, items: StackItem[], opts: MatchOptions): Promise<MatchResult> {
   const since = addDays(opts.now, -opts.days).toISOString();
   const byKey = new Map<string, StackItem[]>();
@@ -132,35 +151,11 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
   const packages = items.filter((i) => i.kind === 'package').map((i) => [i.ecosystem, i.name]);
   const products = items.filter((i) => i.kind === 'product').map((i) => [i.vendor, i.product]);
   const affected: AffectedRow[] = [];
-  const cols = 'vuln_id, source, kind, ecosystem, package_name, vendor, product, fixed_version';
-  if (packages.length > 0) {
-    affected.push(
-      ...(await store.all<AffectedRow>(
-        `SELECT ${cols} FROM affected WHERE kind = 'package'
-         AND (ecosystem, package_name) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`,
-        [JSON.stringify(packages)],
-      )),
-    );
-  }
-  if (products.length > 0) {
-    affected.push(
-      ...(await store.all<AffectedRow>(
-        `SELECT ${cols} FROM affected WHERE kind = 'product'
-         AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`,
-        [JSON.stringify(products)],
-      )),
-    );
-  }
+  if (packages.length > 0) affected.push(...(await store.all<AffectedRow>(AFFECTED_PACKAGES_SQL, [JSON.stringify(packages)])));
+  if (products.length > 0) affected.push(...(await store.all<AffectedRow>(AFFECTED_PRODUCTS_SQL, [JSON.stringify(products)])));
 
   // 2. The vulns among those that are inside the window.
-  const vulnRows = await allForKeys<VulnRow>(
-    store,
-    `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
-            epss_date, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs
-     FROM vulns WHERE id IN (SELECT value FROM json_each(?))
-       AND (published_at >= '${since}' OR last_event_at >= '${since}')`,
-    affected.map((a) => a.vuln_id),
-  );
+  const vulnRows = await allForKeys<VulnRow>(store, vulnsInWindowSql(since), affected.map((a) => a.vuln_id));
   const vulns = new Map(vulnRows.map((v) => [v.id, v]));
   const rowsByVuln = new Map<string, AffectedRow[]>();
   for (const a of affected) {
@@ -240,8 +235,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
 export async function changesFor(store: Store, vulnIds: string[], since: string): Promise<ChangeEvent[]> {
   const rows = await allForKeys<{ vuln_id: string; type: ChangeEvent['type']; occurred_at: string; detail: string }>(
     store,
-    `SELECT vuln_id, type, occurred_at, detail FROM events
-     WHERE vuln_id IN (SELECT value FROM json_each(?)) AND occurred_at >= '${since}'`,
+    eventsSinceSql(since),
     vulnIds,
   );
   return rows

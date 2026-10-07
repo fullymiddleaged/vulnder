@@ -118,7 +118,7 @@ Wording rule: EPSS is a predicted probability of exploitation in the next 30 day
 - `GET /api/feed?s=...&days=30`: JSON. Contains a `changes` section (events in the last 7 days for this stack) and the full tiered list.
 - `GET /feed.xml?s=...`: Atom. One entry per event, so feed readers surface tier changes, not just new CVEs.
 - `GET /badge.svg?s=...`: "N known-exploited CVEs" badge, green at zero.
-- `GET /api/health`: last successful ingest per source and record counts.
+- `GET /api/health`: last successful ingest per source.
 
 Cache feed responses with the Cache API, keyed on the canonicalised stack plus the data version counter, so they invalidate when ingest writes.
 

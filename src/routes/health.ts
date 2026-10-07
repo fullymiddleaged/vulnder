@@ -1,14 +1,16 @@
 import { Hono } from 'hono';
 import { STALE_AFTER_HOURS } from '../config';
 import { D1BindingStore } from '../ingest/d1-store';
-import { DATA_VERSION_KEY, EMPTY_STATUS, getAllMeta, statusKey, type SourceStatus } from '../ingest/meta';
+import { DATA_VERSION_KEY, EMPTY_STATUS, statusKey, type SourceStatus } from '../ingest/meta';
 import { SOURCE_ORDER } from '../ingest/run';
 import type { AppEnv } from '../types';
+import { openCache, putInBackground } from './cache';
+import { baseUrl } from './feeds';
 
 export type SourceHealth = 'ok' | 'stale' | 'error' | 'never';
 
 /**
- * Freshness per source plus record counts. Staleness is judged from the last
+ * Freshness per source. Staleness is judged from the last
  * successful run, which also catches a GitHub Actions schedule that GitHub has
  * disabled after 60 days without repository activity.
  */
@@ -20,16 +22,33 @@ export function sourceHealth(status: SourceStatus, staleAfterHours: number, now:
   return 'ok';
 }
 
+/** Ingest runs hourly, so a reply up to 15 minutes old is still accurate enough. */
+export const HEALTH_CACHE_SECONDS = 900;
+export const HEALTH_CACHE = 'vulnder-health';
+
+/** The per-source status rows and the data version: one query, a primary-key lookup per row. */
+export const HEALTH_META_SQL = 'SELECT key, value FROM meta WHERE key IN (SELECT value FROM json_each(?))';
+const HEALTH_KEYS = [...SOURCE_ORDER.map(statusKey), DATA_VERSION_KEY];
+export const healthCacheKey = (env: Env) => new Request(`${baseUrl(env)}/__cache/health`);
+
 export const health = new Hono<AppEnv>().get('/', async (c) => {
+  // Every page load asks for this (the footer), so it is served from the edge
+  // cache and reaches D1 at most once per cache period per location.
+  const key = healthCacheKey(c.env);
+  const cache = await openCache(HEALTH_CACHE);
+  const hit = cache ? await cache.match(key) : undefined;
+  if (hit) return new Response(hit.body, hit);
+
   const store = new D1BindingStore(c.env.DB);
   const now = new Date();
-  const [meta, counts] = await Promise.all([
-    getAllMeta(store),
-    store.all<{ vulns: number; affected: number; events: number; catalog: number }>(
-      `SELECT (SELECT COUNT(*) FROM vulns) AS vulns, (SELECT COUNT(*) FROM affected) AS affected,
-              (SELECT COUNT(*) FROM events) AS events, (SELECT COUNT(*) FROM catalog) AS catalog`,
-    ),
-  ]);
+  const meta = new Map<string, unknown>();
+  for (const r of await store.all<{ key: string; value: string }>(HEALTH_META_SQL, [JSON.stringify(HEALTH_KEYS)])) {
+    try {
+      meta.set(r.key, JSON.parse(r.value));
+    } catch {
+      // ignore malformed values
+    }
+  }
 
   const sources = Object.fromEntries(
     SOURCE_ORDER.map((name) => {
@@ -49,15 +68,16 @@ export const health = new Hono<AppEnv>().get('/', async (c) => {
   );
   const overall = Object.values(sources).every((s) => s.health === 'ok') ? 'ok' : 'degraded';
 
-  return c.json(
+  const res = c.json(
     {
       status: overall,
       sources,
-      counts: counts[0] ?? { vulns: 0, affected: 0, events: 0, catalog: 0 },
       dataVersion: Number(meta.get(DATA_VERSION_KEY) ?? 0),
       ingestRuntime: c.env.INGEST_RUNTIME,
     },
     200,
-    { 'Cache-Control': 'public, max-age=60' },
+    { 'Cache-Control': `public, max-age=${HEALTH_CACHE_SECONDS}` },
   );
+  if (cache) await putInBackground(c, cache, key, res);
+  return res;
 });

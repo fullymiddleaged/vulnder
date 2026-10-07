@@ -49,7 +49,7 @@ https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 
 `days` (1–90, default 30) widens or narrows the window. The `s` format is a versioned public contract, documented in [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md). A stack can hold up to 200 items; self-host for anything larger.
 
-`GET /api/health` reports when each source last updated, plus record counts.
+`GET /api/health` reports when each source last updated. It's cached for 15 minutes.
 
 ## Privacy
 
