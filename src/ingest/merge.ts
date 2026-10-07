@@ -1,4 +1,5 @@
 import { EPSS_HIGH, EPSS_RISE } from '../config';
+import { daysBetween, levTerm } from '../lib/lev';
 import type { Ref, SourceName, Ssvc, VulnPatch } from './types';
 
 /** A stored vulnerability, with JSON columns parsed. */
@@ -18,6 +19,8 @@ export interface VulnRecord {
   epssPercentile: number | null;
   epssDate: string | null;
   epssBaseline: number | null;
+  /** Running LEV sum for the days before epssDate (src/lib/lev.ts). */
+  levLog: number;
   kevAddedAt: string | null;
   kevRansomware: boolean;
   kevDueDate: string | null;
@@ -79,6 +82,7 @@ export function emptyRecord(id: string): VulnRecord {
     epssPercentile: null,
     epssDate: null,
     epssBaseline: null,
+    levLog: 0,
     kevAddedAt: null,
     kevRansomware: false,
     kevDueDate: null,
@@ -245,6 +249,8 @@ function mergeEpss(
     Math.abs(percentile - (before.epssPercentile ?? 0)) >= 0.01 ||
     baseline !== before.epssBaseline;
   if (meaningful) {
+    // The old score held every day from its date until this one: fold those days into LEV.
+    if (old !== null && before.epssDate) rec.levLog = before.levLog + levTerm(old, daysBetween(before.epssDate, date));
     rec.epss = value;
     rec.epssPercentile = percentile;
     rec.epssDate = date;

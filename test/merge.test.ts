@@ -190,6 +190,32 @@ describe('EPSS', () => {
   });
 });
 
+describe('LEV accumulation', () => {
+  it('starts at zero: a first score has no held days behind it', () => {
+    expect(mergePatch(stored(), epss(0.3, '2026-10-04'), opts).record!.levLog).toBe(0);
+  });
+
+  it('folds the days the old score held into lev_log when the score moves', () => {
+    const rec = stored({ epss: 0.3, epssPercentile: 0.9, epssDate: '2026-09-24', epssBaseline: 0.3, sourceFlags: 8, levLog: -0.05 });
+    const r = mergePatch(rec, epss(0.6, '2026-10-04', 0.95), opts).record!;
+    // 0.3 held 10 days (24 Sep to 3 Oct); 4 Oct is the new score's first day.
+    expect(r.levLog).toBeCloseTo(-0.05 + 10 * Math.log1p(-0.3 / 30), 12);
+    expect(r.epssDate).toBe('2026-10-04');
+  });
+
+  it('leaves lev_log alone when a movement is too small to write', () => {
+    const rec = stored({ epss: 0.3, epssPercentile: 0.9, epssDate: '2026-09-24', epssBaseline: 0.3, sourceFlags: 8, levLog: -0.05 });
+    const r = mergePatch(rec, epss(0.3004, '2026-10-04', 0.9), opts);
+    expect(r.changed).toBe(false);
+    expect(r.record!.levLog).toBe(-0.05);
+  });
+
+  it('never adds days for a score dated before the one held', () => {
+    const rec = stored({ epss: 0.3, epssPercentile: 0.9, epssDate: '2026-10-04', epssBaseline: 0.3, sourceFlags: 8 });
+    expect(mergePatch(rec, epss(0.6, '2026-10-01', 0.95), opts).record!.levLog).toBe(0);
+  });
+});
+
 describe('detectFixReleased', () => {
   const pkg = (fixedVersion: string | null, name = 'podman') => ({
     kind: 'package' as const,

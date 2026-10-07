@@ -1,4 +1,4 @@
-import { EPSS_HIGH } from '../config';
+import { EPSS_HIGH, LEV_HIGH } from '../config';
 import type { Ssvc } from '../ingest/types';
 
 /**
@@ -8,7 +8,8 @@ import type { Ssvc } from '../ingest/types';
  *   sits between Attend and Track. Evidence of exploitation always outranks
  *   prediction and severity, so the bands never invert:
  *     act     on CISA KEV, or SSVC says exploitation is active
- *     attend  EPSS of 10% or more, CVSS 9.0 or more that an attacker can
+ *     attend  EPSS of 10% or more, a NIST LEV estimate of 20% or more that
+ *             it has already been exploited, CVSS 9.0 or more that an attacker can
  *             reach (see reach()), or a proof-of-concept exploit that is
  *             automatable or gives total control
  *     watch   CVSS 8.0 or more, CVSS 7.0 or more open to attack on an
@@ -38,6 +39,8 @@ export interface Signals {
   kevAddedAt: string | null;
   knownRansomware: boolean;
   epss: number | null;
+  /** NIST LEV: lower-bound chance it has already been exploited (src/lib/lev.ts). */
+  lev: number | null;
   cvss: number | null;
   cvssVector: string | null;
   ssvc: Ssvc | null;
@@ -66,6 +69,8 @@ export function assess(s: Signals): Assessment {
   const active = s.kevAddedAt !== null || exploitation === 'active';
   const poc = exploitation === 'poc';
   const likely = s.epss !== null && s.epss >= EPSS_HIGH - 1e-9;
+  // An estimate from EPSS history, so it ranks with prediction, never with evidence.
+  const likelyBefore = !active && s.lev !== null && s.lev >= LEV_HIGH - 1e-9;
   const automatable = s.ssvc?.automatable?.toLowerCase() === 'yes';
   const totalImpact = s.ssvc?.technicalImpact?.toLowerCase() === 'total';
   const critical = s.cvss !== null && s.cvss >= CRITICAL_CVSS;
@@ -81,13 +86,13 @@ export function assess(s: Signals): Assessment {
 
   const priority: Priority = active
     ? 'act'
-    : likely || (critical && reachable) || (poc && (automatable || totalImpact))
+    : likely || likelyBefore || (critical && reachable) || (poc && (automatable || totalImpact))
       ? 'attend'
       : severe || (high && exposedOpen) || poc || (automatable && totalImpact)
         ? 'watch'
         : 'track';
 
-  const threat = active ? 1 : Math.max(s.epss ?? UNSCORED_THREAT, poc ? POC_THREAT : 0);
+  const threat = active ? 1 : Math.max(s.epss ?? UNSCORED_THREAT, s.lev ?? 0, poc ? POC_THREAT : 0);
   const impact = Math.max(s.cvss !== null ? s.cvss / 10 : UNKNOWN_IMPACT, totalImpact ? TOTAL_IMPACT : 0);
   const raw =
     threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (exposedOpen ? EXPOSED_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
@@ -98,6 +103,7 @@ export function assess(s: Signals): Assessment {
   else if (exploitation === 'active') reasons.push('Active exploitation (CISA)');
   if (s.knownRansomware) reasons.push('Used in ransomware');
   if (likely) reasons.push(`EPSS ${formatPct(s.epss!)}`);
+  if (likelyBefore) reasons.push(`NIST LEV estimate: ${formatPct(s.lev!)} chance it has already been exploited`);
   if (poc) reasons.push('Proof-of-concept exploit');
   if (automatable) reasons.push('Automatable');
   if (totalImpact) reasons.push('Total technical impact');

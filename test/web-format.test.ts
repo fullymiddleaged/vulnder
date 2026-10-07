@@ -10,7 +10,7 @@ function result(id: string, tier: Result['tier'], match: Result['match'] = 'exac
     summary: null,
     publishedAt: null,
     tier,
-    evidence: { kevAddedAt: null, kevDueDate: null, knownRansomware: false, epss: null, epssPercentile: null, epssDate: null },
+    evidence: { kevAddedAt: null, kevDueDate: null, knownRansomware: false, epss: null, epssPercentile: null, epssDate: null, lev: null },
     confidence: 'product_match',
     match,
     matched: [],

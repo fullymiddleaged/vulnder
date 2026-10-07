@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
-const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
+const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
   exploitation,
   automatable,
@@ -47,6 +47,18 @@ describe('assess: priority bands', () => {
     expect(assess({ ...base, cvss: 9.0, epss: 0.001 }).priority).toBe('attend');
     expect(assess({ ...base, ssvc: ssvc('poc', 'yes') }).priority).toBe('attend');
     expect(assess({ ...base, ssvc: ssvc('PoC', 'no', 'Total') }).priority).toBe('attend');
+  });
+
+  it('attends to a NIST LEV estimate of 20% or more, as a prediction, never as evidence', () => {
+    const r = assess({ ...base, epss: 0.02, lev: 0.34, cvss: 6 });
+    expect(r.priority).toBe('attend');
+    expect(r.reasons[0]).toBe('NIST LEV estimate: 34% chance it has already been exploited');
+    // Its threat is the LEV, since that beats the current EPSS.
+    expect(r.score).toBe(20.4);
+    expect(assess({ ...base, epss: 0.02, lev: 0.19, cvss: 6 }).priority).toBe('track');
+    // Never Act on an estimate; and with real evidence the estimate goes unsaid.
+    expect(assess({ ...base, lev: 0.99 }).priority).toBe('attend');
+    expect(assess({ ...base, lev: 0.99, kevAddedAt: '2026-10-01' }).reasons).not.toContainEqual(expect.stringContaining('LEV'));
   });
 
   it('attends to a critical only when an attacker can reach it', () => {

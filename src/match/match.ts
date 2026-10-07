@@ -1,4 +1,5 @@
 import { EPSS_HIGH } from '../config';
+import { lev } from '../lib/lev';
 import { addDays } from '../lib/time';
 import { allForKeys, type Store } from '../ingest/store';
 import type { Ref, Ssvc } from '../ingest/types';
@@ -42,6 +43,8 @@ export interface MatchedVuln {
     epss: number | null;
     epssPercentile: number | null;
     epssDate: string | null;
+    /** NIST LEV: lower-bound chance it has already been exploited, from EPSS history. */
+    lev: number | null;
   };
   confidence: Confidence;
   /** 'exact' when a stack item named it outright; 'close' when only a close match (a '?' item) did. */
@@ -108,6 +111,7 @@ interface VulnRow {
   epss: number | null;
   epss_percentile: number | null;
   epss_date: string | null;
+  lev_log: number;
   kev_added_at: string | null;
   kev_ransomware: number;
   kev_due_date: string | null;
@@ -131,7 +135,7 @@ export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHER
   AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
 export const vulnsInWindowSql = (since: string) =>
   `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
-          epss_date, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs
+          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs
    FROM vulns WHERE id IN (SELECT value FROM json_each(?))
      AND (published_at >= '${since}' OR last_event_at >= '${since}')`;
 export const eventsSinceSql = (since: string) =>
@@ -221,7 +225,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
     results.push(
-      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed),
+      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed, opts.now),
     );
   }
 
@@ -256,13 +260,16 @@ function toResult(
   matched: string[],
   fixedVersions: string[],
   exposed: boolean,
+  now: Date,
 ): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
+  const levNow = lev(v.lev_log ?? 0, v.epss, v.epss_date, now);
   const { priority, score, reasons } = assess({
     kevAddedAt: v.kev_added_at,
     knownRansomware: v.kev_ransomware === 1,
     epss: v.epss,
+    lev: levNow,
     cvss: v.cvss_score,
     cvssVector: v.cvss_vector,
     exposed,
@@ -283,6 +290,7 @@ function toResult(
       epss: v.epss,
       epssPercentile: v.epss_percentile,
       epssDate: v.epss_date,
+      lev: levNow === null ? null : Math.round(levNow * 1e4) / 1e4,
     },
     confidence,
     match,

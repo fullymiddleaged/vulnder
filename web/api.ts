@@ -38,6 +38,8 @@ export interface Result {
     epss: number | null;
     epssPercentile: number | null;
     epssDate: string | null;
+    /** NIST LEV: lower-bound chance it has already been exploited. */
+    lev: number | null;
   };
   confidence: 'version_confirmed' | 'product_match';
   match: 'exact' | 'close';

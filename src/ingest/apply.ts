@@ -40,6 +40,7 @@ interface VulnRow {
   epss_percentile: number | null;
   epss_date: string | null;
   epss_baseline: number | null;
+  lev_log: number;
   kev_added_at: string | null;
   kev_ransomware: number;
   kev_due_date: string | null;
@@ -78,6 +79,7 @@ const VULN_COLUMNS = [
   'epss_percentile',
   'epss_date',
   'epss_baseline',
+  'lev_log',
   'kev_added_at',
   'kev_ransomware',
   'kev_due_date',
@@ -364,6 +366,7 @@ function rowToRecord(r: VulnRow): VulnRecord {
     epssPercentile: r.epss_percentile,
     epssDate: r.epss_date,
     epssBaseline: r.epss_baseline,
+    levLog: r.lev_log ?? 0,
     kevAddedAt: r.kev_added_at,
     kevRansomware: r.kev_ransomware === 1,
     kevDueDate: r.kev_due_date,
@@ -389,6 +392,7 @@ function recordToRow(rec: VulnRecord, nowIso: string): Record<(typeof VULN_COLUM
     epss_percentile: rec.epssPercentile,
     epss_date: rec.epssDate,
     epss_baseline: rec.epssBaseline,
+    lev_log: rec.levLog,
     kev_added_at: rec.kevAddedAt,
     kev_ransomware: rec.kevRansomware ? 1 : 0,
     kev_due_date: rec.kevDueDate,

@@ -705,6 +705,13 @@ function renderResult(r: Result): HTMLElement {
             `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`,
           )
         : h('span', { class: 'badge muted' }, 'No EPSS yet'),
+      e.lev !== null && e.lev >= 0.01
+        ? h(
+            'span',
+            { class: 'badge', title: 'NIST LEV: estimated chance it has already been exploited, from its EPSS history. A lower bound, not evidence.' },
+            `LEV ${pct(e.lev)}`,
+          )
+        : null,
       e.knownRansomware ? h('span', { class: 'pill red' }, 'Ransomware') : null,
       h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
       h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match'),
