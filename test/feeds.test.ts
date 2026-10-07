@@ -6,6 +6,7 @@ import { bumpDataVersionStatement } from '../src/ingest/meta';
 import type { VulnPatch } from '../src/ingest/types';
 import { matchStack, pickLinks } from '../src/match/match';
 import { OSV_QUERYBATCH_URL, type OsvClient } from '../src/match/osv';
+import { describeHours } from '../src/lib/time';
 import { badgeSvg } from '../src/routes/feeds';
 import { parseStack } from '../src/stack/format';
 import { resetDb, store } from './helpers/db';
@@ -303,6 +304,13 @@ describe('GET /feed.xml', () => {
     expect(xml).toContain(`<id>${env.BASE_URL}/events/CVE-2026-1001/kev_added/`);
     expect(xml).toContain('Known exploited (added to CISA KEV): CVE-2026-1005: Cisco IOS XE web UI privilege escalation');
     expect(xml).not.toMatch(/weaponi[sz]ed/i);
+    // Each entry says what to do and by when, and what to do meanwhile when no fix is known.
+    expect(xml).toContain('Priority: Act now, respond within 48 hours. Why: On CISA KEV');
+    expect(xml).toContain('No fixed version known yet: mitigate meanwhile.');
+  });
+
+  it('describes response windows in hours, then days', () => {
+    expect([24, 48, 168, 720].map(describeHours)).toEqual(['24 hours', '48 hours', '7 days', '30 days']);
   });
 
   it('describes EPSS as a prediction, never as exploitation', async () => {

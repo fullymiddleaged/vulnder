@@ -35,6 +35,46 @@ export interface Assessment {
   score: number;
   /** Why, most important first, e.g. ["On CISA KEV", "CVSS 8.8 (high)"]. */
   reasons: string[];
+  /** The same reasons, structured: which one decided the band, and what data is missing. */
+  why: Why;
+  /** Suggested time to fix or mitigate, in hours; null for Track (the next routine update). */
+  respondWithinHours: number | null;
+}
+
+export interface Reason {
+  text: string;
+  /** Evidence of exploitation, a prediction of it, how bad it is, or how reachable. */
+  kind: 'evidence' | 'prediction' | 'severity' | 'context';
+}
+
+export interface Why {
+  /** The rule that put it in its band; null for Track, where no rule did. */
+  decisive: Reason | null;
+  others: Reason[];
+  /** Signals that weren't available, so a reader knows what the band couldn't use. */
+  missing: string[];
+}
+
+type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'automatable' | 'total' | 'exposed' | 'access' | 'cvss';
+
+/**
+ * How soon to fix or mitigate, as guidance rather than an SLA. In 2026, working
+ * exploits often appear within hours of disclosure and a third arrive on or
+ * before it, so exploited bugs get a day or two, and a day on internet-facing
+ * items, where the 24–48 hour "tier zero" guidance applies. The rest follow the
+ * common 7- and 30-day remediation windows.
+ */
+export function respondWithin(priority: Priority, exposed: boolean): number | null {
+  switch (priority) {
+    case 'act':
+      return exposed ? 24 : 48;
+    case 'attend':
+      return 7 * 24;
+    case 'watch':
+      return 30 * 24;
+    case 'track':
+      return null;
+  }
 }
 
 export interface Signals {
@@ -106,20 +146,46 @@ export function assess(s: Signals): Assessment {
     threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (exposedOpen ? EXPOSED_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
 
-  const reasons: string[] = [];
-  if (s.kevAddedAt) reasons.push('On CISA KEV');
-  else if (exploitation === 'active') reasons.push('Active exploitation (CISA)');
-  if (s.knownRansomware) reasons.push('Used in ransomware');
-  if (sibling) reasons.push(`Similar to exploited ${s.exploitedSibling} in the same product`);
-  if (likely) reasons.push(`EPSS ${formatPct(s.epss!)}`);
-  if (likelyBefore) reasons.push(`NIST LEV estimate: ${formatPct(s.lev!)} chance it has already been exploited`);
-  if (poc) reasons.push('Proof-of-concept exploit');
-  if (automatable) reasons.push('Automatable');
-  if (totalImpact) reasons.push('Total technical impact');
-  if (exposedOpen) reasons.push('Internet-facing');
-  if (access && high) reasons.push(describeAccess(access.barriers));
-  if (s.cvss !== null) reasons.push(`CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
-  return { priority, score, reasons };
+  const all: (Reason & { key: ReasonKey })[] = [];
+  const add = (key: ReasonKey, kind: Reason['kind'], text: string) => all.push({ key, kind, text });
+  if (s.kevAddedAt) add('active', 'evidence', 'On CISA KEV');
+  else if (exploitation === 'active') add('active', 'evidence', 'Active exploitation (CISA)');
+  if (s.knownRansomware) add('ransomware', 'evidence', 'Used in ransomware');
+  if (sibling) add('sibling', 'evidence', `Similar to exploited ${s.exploitedSibling} in the same product`);
+  if (likely) add('epss', 'prediction', `EPSS ${formatPct(s.epss!)}`);
+  if (likelyBefore) add('lev', 'prediction', `NIST LEV estimate: ${formatPct(s.lev!)} chance it has already been exploited`);
+  if (poc) add('poc', 'evidence', 'Proof-of-concept exploit');
+  if (automatable) add('automatable', 'context', 'Automatable');
+  if (totalImpact) add('total', 'severity', 'Total technical impact');
+  if (exposedOpen) add('exposed', 'context', 'Internet-facing');
+  if (access && high) add('access', 'context', describeAccess(access.barriers));
+  if (s.cvss !== null) add('cvss', 'severity', `CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
+
+  // The first rule that put it in its band, in the order the band checks them.
+  const decidedBy: ReasonKey | null =
+    priority === 'act'
+      ? 'active'
+      : priority === 'attend'
+        ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical && reachable ? 'cvss' : 'poc'
+        : priority === 'watch'
+          ? severe ? 'cvss' : high && exposedOpen ? 'exposed' : poc ? 'poc' : 'total'
+          : null;
+  const decisive = all.find((r) => r.key === decidedBy) ?? null;
+  const strip = ({ text, kind }: Reason): Reason => ({ text, kind });
+
+  const missing: string[] = [];
+  if (!active && !s.ssvc) missing.push('No CISA assessment of exploitation, automation or impact yet');
+  if (s.cvss === null) missing.push('No CVSS score yet: NVD now scores only a fraction of new CVEs');
+  else if (high && !access) missing.push('No CVSS vector to tell whether an attacker can reach it');
+  if (!active && s.epss === null) missing.push('Not scored by EPSS yet');
+
+  return {
+    priority,
+    score,
+    reasons: all.map((r) => r.text),
+    why: { decisive: decisive && strip(decisive), others: all.filter((r) => r !== decisive).map(strip), missing },
+    respondWithinHours: respondWithin(priority, s.exposed),
+  };
 }
 
 /** What an attacker needs before they can try the bug, from the CVSS vector. */
@@ -165,7 +231,7 @@ function formatPct(v: number): string {
   return `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
 }
 
-export function comparePriority(a: Assessment, b: Assessment): number {
+export function comparePriority(a: Pick<Assessment, 'priority' | 'score'>, b: Pick<Assessment, 'priority' | 'score'>): number {
   return PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) || b.score - a.score;
 }
 
@@ -186,7 +252,7 @@ export interface FixItem {
  * urgent band first, then by summed score. One upgrade usually closes several
  * CVEs, so this is the order to work in.
  */
-export function fixFirst(results: { id: string; matched: string[]; fixedVersions: string[]; assessment: Assessment }[]): FixItem[] {
+export function fixFirst(results: { id: string; matched: string[]; fixedVersions: string[]; assessment: Pick<Assessment, 'priority' | 'score'> }[]): FixItem[] {
   const items = new Map<string, FixItem>();
   const sorted = [...results].sort((a, b) => comparePriority(a.assessment, b.assessment));
   for (const r of sorted) {

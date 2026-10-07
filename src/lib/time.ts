@@ -29,6 +29,11 @@ export function toIso(value: unknown): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
+/** A response window for people: 24 → "24 hours", 168 → "7 days". */
+export function describeHours(hours: number): string {
+  return hours < 72 ? `${hours} hours` : `${Math.round(hours / 24)} days`;
+}
+
 /** Start of the retention window, as an ISO string. */
 export function windowStart(now: Date, days: number): string {
   return addDays(now, -days).toISOString();

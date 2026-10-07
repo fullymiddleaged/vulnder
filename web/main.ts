@@ -1,7 +1,8 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
-import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Priority, type Result } from './api';
+import { describeHours } from '../src/lib/time';
+import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import {
   ago,
@@ -518,7 +519,7 @@ function renderBrief(r: Result): HTMLElement {
     h(
       'p',
       { class: 'small links' },
-      r.reasons.length > 0 ? h('span', {}, r.reasons[0]) : null,
+      r.why.decisive ? h('span', {}, r.why.decisive.text) : r.reasons.length > 0 ? h('span', {}, r.reasons[0]) : null,
       r.fixedVersions.length > 0 ? h('span', {}, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : h('span', { class: 'muted' }, 'No fixed version listed'),
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
     ),
@@ -713,10 +714,17 @@ function renderResult(r: Result): HTMLElement {
       { class: 'row wrap' },
       h('span', { class: `pill ${light}` }, RISK[r.priority].label),
       h('span', { class: 'score', title: 'Risk score, 0 to 100: orders results within a priority' }, `Risk ${formatScore(r.score)}`),
+      r.respondWithinHours !== null
+        ? h(
+            'span',
+            { class: 'badge respond', title: 'Guidance, not a deadline: exploits for urgent bugs now often appear within hours of disclosure' },
+            `Respond within ${describeHours(r.respondWithinHours)}`,
+          )
+        : null,
       h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
     ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
-    r.reasons.length > 0 ? h('p', { class: 'why small' }, h('strong', {}, 'Why: '), r.reasons.join('; ')) : null,
+    renderWhy(r),
     h(
       'p',
       { class: 'facts row wrap small' },
@@ -744,12 +752,52 @@ function renderResult(r: Result): HTMLElement {
       : null,
     h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
     r.fixedVersions.length > 0 ? h('p', { class: 'small' }, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
+    r.mitigation ? renderMitigation(r.mitigation) : null,
     h(
       'p',
       { class: 'small links' },
       advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
     ),
+  );
+}
+
+/** Why: the signal that decided the band first, then the rest, then what the band couldn't use. */
+function renderWhy(r: Result): HTMLElement | null {
+  const { decisive, others, missing } = r.why;
+  if (!decisive && others.length === 0 && missing.length === 0) return null;
+  return h(
+    'div',
+    { class: 'why small' },
+    decisive || others.length > 0
+      ? h(
+          'p',
+          {},
+          h('strong', {}, 'Why: '),
+          decisive ? h('span', { class: `decisive ${decisive.kind}`, title: `Decided the priority (${KIND_LABEL[decisive.kind]})` }, decisive.text) : null,
+          ...others.flatMap((o, i) => [i > 0 || decisive ? '; ' : '', h('span', { title: KIND_LABEL[o.kind] }, o.text)]),
+        )
+      : null,
+    missing.length > 0 ? h('p', { class: 'muted' }, 'Not available: ', missing.join('; ')) : null,
+  );
+}
+
+const KIND_LABEL: Record<Reason['kind'], string> = {
+  evidence: 'evidence of exploitation',
+  prediction: 'a prediction',
+  severity: 'severity',
+  context: 'reachability and context',
+};
+
+/** An urgent CVE with no fixed version known: what to do until there is one. */
+function renderMitigation(m: { action: string | null; advisory: string | null }): HTMLElement {
+  const advisory = safeHref(m.advisory);
+  return h(
+    'p',
+    { class: 'small mitigate' },
+    h('strong', {}, 'No fixed version known yet: mitigate meanwhile. '),
+    m.action ? `CISA: ${m.action} ` : 'Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships. ',
+    advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
   );
 }
 

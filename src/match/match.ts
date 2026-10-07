@@ -5,7 +5,7 @@ import { allForKeys, type Store } from '../ingest/store';
 import type { Ref, Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
-import { assess, comparePriority, fixFirst, type FixItem, type Priority } from './priority';
+import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -69,6 +69,15 @@ export interface MatchedVuln {
   family: string | null;
   /** Other results here in the same family, in feed order. */
   related: string[];
+  /** The reasons, structured: the one that decided the band, the rest, and missing data. */
+  why: Why;
+  /** Suggested time to fix or mitigate, in hours (guidance); null for Track. */
+  respondWithinHours: number | null;
+  /**
+   * For Act now and Attend with no fixed version known: what to do meanwhile
+   * (CISA's required action, when on KEV) and where to read more. Null otherwise.
+   */
+  mitigation: { action: string | null; advisory: string | null } | null;
 }
 
 export interface ChangeEvent {
@@ -122,6 +131,7 @@ interface VulnRow {
   kev_added_at: string | null;
   kev_ransomware: number;
   kev_due_date: string | null;
+  kev_required_action: string | null;
   ssvc: string | null;
   refs: string;
   family_id: string | null;
@@ -143,7 +153,7 @@ export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHER
   AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
 export const vulnsInWindowSql = (since: string) =>
   `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
-          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs, family_id
+          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, kev_required_action, ssvc, refs, family_id
    FROM vulns WHERE id IN (SELECT value FROM json_each(?))
      AND (published_at >= '${since}' OR last_event_at >= '${since}')`;
 /** Members of these families with evidence of exploitation, wherever they are in time. */
@@ -288,9 +298,10 @@ function toResult(
   exploitedSibling: string | null,
 ): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
+  const links = pickLinks(v.id, refs);
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
   const levNow = lev(v.lev_log ?? 0, v.epss, v.epss_date, now);
-  const { priority, score, reasons } = assess({
+  const { priority, score, reasons, why, respondWithinHours } = assess({
     kevAddedAt: v.kev_added_at,
     knownRansomware: v.kev_ransomware === 1,
     epss: v.epss,
@@ -325,14 +336,33 @@ function toResult(
     cvss: v.cvss_score !== null ? { score: v.cvss_score, vector: v.cvss_vector } : null,
     cwe: parseJson<string[]>(v.cwe, []),
     ssvc,
-    links: pickLinks(v.id, refs),
+    links,
     priority,
     score,
     reasons,
     // A family id only means something next to its siblings: linkFamilies fills these in.
     family: exploitedSibling ? v.family_id : null,
     related: [],
+    why,
+    respondWithinHours,
+    mitigation: mitigationFor(priority, fixedVersions, v.kev_required_action, links.advisory),
   };
+}
+
+/**
+ * Exploitation now often comes before the patch, so an urgent CVE with no
+ * fixed version known needs something to do meanwhile: CISA's required action
+ * when it's on KEV, and the advisory. "Known" matters: product records often
+ * name no fixed version even when the vendor has shipped one.
+ */
+export function mitigationFor(
+  priority: Priority,
+  fixedVersions: string[],
+  requiredAction: string | null,
+  advisory: string | null,
+): { action: string | null; advisory: string | null } | null {
+  if ((priority !== 'act' && priority !== 'attend') || fixedVersions.length > 0) return null;
+  return { action: requiredAction?.trim() || null, advisory };
 }
 
 /**

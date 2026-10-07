@@ -1,10 +1,10 @@
 import { Hono, type Context } from 'hono';
 import { D1BindingStore } from '../ingest/d1-store';
 import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
-import { addDays } from '../lib/time';
+import { addDays, describeHours } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
 import { createOsvClient } from '../match/osv';
-import { PRIORITIES } from '../match/priority';
+import { PRIORITIES, type Priority } from '../match/priority';
 import { parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
 import type { AppEnv } from '../types';
 import { openCache, putInBackground } from './cache';
@@ -187,15 +187,19 @@ export function eventTitle(e: ChangeEvent, v: MatchedVuln | undefined): string {
   }
 }
 
+const PRIORITY_LABEL: Record<Priority, string> = { act: 'Act now', attend: 'Attend', watch: 'Watch', track: 'Track' };
+
 function eventSummary(e: ChangeEvent, v: MatchedVuln | undefined): string {
   const lines: string[] = [];
   if (e.type === 'epss_crossed') {
     lines.push('EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.');
   }
   if (v) {
+    lines.push(`Priority: ${PRIORITY_LABEL[v.priority]}${v.respondWithinHours !== null ? `, respond within ${describeHours(v.respondWithinHours)}` : ''}. Why: ${v.reasons.join('; ') || 'nothing beyond affecting your stack'}.`);
     lines.push(`Tier: ${v.tier}. Confidence: ${v.confidence === 'version_confirmed' ? 'version confirmed' : 'product match'}.`);
     lines.push(`Matched: ${v.matched.join(', ')}.`);
     if (v.fixedVersions.length > 0) lines.push(`Fixed in: ${v.fixedVersions.join(', ')}.`);
+    else if (v.mitigation) lines.push(`No fixed version known yet: mitigate meanwhile.${v.mitigation.action ? ` CISA: ${v.mitigation.action}` : ''}`);
     if (v.summary) lines.push(v.summary);
   }
   return lines.join('\n\n');

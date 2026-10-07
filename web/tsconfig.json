@@ -4,5 +4,5 @@
     "lib": ["es2024", "dom", "dom.iterable"],
     "types": []
   },
-  "include": ["./**/*.ts", "../src/stack/**/*.ts", "../src/resolve/manifests/**/*.ts", "../src/resolve/types.ts", "../src/lib/normalize.ts"]
+  "include": ["./**/*.ts", "../src/stack/**/*.ts", "../src/resolve/manifests/**/*.ts", "../src/resolve/types.ts", "../src/lib/normalize.ts", "../src/lib/time.ts"]
 }

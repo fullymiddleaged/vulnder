@@ -22,6 +22,9 @@ function result(id: string, tier: Result['tier'], match: Result['match'] = 'exac
     reasons: [],
     family: null,
     related: [],
+    why: { decisive: null, others: [], missing: [] },
+    respondWithinHours: null,
+    mitigation: null,
   };
 }
 

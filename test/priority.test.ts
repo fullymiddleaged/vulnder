@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { mitigationFor } from '../src/match/match';
 import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
 const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, exploitedSibling: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
@@ -149,9 +150,61 @@ describe('assess: score and reasons', () => {
   });
 
   it('never lets a score lift a result above a more urgent band', () => {
-    const act: Assessment = { priority: 'act', score: 5, reasons: [] };
-    const watch: Assessment = { priority: 'watch', score: 99, reasons: [] };
+    const act: Pick<Assessment, 'priority' | 'score'> = { priority: 'act', score: 5 };
+    const watch: Pick<Assessment, 'priority' | 'score'> = { priority: 'watch', score: 99 };
     expect([watch, act].sort(comparePriority)).toEqual([act, watch]);
+  });
+});
+
+describe('mitigationFor', () => {
+  it('suggests what to do meanwhile only for urgent CVEs with no fixed version known', () => {
+    expect(mitigationFor('act', [], ' Apply mitigations per vendor instructions. ', 'https://a')).toEqual({
+      action: 'Apply mitigations per vendor instructions.',
+      advisory: 'https://a',
+    });
+    expect(mitigationFor('attend', [], null, null)).toEqual({ action: null, advisory: null });
+    expect(mitigationFor('attend', [], '  ', null)).toEqual({ action: null, advisory: null });
+    expect(mitigationFor('act', ['1.2.3'], 'x', null)).toBeNull();
+    expect(mitigationFor('watch', [], 'x', null)).toBeNull();
+    expect(mitigationFor('track', [], null, null)).toBeNull();
+  });
+});
+
+describe('assess: why and when', () => {
+  it('names the rule that decided the band, apart from the rest', () => {
+    const kev = assess({ ...base, kevAddedAt: 'x', epss: 0.5, cvss: 9.8, cvssVector: OPEN });
+    expect(kev.why.decisive).toEqual({ text: 'On CISA KEV', kind: 'evidence' });
+    expect(kev.why.others.map((r) => r.text)).toEqual(['EPSS 50%', 'Reachable over the network without a login', 'CVSS 9.8 (critical)']);
+    // The list order stays the same; only the decisive one is singled out.
+    expect([kev.why.decisive!.text, ...kev.why.others.map((r) => r.text)]).toEqual(kev.reasons);
+
+    expect(assess({ ...base, epss: 0.02, cvss: 9.8, cvssVector: OPEN }).why.decisive).toEqual({ text: 'CVSS 9.8 (critical)', kind: 'severity' });
+    expect(assess({ ...base, epss: 0.3, cvss: 9.8, cvssVector: OPEN }).why.decisive).toEqual({ text: 'EPSS 30%', kind: 'prediction' });
+    expect(assess({ ...base, exploitedSibling: 'CVE-1', epss: 0.3 }).why.decisive!.text).toBe('Similar to exploited CVE-1 in the same product');
+    expect(assess({ ...base, lev: 0.4 }).why.decisive!.kind).toBe('prediction');
+    expect(assess({ ...base, ssvc: ssvc('poc', 'yes') }).why.decisive!.text).toBe('Proof-of-concept exploit');
+    expect(assess({ ...base, exposed: true, cvss: 7.2, cvssVector: OPEN }).why.decisive!.text).toBe('Internet-facing');
+    expect(assess({ ...base, ssvc: ssvc('none', 'yes', 'total') }).why.decisive!.text).toBe('Total technical impact');
+    expect(assess({ ...base, cvss: 5 }).why.decisive).toBeNull();
+  });
+
+  it('says what data it could not use', () => {
+    expect(assess(base).why.missing).toEqual([
+      'No CISA assessment of exploitation, automation or impact yet',
+      'No CVSS score yet: NVD now scores only a fraction of new CVEs',
+      'Not scored by EPSS yet',
+    ]);
+    expect(assess({ ...base, cvss: 8.1, epss: 0.01, ssvc: ssvc('none') }).why.missing).toEqual(['No CVSS vector to tell whether an attacker can reach it']);
+    // Exploitation evidence makes the predictions moot.
+    expect(assess({ ...base, kevAddedAt: 'x', cvss: 5, cvssVector: OPEN }).why.missing).toEqual([]);
+  });
+
+  it('suggests a response window by band, a day for exploited internet-facing items', () => {
+    expect(assess({ ...base, kevAddedAt: 'x', exposed: true }).respondWithinHours).toBe(24);
+    expect(assess({ ...base, kevAddedAt: 'x' }).respondWithinHours).toBe(48);
+    expect(assess({ ...base, epss: 0.2 }).respondWithinHours).toBe(168);
+    expect(assess({ ...base, cvss: 8.5 }).respondWithinHours).toBe(720);
+    expect(assess(base).respondWithinHours).toBeNull();
   });
 });
 

@@ -56,6 +56,22 @@ export interface Result {
   family: string | null;
   /** Other results in this feed from the same family. */
   related: string[];
+  why: {
+    /** The rule that decided the band; null for Track. */
+    decisive: Reason | null;
+    others: Reason[];
+    /** Signals the band couldn't use. */
+    missing: string[];
+  };
+  /** Suggested time to fix or mitigate, in hours (guidance); null for Track. */
+  respondWithinHours: number | null;
+  /** For urgent CVEs with no fixed version known: what to do meanwhile. */
+  mitigation: { action: string | null; advisory: string | null } | null;
+}
+
+export interface Reason {
+  text: string;
+  kind: 'evidence' | 'prediction' | 'severity' | 'context';
 }
 
 export type Priority = 'act' | 'attend' | 'watch' | 'track';
