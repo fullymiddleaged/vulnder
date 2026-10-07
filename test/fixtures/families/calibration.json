@@ -1,0 +1,246 @@
+{
+  "model": "@cf/qwen/qwen3-embedding-0.6b",
+  "dims": 256,
+  "pairs": [
+    {
+      "note": "one XSS, two preview paths",
+      "same": true,
+      "texts": [
+        "Same-origin XSS to account takeover via terminal port-preview iframe hardcoding allow-same-origin",
+        "Same-origin XSS to account takeover via terminal file-preview iframe hardcoding allow-same-origin"
+      ],
+      "vectors": [
+        "+vn96fz0Cgv1A/34//3xDQT58QztBQMPBQTsCAcH+Pv3/Pv8D/f8DAD8Gfv9/goABgTyCfwD+PQDAQIB+QoBBgn/+AEE8AL0+QEF9/v9AwH4G/7/ARoS/P8I/gLvAwIF/QL6BPv/FOgBFO4E8vkCCwcA9f0I9P7/BvQE+AH/9fYH/gL7+P4BAQj9Cf8K/wQB/gj5+f/0CAgBAPcFAgEIAAACAPUDAQP6AQkDBPz3//r1/fcEAPr+AAYEBvT7AwH79wD8/fv7Avb79wkA+/kDA/8B+QIJB/z8/wH8AQIG9/4D9gH9AwYB+A3/BwIBARz//wT4Afj//v0AAAjx/fwGAQ==",
+        "+Pb96PzyBwvzA/v2//3yDQP88grrAgIPBQTvBQUE+Pn1/Pv8EPn8DAD9Gfv+/wkABgPzDP0C+fUDAAID+gcBBwf9+QAC8QP3+AEG9vr8AgD3GQD8/xgT/fwE/APuBgIE/gL8BPwAFOsBFe0D8vkEDAcB9foI9gAAA/MF9wX/9fYG/gL6+f0B/gj9CP8K/AIB/gr8+QD1CQYA//QEBAEG/gADAPUBAwP7AgkBBfr4Afn0+/cCAf3/AwYBBvL5AgD5+AH8/fr7APn59Qv//PoCBAAB/AIGDf39/gH9AgMI+P4C9wP8AwQA+A4BCQIB/xsAAAP4A/n//vwA/gXw+/sI/w=="
+      ]
+    },
+    {
+      "note": "one OAuth bypass, reported twice",
+      "same": true,
+      "texts": [
+        "Users denied by the OAuth role policy can still sign in via token exchange",
+        "Users denied by the OAuth domain allowlist or role policy can still sign in via token exchange"
+      ],
+      "vectors": [
+        "AgD+8vrpBgT//Pf8BP7vDvjx/AoC9wkSBAX1BgUP/fT59fT9//j+CQIHHAj/8QAB/xD9+/sI/vQI/f//7wP+AgkbDQr69gL38wcF/Qr7APwAEPcHCBgOAA0KEgf3Af3//Pn5/f76/fQHEuwKCfkI/QkGB/kH+f75/wH//gUB+AAM8QTx/AUCAwP9Av78Awf4AAIA/QLvAgXv/fr7+AAE/v8ABPj8Cwb6BAH8Av0A+wDz/vgGAvsCBQT9Bfr/+vgE+wD++wz+//4FAAoBAgUF+vr8+/0CD/36AQABBf0FAAEA+foCBQUD9gUGA/0I9wkF/wEGAfsHAQT87wvo+gcAAg==",
+        "AAD+8vnmCAMC+fr7Af7wEfny/AoH9wYUAgL0BgYP//X99/H9//r+CgQJHgUA8gL//BL7APkJAPQH+wD87gT9AAcaDAf89P/89AcF/Qn6/fkAEfgHBBUQ/wwJDwj2//sAAPr7/f79//UFE+8NCfYK/QwECfcH/P/5/foA/gYF+wAJ8wPv/gAEAgD+Bv77AQX6/wP//gHvAgfs/Pn7+f8E/v//BPn9Cwf7BAD5Av38/QD1/vcHAfoCBgMABvr9/P8C/QD9+Q79/f0D/wkAAAUF+vr9/f4BD/v8AAECAv8E/gL89vwDBQUD9QgKBP0G+AYDAAAIAfkG/wD87gjo/gcBAQ=="
+      ]
+    },
+    {
+      "note": "one cyclic-history hang, two triggers",
+      "same": true,
+      "texts": [
+        "Any authenticated user can hang the server via a cyclic chat message history",
+        "Any authenticated user can hang the server via message deletion in a cyclic chat tree"
+      ],
+      "vectors": [
+        "Cvv99ATgAwT/C/H2Af7zFAfzBwAJBPATBwT3E/wT/fz9+/T89/EICv0CF/kG8/z4+v76DP0KAvYJ+/z+9xXy+/0I//jz///w/QQCAPwB+wMAEwH/+RQG9QYO//wB9gQC/Qb1+vsF/vAADvYJAf71//78AQIP9gL5A/z5Avv29gUB9/35//IBCv8CBwD5//v6/Ar/9//zCwHt/v8JAP4EBgIFAf7+CwP8A/4ABgX8+vn79/L9A/EFBQj5CAf2/vz29f0E/Qv/9QIDAAP/CAYJ/gL6+AoBAwD6/wAB+wAEAv/9+gD7C/74/AQLCAQEBAr59/8CBvcF+wYA/Qjv/wACAQ==",
+        "BgD99QPi/AD/EPH1AP7yEg72BQEGA+sYBAX3C/4J/vX7+PP9+u8ID/8CF/oO9QD5/P/9Cf8LA/cL9f/9/RP2AP0IAffyAAD5/QUBBPsE+QEBEQH++g8A9wgK9vwG+Qb9/wX19/oH/PD9D/QMAv/zAfb5A/8S+AL5Av/+Bfv58wUC9QD5/vYACP4BCPz6Af36+wn/+f7tCf/w/v0HAf8ECgAF//7/BQb8AwECBAT8+/r4+PL/A/QCAgf3BwP4/QD68f4D/wz79wEDAwAABwcHAQD68wQBDf73AAYB+gAEBf78+v79Efz4AgEKBgUE/g328wIGBvcE/AQB+Qjx+wcCAQ=="
+      ]
+    },
+    {
+      "note": "one component, one Patch Tuesday batch",
+      "same": true,
+      "texts": [
+        "Biometric Service Elevation of Privilege",
+        "Biometric Service Information Disclosure"
+      ],
+      "vectors": [
+        "+Or99f/1+wz6Avf7Cf3zGPIC8wD8CP8UBgjuDQMBAAP3+fj8+fb7Cv4ACgMG9f/6/AfuAAT/B/sV+fn96xLzBgUSAvz0+f32/QUCDAAFAAkCCvUFAgsc/QT8DgYABf79AvgH//4AB/f7CPTy+/kBAg8BAP/9+PwA/fn9/gcE9AIH+QX1AP8FAf39BQP//QT6BAT6/QTy/wHq/vgEBPr//gEBBfX++gH29AL6BfsAAPX48fr/A/kBBQEJBf76Ae/8+QL9+gQEAgD+AQQCAv8J/fr38fz5CwQBAQ7+BQsI/QL3/QYACAgJ9QUDCfoGAQwO/gQCAf4H+gP++wXo9Qz99w==",
+        "9u39+ADx9A30/fvzBf3xE+788wD+B/wXAgjpCf4LC/j69vb9+vv7DPz+CAEH9wL2+gfyAAEBC/0Q/fwC8xP3BQQLAfnx+Pv7/AUDC/4JAgkED/r/ABEY/gQHCgb+AP8BAfoH/v7+BP3uCvXx+vj/ABEAAf79+AL7Afr9/AsE+AEG+Qf1/vgDAP/9BgMB/Af6/wr8/gTw/QLzAfb+BPv6+gQCAfoB+Qb49v76BPsAAvr48AEABPr/BgMFCP37BfH89AH6+wAH////AwIBBAII/fj69P3yCQIDBQ34BgoIAgP5/AYBDAsH9wkADP4GBQwP+AT///4G+wj99wDt+Aj+/Q=="
+      ]
+    },
+    {
+      "note": "the same component, named two ways",
+      "same": true,
+      "texts": [
+        "Graphics Component Remote Code Execution",
+        "Graphics Component Remote Code Execution"
+      ],
+      "vectors": [
+        "Avf94QD2+P76CgXvCP3yGgkK7wL2AAQKAf7uBfj/+wf7+f/8E/z0EP/9F/v/8gYDAgH0/wT//PsH/QD//xTzA/8FAAX78wf5/wgD/f8GBwcEFQAA/RsSAQb++P39+AgA+QUD+/wCEe//EO8G+/wCBwb/9P8B8gH+BwAHBP0C9wAH+wUDAAQCAwb7Dv0N/wP+APv/+QXyC/8B/fMFAgMEAgD/CPv7BAX8AwIIBgD0Av7z9PsEAPQF/Af+Bf77/ff4/gL6+gL6/vj9+wMF+/8E/QAD9vr1BP0D+Pn/BQcE+gL38QX6BA4N/gYLDf8ACQr//gQFAfcB/vz+AQzo9f0E+w==",
+        "Avf94QD2+P76CgXvCP3yGgkK7wL2AAQKAf7uBfj/+wf7+f/8E/z0EP/9F/v/8gYDAgH0/wT//PsH/QD//xTzA/8FAAX78wf5/wgD/f8GBwcEFQAA/RsSAQb++P39+AgA+QUD+/wCEe//EO8G+/wCBwb/9P8B8gH+BwAHBP0C9wAH+wUDAAQCAwb7Dv0N/wP+APv/+QXyC/8B/fMFAgMEAgD/CPv7BAX8AwIIBgD0Av7z9PsEAPQF/Af+Bf77/ff4/gL6+gL6/vj9+wMF+/8E/QAD9vr1BP0D+Pn/BQcE+gL38QX6BA4N/gYLDf8ACQr//gQFAfcB/vz+AQzo9f0E+w=="
+      ]
+    },
+    {
+      "note": "one enclave, two impacts",
+      "same": true,
+      "texts": [
+        "Virtualization-Based Security (VBS) Enclave Elevation of Privilege",
+        "Virtualization-Based Security (VBS) Information Disclosure"
+      ],
+      "vectors": [
+        "B+f98Q/88gL4/PP8/P3yGgMG5gj4EwAb/ADr///8/wz1+wn8/Pz6CQj+EAIG6wcEBQH4AgH+APv9+P/2/g/pBPwS/QMA/P/5+AT+AwIABBL+CP3+9wwV/gb5BwT8Af/4/wMBAAcHAvT8FPb6+vUBCvgB8gP18wH/Afr9/gH/9/oH+PsDBwQDAgUEBQEF/f38CgH7/AT2BAP9Af8G/wACAgAAA/z//gXw/gQABf33A/X99vr+Bv0A/wUEBgD3A/329f779wUAAP78BQQBAP4G+/f19Af+C/8B/g38/wcL/wDy+wED9wcD9QIABfsCAxIQAAIDAPgA//b9+wjr9Q3/+g==",
+        "AOr98g797AXz9/jz+f3yGvwB7QX1FP8a+QLr//gCBgL29Ab8+wD6CgcBFAIK7gkBAQH6BP7+B/sBAP36/xHtAvkJAP36+f76+gb/AQAFBA/8DQX8+BES+QgBAQX7APv8+wMB/QcKAvj1E/T99/QADfkA9gT49AP6Bfv/+gX+9/oJ+voBBf8BAQcFB/8K/P/8Bgb7/Qf1BwEBA/sBAQABAQEDAgED/AryBAAABvr5BPj88QAEBf0A/wcECAD2BQD17//59v8C/f37Bf8AAgQE/Pj38wP5Cf4GAQz5AwgMAQD0+gH//Qj++wr/CvwDAA0R/gH/APf+/fr9+Qjt+A0A/A=="
+      ]
+    },
+    {
+      "note": "one parser limit, two language bindings",
+      "same": true,
+      "texts": [
+        "dart `TJsonProtocol`/`TJSONProtocol` has no string size bound",
+        "javame `TJsonProtocol`/`TJSONProtocol` has no string size bound"
+      ],
+      "vectors": [
+        "/gT96wAI+Pr0AAEE9v71EA7//wH5BPwM/A7tCQf0+O3/+PX8EvwACfP2DQAD+g0CDQX3A/z6+Pf/+QAF9RD5BvkBAPwM8v7rAAf4AAj8/fz/CPoWCRID+/8D9wL3+hT5Avj7Bfz6+frxB/EL9/f/BwUE9gAJ+Af6AAIF+gYC+f0I/AwL/fYF/gUEBwII//78+wb+/woLCQQB+f8H+wX9Cvj7BPgBCf/6+QL+AP77BQLx9foFBf8EAAIMAfn/+Qz49wH78xb+Cfr1BgL7//UACPX4/AIE+v8AB/oBBgsP8gAI/gD9DAYA/BMOCf0HCgoB+v7+BPsEBv/3Bgb58AUA/g==",
+        "/v/96voE+/32AwMH//73ERT++/75BvkP+gzxEwP8/PAD8/T8DQD9Bfn2DgME+g4CCwH3Bf75+/gD+f4C+Q37BfP9AfYF9P7pAgn4Agf4/fYDBfkSBxQE+gEC+QD89BX7Bvz8CPz9+v7zBu0N+fsABgUK9P8L+gf9AAUA+g0F+gAI+wkK//oE/gQHBwEH/gD5/gT8+woHCAAB9wUG+wf+CPX8BPMDBf38+ggC/f35BADy9PgBBP8BAAQPAfgE9wv6+QH88xMBCvn1Av7+/vYCC/b8/v8C+f/9CPsDBQsO9AIE+wH8EQP//RAOBQAFCw/79/8BAvsDB/33Awj18QX/+Q=="
+      ]
+    },
+    {
+      "note": "one cache poisoning, reported twice",
+      "same": true,
+      "texts": [
+        "Cache poisoning in SSG/ISR rendering leads to cross-user content substitution and persistent denial of service",
+        "Cache poisoning of SSG and ISR pages in self-hosted applications"
+      ],
+      "vectors": [
+        "Bvn9+AT+/QTwAAPuA/3wGA777gsA/gAiBwT5DQQF9v799/v8Ff8DCgP+G/kC8Av9CgPuAv0C+PsA//0A+A3t/P8C+/kC9QL3/AwA/AD+BBH8Dv/7+hUL//wB/Aj5/P79/v35AAAC/+T4E/EC9/MBC/sBAvz89gj2C/v/9Ab99/oI+/oABAMDAAMFBQATAAP9/QMD+Qj1BP3/AvgH/gYDBwACAfoC/wv5BQMDBQH7Afv1+gIGBPn9AAMDCPT9//P98wH7+P39APn8+QP//v8A+P39+QcFDv70/gT4BQQL/v/9+QD4Bwf/+RMBDQcGAgn///r8/f4A/wEBBQjy+/sAAA==",
+        "A/v88gn7BgTvAP/xBf3uGAj78g3/BP8cBQACDwQD/vv89v/7Dv0BB/4BI/8E9AcADQTv/fkD+fsA/fz/8Q7u+f4D+fkF9QP3/g3+9wL/Bgr9EAP99xYLAvsB9Qj2APz99/r7//0EAen2FOv/+/QACfcF/vwA+gX3BfoC9Qf++fkJ+/n8BQAEAgIICAIR/wT7/QMA+Aj5BQH/Bv4F/AMBCP3/AfkBAwn6BwQDBgL4Afv4+QUEBPz+/gQFB/n+APf6/P/79gP+A/r79wb8/f4A+P/8+ggHEwLx+gH6BQUL+f/4+gD6BAf9+BIFEAIFAQkCAfz4/vsFAgH8CQTu+fz+/g=="
+      ]
+    },
+    {
+      "note": "one responder, two parsing bugs",
+      "same": true,
+      "texts": [
+        "Sssd: sssd: denial of service via out-of-bounds read in autofs responder",
+        "Sssd: sssd: denial of service via packet length underflow in autofs responder"
+      ],
+      "vectors": [
+        "Be/97AXx9hLy+vT5DP31ERP99QkHBPgODgcEBgIF/v7/9fn8BgH8DAT+G/UN+wP+AQjzAPf8+PP/+Qf+/Qn6+wIIBvYD7wH6/gkBAAP6BhECCQQA9RAVAgT+9Av78vr/BAUC/AEDB/fxGfQB/PUGCwYHCP0G/Qv+APkG9P8E8/oA+QMEBvT+AwkLBgQO+Pr7+AIF+AH+BwT3/fwCAQYFBwT/AfoEABD4BAL9BQHxCfvz+f7/Bf8DBP4LBv/6Av7/+AH//wAAA/0AAQb6/QoD/wEH9AkKBPn4CfXzDAcH+f75+/75+QAI9gX/EQMIAP8D/gH4A/0H/vkA9wjx9/gB+w==",
+        "BfD97wbx+hLv/PT6C/30DhH+9QsHCPYUEAYGBwIE/gD79fn8BgT7DAn+G/IL+AX//wrz//j++fT++gj/+gz59wcKBe8B7v/7/QoDAf/8BBACCgT/9RAU/gT/9wv78/n+BQMF/AABBPb1GPH++vMBCgMHDAAE+wn9BPsF8wEE8voC+QQCBvH+BQkOBQcM+fz6+wME+gL+BwP2/f0DAQUHBQQA//kEAQ74Af7+AwLzB/z1+/v+Bf4DA/8KCAD8AP3+9gD+/gEAAv7+AQX8/QsDAP8F9goMBfv3CfnzCgcF+//7+f/5/P8F/AgBEAMJAQAF/wL5A/sG//v/9QXy9/sE+w=="
+      ]
+    },
+    {
+      "note": "one subkey check, two signature types",
+      "same": true,
+      "texts": [
+        "OpenPGP certification accepted from a subkey without certification authority",
+        "OpenPGP data signature accepted from a signing subkey without cross-certification"
+      ],
+      "vectors": [
+        "/ur97QLw+Av1AwLzCf3xGAb99AcGDwscCgP7CQH5Dvz99/b89QQGBQD/DgUF/wYEBv/9+P4JBfoGAf8G/hL/9/4RBQL+7foA+AoCCQYJ/AUFBAID9RYU/f0F/g0GCgb5+wX8+P36Cf71Ee8F+fkB9wwEA/n49Pz+/QH9/gMH9v0M8QT8A/YBCAT+CwMFA/r4Af78/AX5CgP1Av0C+fcNAf4HAPj/Awb/BQMCAQEGAPv49voEB/0B+/4HAPz87/n49vz5+wQEAv35CQX+/AMG/ff7/AMIA/7+AAQCDQMG+P4C9wMDBwUE7wD/BwH/BhcUBPwBAv0H/wD69fnr+QMEAA==",
+        "AOv97f/38Az2/QP5Bf3xHQP/8w0DCQsaCwEBBQn9DfYA+Pf8+AMFAwMBEQMB/AoEAQf9+/8IC/oEAf0C9BD8+/4PCAX/8Pv//Az9CwAP/wQDBv4H9hYM+/0FAAgICwT7AQL/9wD9DP74D+4G9/3+/QwEAwD69fz//wX9/woH9vkJ8gb+BPUECAcBCgMLAwH5/QEA/AX0DAT3Afr//PgMBf4J/vr+Agb/CQP8AwAIAPv29vkEBP0B/P0LB/f98ff39v34+QYG+/77CQT+/v4F/vn4//3/AgD/AgkACwQE+P7++AQBDAMB8QD5CvoAAhkVCfoDAv8EAP389/ju9AMDAQ=="
+      ]
+    },
+    {
+      "note": "different components, same impact",
+      "same": false,
+      "texts": [
+        "Imaging Component Remote Code Execution",
+        "Graphics Component Remote Code Execution"
+      ],
+      "vectors": [
+        "/Pb95wEB8Qb+BgDuAv3zHQII8gT0BgIUAP/5DPb+CQ77+P78Bvr0CwD+HfsB9w3/AwPy/f36/PkK+wD8+BLyBQADCAL8+gX2/QcC9v8JAhEAEvn+ABQU+gX6/QH5/f/+/wIG/QABEev4D/EA/v0CCQsC9gT39Qb9//oB/gMA+f4L/wX///8FAwX6B/wO/gIBAf8A/ADzC/37APEHAAYDAv//Bfv/Awj8AAABBAD3Bv/19f8B/fgEAQMGA/34+/T3/QD5+wD9/Pf9AwEB/wMC+QP89vv9Bv8B+AcBCAsH//778An4+wsJ+w4NC/0ABwoPAgb9APgF/fwB/Qjn9gYF+Q==",
+        "Avf94QD2+P76CgXvCP3yGgkK7wL2AAQKAf7uBfj/+wf7+f/8E/z0EP/9F/v/8gYDAgH0/wT//PsH/QD//xTzA/8FAAX78wf5/wgD/f8GBwcEFQAA/RsSAQb++P39+AgA+QUD+/wCEe//EO8G+/wCBwb/9P8B8gH+BwAHBP0C9wAH+wUDAAQCAwb7Dv0N/wP+APv/+QXyC/8B/fMFAgMEAgD/CPv7BAX8AwIIBgD0Av7z9PsEAPQF/Af+Bf77/ff4/gL6+gL6/vj9+wMF+/8E/QAD9vr1BP0D+Pn/BQcE+gL38QX6BA4N/gYLDf8ACQr//gQFAfcB/vz+AQzo9f0E+w=="
+      ]
+    },
+    {
+      "note": "different components, same impact",
+      "same": false,
+      "texts": [
+        "Graphics Component Remote Code Execution",
+        "Imaging Component Remote Code Execution"
+      ],
+      "vectors": [
+        "Avf94QD2+P76CgXvCP3yGgkK7wL2AAQKAf7uBfj/+wf7+f/8E/z0EP/9F/v/8gYDAgH0/wT//PsH/QD//xTzA/8FAAX78wf5/wgD/f8GBwcEFQAA/RsSAQb++P39+AgA+QUD+/wCEe//EO8G+/wCBwb/9P8B8gH+BwAHBP0C9wAH+wUDAAQCAwb7Dv0N/wP+APv/+QXyC/8B/fMFAgMEAgD/CPv7BAX8AwIIBgD0Av7z9PsEAPQF/Af+Bf77/ff4/gL6+gL6/vj9+wMF+/8E/QAD9vr1BP0D+Pn/BQcE+gL38QX6BA4N/gYLDf8ACQr//gQFAfcB/vz+AQzo9f0E+w==",
+        "/Pb95wEB8Qb+BgDuAv3zHQII8gT0BgIUAP/5DPb+CQ77+P78Bvr0CwD+HfsB9w3/AwPy/f36/PkK+wD8+BLyBQADCAL8+gX2/QcC9v8JAhEAEvn+ABQU+gX6/QH5/f/+/wIG/QABEev4D/EA/v0CCQsC9gT39Qb9//oB/gMA+f4L/wX///8FAwX6B/wO/gIBAf8A/ADzC/37APEHAAYDAv//Bfv/Awj8AAABBAD3Bv/19f8B/fgEAQMGA/34+/T3/QD5+wD9/Pf9AwEB/wMC+QP89vv9Bv8B+AcBCAsH//778An4+wsJ+w4NC/0ABwoPAgb9APgF/fwB/Qjn9gYF+Q=="
+      ]
+    },
+    {
+      "note": "unrelated n8n bugs",
+      "same": false,
+      "texts": [
+        "Disabled OIDC SSO Endpoints Remain Active and Issue Valid Sessions",
+        "Cross-Tenant Project-Member PII Disclosure via Missing Per-Project Scope Check on Role Assignment Endpoints"
+      ],
+      "vectors": [
+        "Av7+7Ans/wf7+vQNAv3wEv339wQDBQYTAwT9EQ4OAf/2+Pn8B/b5BwL+IAII+PwB/g7v+vcL/voI+/8C6QwA/QYWAwD69ALz9BID8QEC/PcCE/4B/xcM/gsF/w36A/kDAfn/BAD7/vYHEu4C9/T6BwwMAP8E+wX9+/v//PgC+QME9v/vAPUAAAP+BgLz/gX7BAQD/APzDAb4/QAFAAAE/QP/Af79CQX9Af/+BgH5AfT5/v0CBPsGAgQJBvz/AP39+fv+/AMC/f3//Av9AQoF+/389gYACgPzCwf8BAQF+AX19gQABwX9+wQPDPsA+wwHAf4AAQEI/QD+9gHw+wYFAw==",
+        "Avf96QHs+/oAAQH4//3zF/L89Ar2Cf4E+wvzCAcCC/T67vn8AvP2CfgJFwgD/fwE/wr2+fIF+/4R8wEC+g3/A/wLBQn89P718wr9+QUEAgL9CwL/+xkJ/gkH+gf2Agn8APj89QX8APr1C+8BAPL/+/wGAfz39Ab5Af/+/AwB+wEH9wPv/fwF/QT2A/sC+wr6/gb//wTwCQXx/fkB/wEDAgL8A/D8/gj79AL7BgQHBP74/gAIAvz/AgQJBfv8Avz78/78+Q8AAPkBAAYFBv8D+voB8gD7DwECAQkDAwMG/gPu+gH+AQUE9xAMCv7/AgQL/QH5AwAGAAX36gvyAhMEBg=="
+      ]
+    },
+    {
+      "note": "unrelated n8n bugs",
+      "same": false,
+      "texts": [
+        "Expression Sandbox Escape in Editor-UI Enables Stored Cross-User JavaScript Execution",
+        "Prototype Pollution via Workflow Structure Summary Can Lead to Denial of Service"
+      ],
+      "vectors": [
+        "Cwb94vn6AP76APH1+v3zHgQK9v3y/QoLAAT1E/oA9Pj3//78C/f+B/f7GAMF/AD+EgX3BAUC/fn//v/+/A3zCgMD///3+gb9+gr//f72Awb8EQUD/g8M/AEEAwTxAgkA+gT+/QH6DPIEC+0F9/YBCgcR7wL6+AH8CPj9AQwA9/kE/AIA+wgEAQb9EgAD/fT9/gwE/AL4B///9vwKAvwKBQYCB/b5C/r4AwEABv/7AP3x/PkFA/oD/wf6/vj8/Pz4+fz99gL6/vwB7gQA/P0EAP34/A74DAMLAAcAAAgG+f8C+wP7+gEG8gULD/4C+Q8CAvsE/vcA+gH+DBDs/fcF/w==",
+        "B+789hD0BPn2/wDrAP3uFvn38AQBCP4V/QT8Bv3++QT09/37Cfr4EAEFHv8C8gEGEAj0/voC+wED+/f8Ahbs9v4HBfsG9gP3+gYA+wb0BA/7Bgn8ARMG/gL9+Av7Ag73/P73Af3+AOwBDfQF/PYBCfwJAAD79gT3AwH99Q//+P0K+f74AgEDAAj9B/oJ/v71Agn++wb/AgH6/QUDAAAC/v0FAPP9/gb0+f8ABAH++/b4+f8CBfgA+gYIBv35/Pz7+P3/+gv8APr++wQFAgEE/PsB+vsECwH8Ag7/CgIJAgP68wX9BwUA/hUECwIBAAb++v8AA/oG/vn4CQzk+Q8EBQ=="
+      ]
+    },
+    {
+      "note": "one driver, different bugs",
+      "same": false,
+      "texts": [
+        "staging: rtl8723bs: fix mismatched free of HalData in rtw_sdio_if1_init()",
+        "staging: rtl8723bs: fix xmit_frame/xmit_buf leaks on mgnt-frame error paths"
+      ],
+      "vectors": [
+        "Bvn+5wn/9RHiC/8E9f70DhMD7xIBBvkLEwP8/gcD+REM/Pf9+QcD/vr9/vkEAQn7+QYDBv70BAgM9wMA+wT7CgQIDP34AgYGBAn7AgID+xsFCAIG8w8D/QcK/P4I7fkF8AkD/AP/+//1D/gF8PUNCQn19wQE+gUBAf8CBPn68vsF+wYJAQYFA/4DAwQI+fX+AA0C/wH9Bwf8A/YG/wEOAQT8Af36Dv78BAP8BwD5Bv/w/voAA/f+/wED/v74+AX6AwD9+wr4//0BBwoA9fsBAvr+/wj+Agb7AP36CfsC8gL8BgL+7gT3+AkGCfsD/QQEBPkIBQEE/v0F+/vl++8B9g==",
+        "/fr97QUB7RDvDvv89v33FBH0+hX9DfAODP75+/sEBgQK9fr8Av4ICgIIAf4J/goACAIIBvz/Bgf9/Qb2//75/vwIBPsA+wAGCAj4/fgGAxX9BAX7ABD3B/0RAQQN6Pv+7wP+9wMA+vDuDPcM9vgECgEC//4H+v77AA/++PX87v4E/wEOAAoHBAMGDAAK9QD2/gYAAgT7BQUE+vYGAgMFCf36BP0BBgf+DQ0G/wEFBff5+PUDAPX3AAIJBv/9Avz6+P4B+QD6A/UCCwcB/PkEBfoD/vj/+wD++QgBA/8C+f30+QD+/gEG+Rr/CPoDAQsCCQIHA/EC+vb9BQL1/uwD9g=="
+      ]
+    },
+    {
+      "note": "unrelated Windows bugs",
+      "same": false,
+      "texts": [
+        "NTFS Remote Code Execution",
+        "Message Queuing Service (MSMQ) Remote Code Execution"
+      ],
+      "vectors": [
+        "AfD95wj37QTxCff6Bv3zGwQD8//7BgAXBQPv/PbvBQkA8/38Bv3/DAkHGAEE+wkCAgX0CP/5/PYI9wQF/g36+QcEBf/89wr8AAUB/gEGAxP+DAL99xYT/wj6+gb5+gQB/gQF/f4CFPT/EPn98/kDCfwA+AP2+QEB+wABAwYF8/sH/wz/AP78BAb4Bf8L+wP8/wD/9gb2Cgn9+/MGAgUCAgD+A/39Bgr7BgX+B/7zAf76+vj+AfkEAAH9A/n2//3z7wP6/wn+//v/BAUD/QgF/P3++//4Dfv9/vz5AQsIAP71+QH9AgUN+QULDQIFAggL+gn+/vYG/fcA/ATj8/sA+Q==",
+        "//H95gPz8/v2A/ICCP31Hv7//gv+CO0XBf72Afj7BwQF8AD8Bv//BQUCKAML8wcDBQTz/gX8/vf+A//+/wry9AAI/vvz+QH1/wb9/P4FBxX2CQYCAhUKBgD7/wP+9Pr5AAf+AQICD/X5C/gG+Pj+AP8I9wf++wD6+QIB/gb+8/8I/AX4BfgBBAMCCPoC+gH4AgL79Ab2CwT9/fcG//4EAwMAB/z+B/z1BwMGBf3zAQL38/n6BPwAAQX+BwD6/fL58v0BAA38/vr9/wT+/gkB/v0C9wD/Bv0A/Qr+BQYLAAPw8wT9/ggD+AwFDP0G/QcFAgsCAfsE+/X69gnn+wMD+w=="
+      ]
+    },
+    {
+      "note": "one product, path traversal vs XSS",
+      "same": false,
+      "texts": [
+        "File Management File Browser path traversal",
+        "stored Cross-Site Scripting"
+      ],
+      "vectors": [
+        "+vL95Qrm9P76Bf73Af31HwMOAAP2/gMN+/3//ffqBP/39/f8CPf+BgQGGQAA+wb++gX4//38++0H9QEB+P/zBwT1Bv3y8gL//AkB/QD+Bvz7CAYA/QwX/P74+QL9CAT2BP4F9gMHDfr9DOgF9PsJCfcE9vv8/gb///0D/gcE9fkE/gEABfwIAgb8BP0L+f/7/wMF/wPxBwD39/IBAAD+AQP7BPH/Bgn/BQH8/gD4Avny+AEEAfcAAgAAAvb6+gDy9Ab7+wP/A/38AAUDAAQE+QL2+v72EAEG/wQCBwYF/wID9QL4/QIB9BIODvkE/BD8/wf/AfUG/AH7/P7r8gIB9w==",
+        "Avn97wD99wX3+gXxBf3xGQL7+wPw+AQdDAL1CwP+//j3/v/8D/3/BPcEG/8GARH+CAfxAv8C/foD+f8D+g7zAwb5+wDy9/75AQgA9wABCgj6EQYE+hQUAgED8wT1AgoAC/kEAf8CFPX5Du8F9vYHCv8A+P///QL2Av3/9RMD9/gE9/8B+gUG/QIFBwMPAQT++wwC+f71B/75//sJ/wQFBgcFA/gDBAX7Cf/7AvntBfjz+QT//v4A/QYKCfn4AgH0+f77/AH6/vwC/QX++/oD///8/wT+CgMH+Qr7CQcE9QH79gT4Bwn/+AcIDfgB+RAI+wMBAPX+/v8CCf/w9vwECA=="
+      ]
+    },
+    {
+      "note": "one product, SQL injection vs CSRF",
+      "same": false,
+      "texts": [
+        "Creation add_drug.php sql injection",
+        "cross-site request forgery"
+      ],
+      "vectors": [
+        "Avv++woCAQn4D/bw/P72Gf0E/QEAAQIHCP7oEgnrDvf5+/z9BP33/An4G/MHAQwCFArxBwj8+e/5AQEF6w0F7Qnz/v/o+wL1CwUB/PoEBg36ABD5AAb8/gP/+AH0BQr/AQMHAfr+CP/6CvMD+fYDBQIC/AL5+P/5AQAD+wsD9fwC9/UA/QwJBAYEBgEK8v37+wUAAQP2AwL1Af0M/voHCP/8Bfn6Bfj1+wH7BP73//338wADAvgAAAEFAPv6AP7/Af759wIA/wH4/Qf++wcA+f36/QwJCAEAAf77AAcE9P7w+AYB9wT2A/8HDvcAA/sG/QUDBPQA/QT8Aw3m9wwJAA==",
+        "AwD97gbu+Af/AADvB/3vEwT0/AL4+gghDAD4EwP7AAP29vf9Cfv4BfwCHAIF/gv8Bgn2/gQC/fcG//4C/hPzBAgFAgPz+P31/wYB9QAJCf/8HPsF+xcaAgcA/Qv2Bwv+BvsBAAIDEPMKE+oC+PYKCfgE/PsA/P0ABwD/+QgF9/0B+P3//wQDAAX9BwEEAAMB/wYB9wLwAwP8/fgG/wABBAIBAfz8CwD9Cf7+AP32BPj49AEA//kA/gYHCPvzAfv1+f38/gEBAP8B+AkD/AAG/Pn89wEBCwP+9AP8AwUE/AL69QX/EQcA+w8GDPgB/g8B/QAEAPcD+QL/AADv+gEDAA=="
+      ]
+    },
+    {
+      "note": "one product, credentials vs sessions",
+      "same": false,
+      "texts": [
+        "Insufficiently Protected Credentials",
+        "Insufficient Session Expiration"
+      ],
+      "vectors": [
+        "BPP++APv/fn3/QXyBf7vFwb0+AEBDvocBAD4BgIDBfv58v79BgL8BgMBFwMG+/38Bwb0/Pr8//UL8QX89xL9AwAaAv/39P/29QUBAwABAw39Cgn8/hIaAgwFAQb+/gL9/PAA+gMAFfvvE+0B8/YDBv0JAv789fr6/v//9xH/+f4H9wD7AAYDAAP8CgEHAwj5+/4B+P7yBgTz/vsC/AII/wX+A/sBDQb0AgH/BAH+//v3APsB/PwEAgEFB//+9PT69gD5+AQB//z/DgYDAQYFAff8/wUCCv4F/AT8CQYB+Qb8/gH/CQwA+w4DA/wGAggP+wAFA/YCAQP++Avm/QUDAA==",
+        "Av3+7wj2Av7y+//2Cf3xEgLoBAsDA/4YBgYACgr+/QT39f38BQACAgUBJgAH9gH+Bgr5/gMEBu8F9QIA8RX/8wQOAfns9ATt/QsA+gL9BP//EgIBAxcSA/0D9wb7/vYF+/b7Av7/+vb9E+gA+PgDAAAG+gD9+v/6AQn/+AkC+QID+f4A/vcDAwn/CQb6/gX8+P/++QT9C/33/QAD/QICCP8CB/wCDgX9CP8AAwP6/Pr3BwD8AfgFAwTwCAD+/PP29/3/+QMFAfsABAoAAAMEAf4A+wEDC/oC/wMCBwcD8wX2/AP6DAT5+wEPBgMECxIC+QICAfgGA//4AA3u+AEA+g=="
+      ]
+    },
+    {
+      "note": "one plugin, data exposure vs access control",
+      "same": false,
+      "texts": [
+        "Sensitive Data Exposure",
+        "Broken Access Control"
+      ],
+      "vectors": [
+        "+/z9/Afu8ATy9gryBP3xFfb+8wj2CPoXA/7uAAUDCfXu9vn8CgX/BAEGEAMC9gb8AgfzBPr+B/kC8v8B9Rv6AwH/AgH49fv9+Aj/9v0ICRQBFf4D/RAM/gYL/AbzAvn8CPX8/QX8CPvtDPD49vgCB/4C+v/3+/76AQgA9hUC+f0C+wH/+/cFAPv9BQAE/gf9AAIA+fv2AgL4/Pj9AAED/QcBAvkA/wf4Bvv/BP3+BPn6+f0CAPsBAQUICfz9+fj28//9+AAB/fsBCwAGAP//+/r79f3yDPwFBRH/CgUJ/QL3AAX6CQsF9wcGC/sDARIQAf8CAvsA/AL98ATq+wIFBw==",
+        "Auz97AHx+gH9+/72B/30HwL3AQYGCv4ZBfvrBwf7AgT27/H8AP39BP/1EQIH/gD8AAP2BfwCAvsG6Ab/+xTw/QEUAfj5+Pz9+QL/BQD+Cg/+FQ0A/BMV+QkD+AH/+wgB/PgA+AAAB/wBEer89v8JBfIF9v399f3+BQf//AkF+/8I+QAIAwQDAQn9BP8B/f78/QL//PryBwPv+/MEAAEHAwD/A/v7Bgf4+QEACgQACP34AfsE//oD/wMCAv308vv39f79+QT6AP4CCQUJA/8A/fb68v8BDv3+AAn6AgUG+gX4/wj6AwcB+AcKCPwCDAcC/wD9//b/Av/5/ATt/A8C/w=="
+      ]
+    }
+  ]
+}

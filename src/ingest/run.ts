@@ -2,6 +2,7 @@ import { RETENTION_DAYS } from '../config';
 import { utcDay, windowStart } from '../lib/time';
 import { applyPatches, type ApplyStats } from './apply';
 import { Budget, BudgetExhausted, RateLimited } from './budget';
+import { assignFamilies, type Embedder, type FamilyReport } from './families';
 import { maintenanceStatements } from './maintenance';
 import {
   bumpDataVersionStatement,
@@ -44,6 +45,8 @@ export interface RunOptions {
   epssEvents?: boolean;
   /** Daily prune and catalog recount. 'force' runs it even if it ran today. */
   maintenance?: boolean | 'force';
+  /** Workers AI embeddings for variant families; without it, families wait. */
+  embed?: Embedder;
 }
 
 export interface SourceReport {
@@ -66,6 +69,7 @@ export interface RunReport {
   d1Queries: number;
   /** True when the run did nothing because a seed is in progress. */
   waitingForSeed?: boolean;
+  families?: FamilyReport;
 }
 
 /**
@@ -159,6 +163,18 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     );
   }
 
+  let families: FamilyReport | undefined;
+  if (opts.embed) {
+    try {
+      families = await assignFamilies({ store, budget, embed: opts.embed, now, log });
+    } catch (err) {
+      if (!(err instanceof BudgetExhausted)) throw err;
+      families = { assigned: 0, joined: 0, tokens: 0, stopped: 'budget' };
+    }
+    log(`families: ${families.assigned} assigned, ${families.joined} joined a family, ${families.tokens} tokens${families.stopped ? ` (stopped: ${families.stopped})` : ''}`);
+    if (families.joined > 0) anyWrites = true;
+  }
+
   let maintained = false;
   if (opts.maintenance !== false) {
     const today = utcDay(now());
@@ -172,7 +188,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
 
   if (anyWrites) await store.batch([bumpDataVersionStatement(now())]);
   await store.flush?.();
-  return { sources: reports, maintenance: maintained, subrequests: budget.spent, d1Queries: budget.d1Spent };
+  return { sources: reports, maintenance: maintained, subrequests: budget.spent, d1Queries: budget.d1Spent, ...(families ? { families } : {}) };
 }
 
 /**

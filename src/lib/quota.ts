@@ -1,4 +1,4 @@
-import { stmt, type Store } from '../ingest/store';
+import { stmt, type Statement, type Store } from '../ingest/store';
 
 /**
  * Daily caps on metered work, counted in D1. The Workers rate limiting binding
@@ -31,6 +31,28 @@ export async function takeDailyQuota(store: Store, bucket: string, clientIp: str
   if ((await increment(store, day, bucket, subject)) > limits.perClient) return 'client-limit';
   if ((await increment(store, day, bucket, TOTAL)) > limits.total) return 'total-limit';
   return 'ok';
+}
+
+/** Today's running total for a metered amount that has no client, such as ingest's embedding tokens. */
+export async function usageToday(store: Store, bucket: string, now: Date): Promise<number> {
+  const [row] = await store.all<{ count: number }>('SELECT count FROM usage_counters WHERE day = ? AND bucket = ? AND subject = ?', [
+    now.toISOString().slice(0, 10),
+    bucket,
+    TOTAL,
+  ]);
+  return row?.count ?? 0;
+}
+
+/** Adds to today's total for a bucket; batch it with the work it pays for. */
+export function addUsageStatement(bucket: string, amount: number, now: Date): Statement {
+  return stmt(
+    `INSERT INTO usage_counters (day, bucket, subject, count) VALUES (?, ?, ?, ?)
+     ON CONFLICT (day, bucket, subject) DO UPDATE SET count = count + excluded.count`,
+    now.toISOString().slice(0, 10),
+    bucket,
+    TOTAL,
+    amount,
+  );
 }
 
 async function increment(store: Store, day: string, bucket: string, subject: string): Promise<number> {

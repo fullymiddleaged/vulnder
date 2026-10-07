@@ -6,6 +6,7 @@ import { clear, h, safeHref } from './dom';
 import {
   ago,
   byPriority,
+  foldFamilies,
   CHANGE_LABEL,
   changeCounts,
   componentGroups,
@@ -576,7 +577,7 @@ function renderByPriority(results: Result[]): HTMLElement[] {
       { class: `tier ${RISK[p].light}`, 'aria-labelledby': `tier-${p}` },
       h('h2', { id: `tier-${p}` }, h('span', { class: 'light', 'aria-hidden': 'true' }), `${RISK[p].label} `, h('span', { class: 'count' }, String(groups[p].length))),
       h('p', { class: 'muted small' }, RISK[p].note),
-      groups[p].length === 0 ? h('p', { class: 'muted' }, 'Nothing here.') : h('ol', { class: 'results' }, groups[p].map(renderResult)),
+      groups[p].length === 0 ? h('p', { class: 'muted' }, 'Nothing here.') : renderList(groups[p]),
     ),
   );
 }
@@ -598,9 +599,31 @@ function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
         h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
         tally(g.counts),
       ),
-      h('ol', { class: 'results' }, g.results.map(renderResult)),
+      renderList(g.results),
     );
   });
+}
+
+/** Results, with each family of similar CVEs folded under its highest-ranked member. */
+function renderList(results: Result[]): HTMLElement {
+  return h(
+    'ol',
+    { class: 'results' },
+    foldFamilies(results).map(({ lead, related }) => {
+      const li = renderResult(lead);
+      if (related.length > 0) {
+        li.append(
+          h(
+            'details',
+            { class: 'related' },
+            h('summary', { class: 'small' }, `+${related.length} similar ${related.length === 1 ? 'CVE' : 'CVEs'} in this product`),
+            h('ol', { class: 'results' }, related.map(renderResult)),
+          ),
+        );
+      }
+      return li;
+    }),
+  );
 }
 
 /** How many change cards show before the rest fold away. */

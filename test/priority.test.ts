@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
-const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
+const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, exploitedSibling: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
   exploitation,
   automatable,

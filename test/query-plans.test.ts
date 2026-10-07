@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, eventsSinceSql, vulnsInWindowSql } from '../src/match/match';
+import { AFFECTED_KEYS_SQL, CATALOG_COUNTS_SQL, LEADERS_SQL, UNASSIGNED_SQL } from '../src/ingest/families';
+import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EXPLOITED_IN_FAMILIES_SQL, eventsSinceSql, vulnsInWindowSql } from '../src/match/match';
 import { KNOWN_KEYS_SQL, PREFIX_SQL, VENDOR_SQL } from '../src/resolve/catalog';
 import { HEALTH_META_SQL } from '../src/routes/health';
 
@@ -29,8 +30,18 @@ describe('request-path query plans', () => {
     ['affected products', AFFECTED_PRODUCTS_SQL, ['[["cisco","ios_xe"]]']],
     ['vulns in window', vulnsInWindowSql(SINCE), ['["CVE-2026-0001"]']],
     ['events since', eventsSinceSql(SINCE), ['["CVE-2026-0001"]']],
+    ['exploited family members', EXPLOITED_IN_FAMILIES_SQL, ['["CVE-2026-0001"]']],
+    // Ingest's family stage, run every hour.
+    ['family leaders', LEADERS_SQL, ['["package:npm:n8n"]']],
+    ['family affected keys', AFFECTED_KEYS_SQL, ['["CVE-2026-0001"]']],
+    ['family catalog counts', CATALOG_COUNTS_SQL, ['["npm:n8n"]']],
   ] as const)('%s searches an index', async (_name, sql, params) => {
     expect(await scans(sql, [...params])).toEqual([]);
+  });
+
+  it('walks only the small unassigned-families index for family work', async () => {
+    const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${UNASSIGNED_SQL}`).bind(50).all<{ detail: string }>();
+    expect(results.map((r) => r.detail)).toEqual(['SCAN vulns USING INDEX vulns_unassigned']);
   });
 
   it('flags the full scans this guards against', async () => {

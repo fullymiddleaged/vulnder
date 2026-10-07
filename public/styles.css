@@ -213,6 +213,9 @@ button.expose[aria-pressed='true'] { color: var(--accent-fg); background: var(--
 .component[open] > .results { margin: 0.4rem 0 0.75rem; }
 .result p { margin: 0.3rem 0; }
 .result .title { font-weight: 700; }
+.related { margin-top: 0.5rem; }
+.related > summary { cursor: pointer; color: var(--muted); }
+.related[open] > .results { margin-top: 0.5rem; }
 .evidence { font-size: 0.9rem; }
 .badge { font-size: 0.78rem; border-radius: 3px; padding: 0.05rem 0.45rem; border: 1px solid currentColor; white-space: nowrap; }
 .badge.severity { color: var(--fg); }

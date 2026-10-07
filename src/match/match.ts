@@ -62,6 +62,13 @@ export interface MatchedVuln {
   score: number;
   /** Why it got this priority, most important first. */
   reasons: string[];
+  /**
+   * Its family's id (similar CVEs in the same product), when this feed shows other members (`related`) or
+   * a member is exploited; otherwise null.
+   */
+  family: string | null;
+  /** Other results here in the same family, in feed order. */
+  related: string[];
 }
 
 export interface ChangeEvent {
@@ -117,6 +124,7 @@ interface VulnRow {
   kev_due_date: string | null;
   ssvc: string | null;
   refs: string;
+  family_id: string | null;
 }
 
 const itemKey = (item: StackItem) =>
@@ -135,9 +143,13 @@ export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHER
   AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
 export const vulnsInWindowSql = (since: string) =>
   `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
-          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs
+          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, ssvc, refs, family_id
    FROM vulns WHERE id IN (SELECT value FROM json_each(?))
      AND (published_at >= '${since}' OR last_event_at >= '${since}')`;
+/** Members of these families with evidence of exploitation, wherever they are in time. */
+export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
+  WHERE family_id IN (SELECT value FROM json_each(?))
+    AND (kev_added_at IS NOT NULL OR lower(json_extract(ssvc, '$.exploitation')) = 'active')`;
 export const eventsSinceSql = (since: string) =>
   `SELECT vuln_id, type, occurred_at, detail FROM events
    WHERE vuln_id IN (SELECT value FROM json_each(?)) AND occurred_at >= '${since}'`;
@@ -188,6 +200,17 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     }
   }
 
+  // Exploited members of these vulns' families (src/ingest/families.ts), in or
+  // out of the window: a similar CVE being exploited is a reason to attend to the rest.
+  const familyIds = [...rowsByVuln.keys()].map((id) => vulns.get(id)!.family_id).filter((f): f is string => !!f);
+  const exploitedIn = new Map<string, string[]>();
+  for (const r of familyIds.length === 0 ? [] : await allForKeys<{ id: string; family_id: string }>(store, EXPLOITED_IN_FAMILIES_SQL, familyIds)) {
+    if (!exploitedIn.has(r.family_id)) exploitedIn.set(r.family_id, []);
+    exploitedIn.get(r.family_id)!.push(r.id);
+  }
+  const exploitedSibling = (v: VulnRow) =>
+    (v.family_id ? (exploitedIn.get(v.family_id) ?? []) : []).filter((id) => id !== v.id).sort()[0] ?? null;
+
   // 4. Decide confidence per vuln.
   const results: MatchedVuln[] = [];
   const matchedItems = new Set<string>();
@@ -225,11 +248,12 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
     results.push(
-      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed, opts.now),
+      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed, opts.now, exploitedSibling(v)),
     );
   }
 
   results.sort(compareResults);
+  linkFamilies(results, (id) => vulns.get(id)?.family_id ?? null);
   const watching = items.map(formatItem).filter((f) => !matchedItems.has(f));
   const ranked = fixFirst(results.map((r) => ({ ...r, assessment: r })));
   return { results, watching, versionCheckUnavailable, fixFirst: ranked };
@@ -261,6 +285,7 @@ function toResult(
   fixedVersions: string[],
   exposed: boolean,
   now: Date,
+  exploitedSibling: string | null,
 ): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
@@ -270,6 +295,7 @@ function toResult(
     knownRansomware: v.kev_ransomware === 1,
     epss: v.epss,
     lev: levNow,
+    exploitedSibling,
     cvss: v.cvss_score,
     cvssVector: v.cvss_vector,
     exposed,
@@ -303,7 +329,31 @@ function toResult(
     priority,
     score,
     reasons,
+    // A family id only means something next to its siblings: linkFamilies fills these in.
+    family: exploitedSibling ? v.family_id : null,
+    related: [],
   };
+}
+
+/**
+ * Links results in the same family: `related` lists the others, in
+ * feed order, and `family` names it. Nothing is folded away here.
+ */
+export function linkFamilies(results: MatchedVuln[], familyOf: (id: string) => string | null): void {
+  const members = new Map<string, MatchedVuln[]>();
+  for (const r of results) {
+    const f = familyOf(r.id);
+    if (!f) continue;
+    if (!members.has(f)) members.set(f, []);
+    members.get(f)!.push(r);
+  }
+  for (const [f, group] of members) {
+    if (group.length < 2) continue;
+    for (const r of group) {
+      r.family = f;
+      r.related = group.filter((o) => o !== r).map((o) => o.id);
+    }
+  }
 }
 
 /**

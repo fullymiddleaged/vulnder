@@ -52,6 +52,10 @@ export interface Result {
   score: number;
   /** Why it got this priority, most important first. */
   reasons: string[];
+  /** Its family (similar CVEs in the same product), when this feed has other members or one is exploited. */
+  family: string | null;
+  /** Other results in this feed from the same family. */
+  related: string[];
 }
 
 export type Priority = 'act' | 'attend' | 'watch' | 'track';

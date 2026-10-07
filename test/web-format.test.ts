@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -20,8 +20,30 @@ function result(id: string, tier: Result['tier'], match: Result['match'] = 'exac
     priority: tier === 'exploited' ? 'act' : tier === 'likely' ? 'attend' : 'track',
     score: 0,
     reasons: [],
+    family: null,
+    related: [],
   };
 }
+
+describe('foldFamilies', () => {
+  const member = (id: string, family: string, related: string[]) => ({ ...result(id, 'backlog'), family, related });
+
+  it('folds each family under its first member, in list order, dropping nothing', () => {
+    const list = [member('A', 'F', ['C']), result('B', 'backlog'), member('C', 'F', ['A']), member('D', 'G', [])];
+    const folded = foldFamilies(list);
+    expect(folded.map((f) => [f.lead.id, f.related.map((r) => r.id)])).toEqual([
+      ['A', ['C']],
+      ['B', []],
+      ['D', []],
+    ]);
+    expect(folded.flatMap((f) => [f.lead, ...f.related])).toHaveLength(list.length);
+  });
+
+  it('leaves a family with no other member here unfolded', () => {
+    // Named only because a member elsewhere is exploited.
+    expect(foldFamilies([member('A', 'F', []), member('B', 'F', [])]).map((f) => f.lead.id)).toEqual(['A', 'B']);
+  });
+});
 
 function change(vulnId: string, type: Change['type'], occurredAt: string, detail: Record<string, unknown> = {}): Change {
   return { vulnId, type, occurredAt, detail, title: null };

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Budget } from './ingest/budget';
 import { D1BindingStore } from './ingest/d1-store';
+import { checkVectors, EMBED_MODEL } from './ingest/families';
 import { runIngest } from './ingest/run';
 import { limitFromVar } from './lib/quota';
 import { feeds } from './routes/feeds';
@@ -65,6 +66,8 @@ export default {
         budget,
         runtime: 'worker',
         githubToken: env.GITHUB_TOKEN || undefined,
+        // Embedding CVE text only, never anything a user wrote.
+        embed: async (texts) => checkVectors((await env.AI.run(EMBED_MODEL, { text: texts })).data, texts.length),
         log: (m) => console.log(m),
       }).then((report) => console.log(JSON.stringify(report))),
     );

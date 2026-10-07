@@ -8,7 +8,9 @@
 # Repository variable:
 #   INGEST_FROM_ACTIONS    "true"
 # Repository secrets:
-#   CLOUDFLARE_API_TOKEN   token with D1 edit permission on the account
+#   CLOUDFLARE_API_TOKEN   token with D1 edit permission on the account, plus
+#                          Workers AI read and edit for similar-CVE families
+#                          (without them, ingest skips families)
 #   CLOUDFLARE_ACCOUNT_ID  the account that owns the D1 database
 # Repository variable (unless wrangler.jsonc holds the real ID):
 #   D1_DATABASE_ID         the production D1 database ID

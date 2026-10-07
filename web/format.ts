@@ -151,6 +151,27 @@ export function byPriority(results: Result[]): Record<Priority, Result[]> {
   return out;
 }
 
+/**
+ * Folds each family (similar CVEs in the same product) in a list under its first (highest-ranked) member,
+ * keeping list order. Nothing is dropped: the rest go under `related`, to show
+ * on request.
+ */
+export function foldFamilies(results: Result[]): { lead: Result; related: Result[] }[] {
+  const out: { lead: Result; related: Result[] }[] = [];
+  const byFamily = new Map<string, { lead: Result; related: Result[] }>();
+  for (const r of results) {
+    const group = r.family && r.related.length > 0 ? byFamily.get(r.family) : undefined;
+    if (group) {
+      group.related.push(r);
+      continue;
+    }
+    const entry = { lead: r, related: [] as Result[] };
+    out.push(entry);
+    if (r.family && r.related.length > 0) byFamily.set(r.family, entry);
+  }
+  return out;
+}
+
 /** The first `max` items and how many are left out; never leaves out just one, since "+1 more" takes the space the item would. */
 export function preview<T>(items: T[], max: number): { shown: T[]; rest: number } {
   return items.length <= max + 1 ? { shown: items, rest: 0 } : { shown: items.slice(0, max), rest: items.length - max };
