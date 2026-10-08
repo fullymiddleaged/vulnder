@@ -14,7 +14,7 @@ A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (f
 
 - `src/ingest/`: pulls CVE records (with CISA Vulnrichment SSVC), GitHub advisories, KEV and EPSS into D1. `scripts/` runs it from Node via Wrangler. New deployments are seeded from a local backfill with `scripts/seed-remote.ts` (dev machine only; resumable under a daily row budget); a `seeding` meta row pauses ingest until it finishes. `families.ts` then embeds each new CVE's title once (Workers AI, `EMBED_MODEL`, CVE text only, daily token cap) and groups similar CVEs per product against family leaders; code decides at the calibrated `FAMILY_SIM`.
 - `src/resolve/`: turns input into stack items. `extract.ts` asks Workers AI (`AI_MODEL`) to list named components; `catalog.ts` resolves names against the catalog (aliases, categories, fuzzy match); `injection.ts` is a free phrase screen; `jev.ts` and `profile.ts` screen the text and order close matches by fit (below).
-- `src/match/`: `match.ts` matches a stack to CVEs (OSV confirms package versions); `priority.ts` assigns Act/Attend/Watch/Track, a 0–100 score and reasons, plus the per-component "Fix first" list.
+- `src/match/`: `match.ts` matches a stack to CVEs (OSV confirms package versions) from per-component data that `components.ts` loads and the feed routes cache by data version; `priority.ts` assigns Act/Attend/Watch/Track, a 0–100 score and reasons, plus the per-component "Fix first" list.
 - `src/routes/`: `POST /api/resolve` (Turnstile, per-IP limit, daily model caps in `src/lib/quota.ts`); `GET /api/feed`, `/feed.xml`, `/badge.svg` (cached by data version; cache misses rate-limited).
 - `web/`: the front end, bundled to `public/app.js` by `npm run build:web`.
 

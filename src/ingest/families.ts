@@ -42,6 +42,15 @@ const MAX_BATCHES = 20;
 /** Daily cap on embedded tokens: about 1,075 neurons, beside the 10,000-a-day free allowance. */
 export const EMBED_DAILY_TOKENS = 1_000_000;
 const USAGE_BUCKET = 'embed';
+const ASSIGNED_BUCKET = 'family';
+/**
+ * Default daily cap on vulns assigned from Node ingest, which is how Workers
+ * Free runs it. Assigning one writes about five D1 rows (its family id and
+ * index, and a leader's vector and indexes), so the first pass over a fresh
+ * database would otherwise write about 120,000 a day, over Free's 100,000.
+ * 8,000 a day is about 40,000 rows, leaving room for the rest of ingest.
+ */
+export const FREE_PLAN_FAMILY_DAILY = 8000;
 const MAX_TEXT = 600;
 
 export type Embedder = (texts: string[]) => Promise<number[][]>;
@@ -244,6 +253,8 @@ export interface FamilyOptions {
   embed: Embedder;
   now: () => Date;
   log: (message: string) => void;
+  /** Most vulns to assign in a UTC day; no cap when left out. */
+  dailyVulns?: number;
 }
 
 interface Row {
@@ -270,8 +281,14 @@ export async function assignFamilies(opts: FamilyOptions): Promise<FamilyReport>
     if (!budget.has(10)) return { ...report, stopped: 'budget' };
     const spent = await usageToday(store, USAGE_BUCKET, opts.now());
     if (spent >= EMBED_DAILY_TOKENS) return { ...report, stopped: 'daily token cap' };
+    let size = BATCH;
+    if (opts.dailyVulns !== undefined) {
+      const left = opts.dailyVulns - (await usageToday(store, ASSIGNED_BUCKET, opts.now()));
+      if (left <= 0) return { ...report, stopped: 'daily cap' };
+      size = Math.min(BATCH, left);
+    }
 
-    const rows = await store.all<Row>(UNASSIGNED_SQL, [BATCH]);
+    const rows = await store.all<Row>(UNASSIGNED_SQL, [size]);
     if (rows.length === 0) break;
     const ids = rows.map((r) => r.id);
     const affected = await store.all<AffectedKeyRow>(AFFECTED_KEYS_SQL, [JSON.stringify(ids)]);
@@ -344,12 +361,13 @@ export async function assignFamilies(opts: FamilyOptions): Promise<FamilyReport>
       }
     }
     if (tokens > 0) statements.push(addUsageStatement(USAGE_BUCKET, tokens, opts.now()));
+    if (opts.dailyVulns !== undefined) statements.push(addUsageStatement(ASSIGNED_BUCKET, familyOf.size, opts.now()));
     await store.batch(statements);
 
     report.assigned += familyOf.size;
     report.joined += [...familyOf.entries()].filter(([id, f]) => id !== f).length;
     report.tokens += tokens;
-    if (rows.length < BATCH) break;
+    if (rows.length < size) break;
   }
   return report;
 }

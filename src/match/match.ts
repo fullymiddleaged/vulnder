@@ -4,6 +4,7 @@ import { addDays } from '../lib/time';
 import { allForKeys, type Store } from '../ingest/store';
 import type { Ref, Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
+import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 
@@ -101,68 +102,26 @@ export interface MatchOptions {
   now: Date;
   days: number;
   osv: OsvClient;
+  /** Components kept between requests; without it, every component is read from D1. */
+  components?: ComponentCache;
 }
-
-interface AffectedRow {
-  vuln_id: string;
-  source: string;
-  kind: 'package' | 'product';
-  ecosystem: string | null;
-  package_name: string | null;
-  vendor: string | null;
-  product: string | null;
-  fixed_version: string | null;
-}
-
-interface VulnRow {
-  id: string;
-  aliases: string;
-  title: string | null;
-  summary: string | null;
-  published_at: string | null;
-  modified_at: string | null;
-  cvss_score: number | null;
-  cvss_vector: string | null;
-  cwe: string;
-  epss: number | null;
-  epss_percentile: number | null;
-  epss_date: string | null;
-  lev_log: number;
-  kev_added_at: string | null;
-  kev_ransomware: number;
-  kev_due_date: string | null;
-  kev_required_action: string | null;
-  ssvc: string | null;
-  refs: string;
-  family_id: string | null;
-}
-
-const itemKey = (item: StackItem) =>
-  item.kind === 'package' ? `pkg:${item.ecosystem}:${item.name}` : `prod:${item.vendor}/${item.product}`;
-const rowKey = (r: AffectedRow) => (r.kind === 'package' ? `pkg:${r.ecosystem}:${r.package_name}` : `prod:${r.vendor}/${r.product}`);
 
 /*
- * Feed queries. Each searches an index by the keys in the json_each list
- * (test/query-plans.test.ts checks this), so a feed reads only the rows it uses.
- * `since` is an ISO time computed here, never user text.
+ * Event queries. `since` is an ISO time computed by the caller, never user text.
+ * The first searches the vuln_id index per key (test/query-plans.test.ts);
+ * the second reads every recent event in time order, which costs less once
+ * a stack has more results than there were recent events.
  */
-const AFFECTED_COLS = 'vuln_id, source, kind, ecosystem, package_name, vendor, product, fixed_version';
-export const AFFECTED_PACKAGES_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'package'
-  AND (ecosystem, package_name) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
-export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'product'
-  AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
-export const vulnsInWindowSql = (since: string) =>
-  `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss, epss_percentile,
-          epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, kev_required_action, ssvc, refs, family_id
-   FROM vulns WHERE id IN (SELECT value FROM json_each(?))
-     AND (published_at >= '${since}' OR last_event_at >= '${since}')`;
-/** Members of these families with evidence of exploitation, wherever they are in time. */
-export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
-  WHERE family_id IN (SELECT value FROM json_each(?))
-    AND (kev_added_at IS NOT NULL OR lower(json_extract(ssvc, '$.exploitation')) = 'active')`;
 export const eventsSinceSql = (since: string) =>
   `SELECT vuln_id, type, occurred_at, detail FROM events
    WHERE vuln_id IN (SELECT value FROM json_each(?)) AND occurred_at >= '${since}'`;
+export const RECENT_EVENTS_SQL = 'SELECT vuln_id, type, occurred_at, detail FROM events WHERE occurred_at >= ?';
+/** Events a day across the whole database, generously (about 400 in October 2026). */
+const EVENTS_PER_DAY = 500;
+/** Rows a per-vuln event lookup reads: the key, the index entry, the row and the next index entry. */
+const ROWS_PER_EVENT_LOOKUP = 4;
+
+const inWindow = (v: VulnRow, since: string) => (v.published_at !== null && v.published_at >= since) || (v.last_event_at !== null && v.last_event_at >= since);
 
 export async function matchStack(store: Store, items: StackItem[], opts: MatchOptions): Promise<MatchResult> {
   const since = addDays(opts.now, -opts.days).toISOString();
@@ -173,16 +132,11 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     byKey.get(k)!.push(item);
   }
 
-  // 1. Affected rows for every stack item.
-  const packages = items.filter((i) => i.kind === 'package').map((i) => [i.ecosystem, i.name]);
-  const products = items.filter((i) => i.kind === 'product').map((i) => [i.vendor, i.product]);
-  const affected: AffectedRow[] = [];
-  if (packages.length > 0) affected.push(...(await store.all<AffectedRow>(AFFECTED_PACKAGES_SQL, [JSON.stringify(packages)])));
-  if (products.length > 0) affected.push(...(await store.all<AffectedRow>(AFFECTED_PRODUCTS_SQL, [JSON.stringify(products)])));
-
-  // 2. The vulns among those that are inside the window.
-  const vulnRows = await allForKeys<VulnRow>(store, vulnsInWindowSql(since), affected.map((a) => a.vuln_id));
-  const vulns = new Map(vulnRows.map((v) => [v.id, v]));
+  // 1. Each component's affected rows and vulns (cached per component), and
+  // 2. the vulns among those that are inside the window.
+  const components = await loadComponents(store, items, opts.components);
+  const affected = components.flatMap((d) => d.affected);
+  const vulns = new Map(components.flatMap((d) => d.vulns.filter((v) => inWindow(v, since)).map((v) => [v.id, v] as const)));
   const rowsByVuln = new Map<string, AffectedRow[]>();
   for (const a of affected) {
     if (!vulns.has(a.vuln_id)) continue;
@@ -212,14 +166,13 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
 
   // Exploited members of these vulns' families (src/ingest/families.ts), in or
   // out of the window: a similar CVE being exploited is a reason to attend to the rest.
-  const familyIds = [...rowsByVuln.keys()].map((id) => vulns.get(id)!.family_id).filter((f): f is string => !!f);
-  const exploitedIn = new Map<string, string[]>();
-  for (const r of familyIds.length === 0 ? [] : await allForKeys<{ id: string; family_id: string }>(store, EXPLOITED_IN_FAMILIES_SQL, familyIds)) {
-    if (!exploitedIn.has(r.family_id)) exploitedIn.set(r.family_id, []);
-    exploitedIn.get(r.family_id)!.push(r.id);
+  const exploitedIn = new Map<string, Set<string>>();
+  for (const r of components.flatMap((d) => d.exploited)) {
+    if (!exploitedIn.has(r.family_id)) exploitedIn.set(r.family_id, new Set());
+    exploitedIn.get(r.family_id)!.add(r.id);
   }
   const exploitedSibling = (v: VulnRow) =>
-    (v.family_id ? (exploitedIn.get(v.family_id) ?? []) : []).filter((id) => id !== v.id).sort()[0] ?? null;
+    [...(v.family_id ? (exploitedIn.get(v.family_id) ?? []) : [])].filter((id) => id !== v.id).sort()[0] ?? null;
 
   // 4. Decide confidence per vuln.
   const results: MatchedVuln[] = [];
@@ -269,13 +222,17 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
   return { results, watching, versionCheckUnavailable, fixFirst: ranked };
 }
 
-/** Change events for these vulns since a given time, newest first. */
-export async function changesFor(store: Store, vulnIds: string[], since: string): Promise<ChangeEvent[]> {
-  const rows = await allForKeys<{ vuln_id: string; type: ChangeEvent['type']; occurred_at: string; detail: string }>(
-    store,
-    eventsSinceSql(since),
-    vulnIds,
-  );
+/**
+ * Change events for these vulns in the last `days` days (since `since`), newest
+ * first. Looked up per vuln, unless reading every recent event would read fewer rows.
+ */
+export async function changesFor(store: Store, vulnIds: string[], since: string, days: number): Promise<ChangeEvent[]> {
+  type Row = { vuln_id: string; type: ChangeEvent['type']; occurred_at: string; detail: string };
+  const ids = new Set(vulnIds);
+  const rows =
+    days * EVENTS_PER_DAY < ids.size * ROWS_PER_EVENT_LOOKUP
+      ? (await store.all<Row>(RECENT_EVENTS_SQL, [since])).filter((r) => ids.has(r.vuln_id))
+      : await allForKeys<Row>(store, eventsSinceSql(since), [...ids], FEED_CHUNK);
   return rows
     .map((r) => ({ vulnId: r.vuln_id, type: r.type, occurredAt: r.occurred_at, detail: parseJson<Record<string, unknown>>(r.detail, {}) }))
     .sort((a, b) => (a.occurredAt === b.occurredAt ? a.vulnId.localeCompare(b.vulnId) : b.occurredAt.localeCompare(a.occurredAt)));

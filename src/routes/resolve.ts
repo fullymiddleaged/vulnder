@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
-import { resolveCandidates } from '../resolve/catalog';
+import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { looksLikeInjection } from '../resolve/injection';
 import { blocks, exposureTargets, fitTargets, judgeStack, screenText, type Judgement } from '../resolve/jev';
@@ -10,7 +10,7 @@ import { parseManifest } from '../resolve/manifests';
 import { canRank, markExposed, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
-import { PREFIXES } from '../stack/format';
+import { MAX_ITEMS, PREFIXES } from '../stack/format';
 import type { AppEnv } from '../types';
 
 /**
@@ -95,6 +95,7 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   });
   if (!check.success) return c.json({ error: 'verification failed; reload the page and try again', codes: check.errors }, 403);
 
+
   let candidates: Candidate[];
   // Only free text gets a profile; manifests keep catalog order.
   let profile = NO_PROFILE;
@@ -142,7 +143,13 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     }
   }
 
-  const result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates);
+  let result: ResolveResult;
+  try {
+    result = await resolveCandidates(new D1BindingStore(c.env.DB), candidates);
+  } catch (err) {
+    if (err instanceof TooManyProducts) return c.json({ error: `${err.message}; a stack holds at most ${MAX_ITEMS} items` }, 413);
+    throw err;
+  }
   let chips = result.chips;
   // Only free text gets judged: manifests aren't sent to Jev.
   if (text !== null) {

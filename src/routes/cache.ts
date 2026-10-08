@@ -10,9 +10,18 @@ export async function openCache(name: string): Promise<Cache | null> {
   }
 }
 
-/** Stores a response without holding up the reply. */
-export async function putInBackground(c: Context<AppEnv>, cache: Cache, key: Request, res: Response): Promise<void> {
-  const put = cache.put(key, res.clone());
+/**
+ * Stores a response without holding up the reply. `cacheControl`, when given,
+ * replaces the stored copy's Cache-Control, so the edge can keep it longer
+ * than browsers do.
+ */
+export async function putInBackground(c: Context<AppEnv>, cache: Cache, key: Request, res: Response, cacheControl?: string): Promise<void> {
+  let copy = res.clone();
+  if (cacheControl) {
+    copy = new Response(copy.body, copy);
+    copy.headers.set('Cache-Control', cacheControl);
+  }
+  const put = cache.put(key, copy);
   try {
     c.executionCtx.waitUntil(put);
   } catch {

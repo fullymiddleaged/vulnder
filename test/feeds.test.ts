@@ -4,10 +4,11 @@ import { app } from '../src/index';
 import { applyPatches } from '../src/ingest/apply';
 import { bumpDataVersionStatement } from '../src/ingest/meta';
 import type { VulnPatch } from '../src/ingest/types';
-import { matchStack, pickLinks } from '../src/match/match';
+import type { ComponentCache, ComponentData } from '../src/match/components';
+import { changesFor, matchStack, pickLinks, RECENT_EVENTS_SQL } from '../src/match/match';
 import { OSV_QUERYBATCH_URL, type OsvClient } from '../src/match/osv';
 import { describeHours } from '../src/lib/time';
-import { badgeSvg } from '../src/routes/feeds';
+import { badgeSvg, EDGE_CACHE_SECONDS, HEAVY_STACK_VULNS } from '../src/routes/feeds';
 import { parseStack } from '../src/stack/format';
 import { resetDb, store } from './helpers/db';
 
@@ -288,6 +289,103 @@ describe('feed rate limit', () => {
     const miss = await app.request(`/badge.svg?s=${encodeURIComponent('pypi:fastapi,npm:next')}`, { headers }, e);
     expect(miss.status).toBe(429);
     expect(miss.headers.get('Retry-After')).toBe('60');
+  });
+});
+
+describe('feed cost controls', () => {
+  const headers = { 'cf-connecting-ip': '203.0.113.9' };
+  const limiters = () => {
+    const feed = vi.fn(async () => ({ success: true }));
+    const heavy = vi.fn(async () => ({ success: false }));
+    return { feed, heavy, env: { ...env, FEED_LIMITER: { limit: feed } as unknown as RateLimit, FEED_HEAVY_LIMITER: { limit: heavy } as unknown as RateLimit } };
+  };
+
+  it('keeps a feed at the edge for an hour but tells browsers five minutes', async () => {
+    stubOsvFetch();
+    const url = `/api/feed?s=${encodeURIComponent('p:postgresql/postgresql')}`;
+    const miss = await app.request(url, {}, env);
+    expect(miss.headers.get('Cache-Control')).toBe('public, max-age=300');
+    const stored = await (await caches.open('vulnder-feeds')).match(
+      `${env.BASE_URL}/__cache/feed?s=${encodeURIComponent('p:postgresql/postgresql')}&days=30&v=${versionBase}`,
+    );
+    expect(stored?.headers.get('Cache-Control')).toBe(`public, max-age=${EDGE_CACHE_SECONDS}`);
+    const hit = await app.request(url, {}, env);
+    expect(hit.headers.get('Cache-Control')).toBe('public, max-age=300');
+  });
+
+  it('puts misses for stacks with many vulns behind the heavy limiter, and only those', async () => {
+    stubOsvFetch();
+    await env.DB.prepare(
+      "INSERT INTO catalog (kind, key, vendor, product, normalized, count) VALUES ('product', 'linux/linux', 'linux', 'linux', 'linux', ?)",
+    ).bind(HEAVY_STACK_VULNS).run();
+    const l = limiters();
+    expect((await app.request(`/api/feed?s=${encodeURIComponent('p:postgresql/postgresql')}`, { headers }, l.env)).status).toBe(200);
+    expect(l.heavy).not.toHaveBeenCalled();
+
+    const res = await app.request(`/api/feed?s=${encodeURIComponent('p:linux/linux,p:postgresql/postgresql')}`, { headers }, l.env);
+    expect(res.status).toBe(429);
+    expect(l.heavy.mock.calls).toEqual([[{ key: '203.0.113.9' }]]);
+  });
+
+  it('reads each component from D1 once, then serves any stack and window from the cache', async () => {
+    const kept = new Map<string, ComponentData>();
+    const components: ComponentCache = { get: async (k) => kept.get(k) ?? null, put: (k, d) => void kept.set(k, d) };
+    const first = await matchStack(store(), parseStack(STACK), { now: NOW, days: 30, osv: fakeOsv(), components });
+    expect([...kept.keys()].sort()).toEqual(['pkg:PyPI:fastapi', 'pkg:npm:next', 'prod:cisco/asa', 'prod:cisco/ios_xe', 'prod:postgresql/postgresql']);
+
+    // No component reads now: a different window and a reordered, smaller stack both come from the cache.
+    const noReads = store();
+    noReads.all = (() => Promise.reject(new Error('read D1'))) as typeof noReads.all;
+    const again = await matchStack(noReads, parseStack(STACK), { now: NOW, days: 30, osv: fakeOsv(), components });
+    expect(again.results.map((r) => r.id)).toEqual(first.results.map((r) => r.id));
+    const wider = await matchStack(noReads, parseStack('pypi:fastapi,p:cisco/ios_xe'), { now: NOW, days: 90, osv: fakeOsv(), components });
+    // CVE-2026-1004 is 60 days old: outside 30 days, inside 90.
+    expect(wider.results.map((r) => r.id).sort()).toEqual(['CVE-2026-1004', 'CVE-2026-1005']);
+  });
+
+  it('finds events by time once a stack has more results than recent events, with the same answer', async () => {
+    const ids = ['CVE-2026-1001', 'CVE-2026-1003', 'CVE-2026-1005', ...Array.from({ length: 300 }, (_, i) => `CVE-2099-${10000 + i}`)];
+    const since = daysAgo(30);
+    const sql: string[] = [];
+    const spy = store();
+    const all = spy.all.bind(spy);
+    spy.all = ((s: string, p?: unknown[]) => {
+      sql.push(s);
+      return all(s, p);
+    }) as typeof spy.all;
+    // 303 lookups would read about 1,200 rows; a day of events is about 500.
+    const byTime = await changesFor(spy, ids, since, 1);
+    expect(sql).toEqual([RECENT_EVENTS_SQL]);
+    sql.length = 0;
+    const perVuln = await changesFor(spy, ids, since, 30);
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).not.toBe(RECENT_EVENTS_SQL);
+    expect(byTime).toEqual(perVuln);
+    expect(byTime.map((e) => e.vulnId)).toContain('CVE-2026-1005');
+  });
+
+  it('reads a large stack in a few queries', async () => {
+    const n = 4500;
+    await env.DB.batch([
+      env.DB.prepare(
+        `WITH RECURSIVE i(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM i WHERE x < ?)
+         INSERT INTO vulns (id, published_at, updated_at) SELECT printf('CVE-2026-%05d', 50000 + x), ?, ? FROM i`,
+      ).bind(n, daysAgo(2), NOW.toISOString()),
+      env.DB.prepare(
+        `INSERT INTO affected (vuln_id, source, kind, vendor, product) SELECT id, 'cve', 'product', 'linux', 'linux' FROM vulns WHERE id >= 'CVE-2026-50001'`,
+      ),
+    ]);
+    const counting = store();
+    const all = counting.all.bind(counting);
+    let queries = 0;
+    counting.all = ((sql: string, params?: unknown[]) => {
+      queries++;
+      return all(sql, params);
+    }) as typeof counting.all;
+    const res = await matchStack(counting, parseStack('p:linux/linux'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(res.results).toHaveLength(n);
+    // Affected rows, then the vulns in chunks of 2,000 (at 400 a chunk this was 13).
+    expect(queries).toBe(4);
   });
 });
 

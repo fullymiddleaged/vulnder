@@ -99,6 +99,18 @@ ON CONFLICT (id) DO UPDATE SET ${VULN_COLUMNS.filter((c) => c !== 'id')
   .map((c) => `${c} = excluded.${c}`)
   .join(', ')}`;
 
+/**
+ * What a daily EPSS pass changes. D1 bills a written row for every index whose
+ * column a statement sets, changed or not, so the full upsert costs about six
+ * rows a vuln and this narrow update two.
+ */
+const EPSS_COLUMNS = ['epss', 'epss_percentile', 'epss_date', 'epss_baseline', 'lev_log'] as const;
+
+export const UPDATE_EPSS = `UPDATE vulns SET ${[...EPSS_COLUMNS, 'updated_at']
+  .map((c) => `${c} = json_extract(j.value, '$.${c}')`)
+  .join(', ')}
+FROM json_each(?) j WHERE vulns.id = json_extract(j.value, '$.id')`;
+
 const AFFECTED_COLUMNS = [
   'vuln_id',
   'source',
@@ -186,10 +198,13 @@ export async function applyPatches(store: Store, patches: VulnPatch[], opts: App
   // 2. Load the stored records and affected rows involved.
   const ids = [...new Set([...canonical, ...rekeys.keys()])];
   const records = new Map<string, VulnRecord>();
+  // Rows as stored, untouched by the merge, to tell what a write must cover.
+  const loaded = new Map<string, VulnRow>();
   const affected = new Map<string, AffectedRow[]>();
   if (ids.length > 0) {
     for (const row of await allForKeys<VulnRow>(store, 'SELECT * FROM vulns WHERE id IN (SELECT value FROM json_each(?))', ids)) {
       records.set(row.id, rowToRecord(row));
+      loaded.set(row.id, row);
     }
     // Affected rows are only compared when a patch replaces them (or a re-key moves them).
     const needAffected = new Set(rekeys.keys());
@@ -297,8 +312,13 @@ export async function applyPatches(store: Store, patches: VulnPatch[], opts: App
       }
     }
 
+    // Aliases the stored record already had are in the aliases table; only
+    // ones looked up above can point elsewhere.
+    const stored = new Set(parseJson<string[]>(loaded.get(id)?.aliases ?? null, []));
     for (const alias of rec.aliases) {
-      if (aliasMap.get(alias) !== id) {
+      const holder = aliasMap.get(alias);
+      if (holder === undefined && stored.has(alias)) continue;
+      if (holder !== id) {
         aliasRows.push({ alias, vuln_id: id });
         aliasMap.set(alias, id);
       }
@@ -309,9 +329,21 @@ export async function applyPatches(store: Store, patches: VulnPatch[], opts: App
   statements.push(...deleteVulnsStatements(deletions));
   stats.deleted = deletions.length;
 
-  const vulnRows = [...dirty].filter((id) => records.has(id)).map((id) => recordToRow(records.get(id)!, nowIso));
-  stats.written = vulnRows.length;
+  const vulnRows: ReturnType<typeof recordToRow>[] = [];
+  const epssRows: Record<string, unknown>[] = [];
+  for (const id of dirty) {
+    if (!records.has(id)) continue;
+    const row = recordToRow(records.get(id)!, nowIso);
+    const was = loaded.get(id);
+    if (was && onlyEpssChanged(recordToRow(rowToRecord(was), nowIso), row)) {
+      epssRows.push(Object.fromEntries(['id', ...EPSS_COLUMNS, 'updated_at'].map((c) => [c, row[c as keyof typeof row]])));
+    } else {
+      vulnRows.push(row);
+    }
+  }
+  stats.written = vulnRows.length + epssRows.length;
   for (const chunk of chunkByJsonSize(vulnRows)) statements.push(stmt(UPSERT_VULNS, JSON.stringify(chunk)));
+  for (const chunk of chunkByJsonSize(epssRows)) statements.push(stmt(UPDATE_EPSS, JSON.stringify(chunk)));
 
   const bySource = new Map<AffectedSource, string[]>();
   const newAffected: AffectedRow[] = [];
@@ -404,6 +436,12 @@ function recordToRow(rec: VulnRecord, nowIso: string): Record<(typeof VULN_COLUM
     last_event_at: rec.lastEventAt,
     updated_at: nowIso,
   };
+}
+
+/** True when two rows differ only in EPSS columns (and updated_at). */
+function onlyEpssChanged(before: ReturnType<typeof recordToRow>, after: ReturnType<typeof recordToRow>): boolean {
+  const epss = new Set<string>([...EPSS_COLUMNS, 'updated_at']);
+  return VULN_COLUMNS.every((c) => epss.has(c) || before[c] === after[c]);
 }
 
 function toAffectedRow(vulnId: string, source: AffectedSource, a: AffectedInput): AffectedRow {

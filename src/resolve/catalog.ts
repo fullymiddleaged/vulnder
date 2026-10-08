@@ -1,6 +1,6 @@
 import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '../lib/normalize';
 import type { Store } from '../ingest/store';
-import { formatItem, isStackVersion, parseStack, type StackItem } from '../stack/format';
+import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES, CATEGORIES, EDGE_EXCLUDE, EDGE_PRODUCTS } from './aliases';
 import type { Candidate } from './types';
@@ -61,6 +61,20 @@ const MAX_FUZZY = 8;
 /** "Cisco" alone: the vendor's most-affected products. */
 const MAX_VENDOR_ONLY = 8;
 const MAX_PREFIX_ROWS = 4000;
+/**
+ * Distinct product names one request may look up (and twice as many vendors). The vendor
+ * query reads every product of every vendor named, so 5,000 names read 30,000
+ * rows; and a stack holds at most MAX_ITEMS items anyway.
+ */
+export const MAX_PRODUCT_LOOKUPS = MAX_ITEMS;
+
+/** More distinct products or vendors than MAX_PRODUCT_LOOKUPS. */
+export class TooManyProducts extends Error {
+  constructor() {
+    super(`at most ${MAX_PRODUCT_LOOKUPS} different products can be looked up at once`);
+    this.name = 'TooManyProducts';
+  }
+}
 
 type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
 
@@ -72,6 +86,8 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   const queries = [...new Set(products.map((p) => normalizeKey(p.name)).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
   // Every product of each vendor named (or implied by the first word), for categories and vendor-only input.
   const vendors = [...new Set(products.flatMap((p) => vendorGuesses(p)))];
+  // Each product makes up to two vendor guesses.
+  if (queries.length > MAX_PRODUCT_LOOKUPS || vendors.length > 2 * MAX_PRODUCT_LOOKUPS) throw new TooManyProducts();
 
   // Three independent queries, sent together. Each reads only index ranges:
   // exact keys (packages and alias targets), name prefixes, vendor key prefixes.

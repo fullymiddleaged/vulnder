@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
-import { resolveCandidates, similarity } from '../src/resolve/catalog';
+import { MAX_PRODUCT_LOOKUPS, resolveCandidates, similarity } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
 import { SITEVERIFY_URL, verifyTurnstile } from '../src/resolve/turnstile';
@@ -331,6 +331,18 @@ describe('POST /api/resolve', () => {
     );
     const body = (await res.json()) as { chips: { items: { item: string }[] }[] };
     expect(body.chips.map((c) => c.items[0]!.item)).toEqual(['npm:next@14.2.3', 'p:postgresql/postgresql@16']);
+  });
+
+  it('refuses more products than a stack can hold, before reading the catalog for them', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => {
+      throw new Error('model must not be called');
+    });
+    const products = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'product', name: `widget${i}`, vendor: 'acme', version: null }));
+    expect((await post({ turnstileToken: 't', candidates: products(MAX_PRODUCT_LOOKUPS) }, e)).status).toBe(200);
+    const res = await post({ turnstileToken: 't', candidates: products(MAX_PRODUCT_LOOKUPS + 1) }, e);
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { error: string }).error).toMatch(/at most 200 different products/);
   });
 
   it('falls back to the manual path when the model is unavailable', async () => {

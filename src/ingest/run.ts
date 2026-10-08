@@ -47,6 +47,8 @@ export interface RunOptions {
   maintenance?: boolean | 'force';
   /** Workers AI embeddings for variant families; without it, families wait. */
   embed?: Embedder;
+  /** Most vulns to assign families in a UTC day (FREE_PLAN_FAMILY_DAILY on Free); no cap when left out. */
+  familyDailyVulns?: number;
 }
 
 export interface SourceReport {
@@ -166,7 +168,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   let families: FamilyReport | undefined;
   if (opts.embed) {
     try {
-      families = await assignFamilies({ store, budget, embed: opts.embed, now, log });
+      families = await assignFamilies({ store, budget, embed: opts.embed, now, log, dailyVulns: opts.familyDailyVulns });
     } catch (err) {
       if (!(err instanceof BudgetExhausted)) throw err;
       families = { assigned: 0, joined: 0, tokens: 0, stopped: 'budget' };

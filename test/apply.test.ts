@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyPatches, type ApplyOptions } from '../src/ingest/apply';
+import { applyPatches, UPDATE_EPSS, type ApplyOptions } from '../src/ingest/apply';
 import { maintenanceStatements } from '../src/ingest/maintenance';
 import { parseCveRecord } from '../src/ingest/sources/cve-record';
 import { parseAdvisory } from '../src/ingest/sources/ghsa';
@@ -148,6 +148,43 @@ describe('applyPatches', () => {
       extraStatements: [{ sql: "INSERT INTO meta (key, value, updated_at) VALUES ('k', '1', 'now')", params: [] }],
     });
     expect(await rows('SELECT key FROM meta')).toEqual([{ key: 'k' }]);
+  });
+
+  it('writes only the EPSS columns when only EPSS moved, and leaves stored aliases alone', async () => {
+    await applyPatches(store(), [ghsa('CVE-2026-3001', { aliases: ['GHSA-aaaa-bbbb-cccc'] })], opts);
+    await applyPatches(store(), [{ source: 'epss', id: 'CVE-2026-3001', aliases: [], fields: { epss: 0.002, epssPercentile: 0.3, epssDate: '2026-10-01' } }], opts);
+    const before = (await rows<Record<string, unknown>>("SELECT * FROM vulns WHERE id = 'CVE-2026-3001'"))[0]!;
+
+    const sql: string[] = [];
+    const spy = store();
+    const batch = spy.batch.bind(spy);
+    spy.batch = async (statements) => {
+      sql.push(...statements.map((s) => s.sql));
+      return batch(statements);
+    };
+    const stats = await applyPatches(spy, [{ source: 'epss', id: 'CVE-2026-3001', aliases: [], fields: { epss: 0.001, epssPercentile: 0.2, epssDate: '2026-10-03' } }], opts);
+    expect(stats.written).toBe(1);
+    expect(sql).toEqual([UPDATE_EPSS]);
+    const after = (await rows<Record<string, unknown>>("SELECT * FROM vulns WHERE id = 'CVE-2026-3001'"))[0]!;
+    expect(after).toMatchObject({ epss: 0.001, epss_percentile: 0.2, epss_date: '2026-10-03', epss_baseline: 0.001 });
+    // Two days held at 0.002 folded into LEV; nothing else moved.
+    expect(after.lev_log).toBeCloseTo(2 * Math.log1p(-0.002 / 30), 12);
+    for (const c of ['aliases', 'title', 'published_at', 'last_event_at', 'source_flags', 'provenance', 'family_id']) expect(after[c]).toEqual(before[c]);
+  });
+
+  it('writes the whole record when an EPSS move also fires an event', async () => {
+    await applyPatches(store(), [ghsa('CVE-2026-3002')], opts);
+    await applyPatches(store(), [{ source: 'epss', id: 'CVE-2026-3002', aliases: [], fields: { epss: 0.01, epssPercentile: 0.5, epssDate: '2026-10-01' } }], opts);
+    const sql: string[] = [];
+    const spy = store();
+    const batch = spy.batch.bind(spy);
+    spy.batch = async (statements) => {
+      sql.push(...statements.map((s) => s.sql));
+      return batch(statements);
+    };
+    await applyPatches(spy, [{ source: 'epss', id: 'CVE-2026-3002', aliases: [], fields: { epss: 0.4, epssPercentile: 0.99, epssDate: '2026-10-03' } }], opts);
+    expect(sql).not.toContain(UPDATE_EPSS);
+    expect((await rows("SELECT epss, last_event_at FROM vulns WHERE id = 'CVE-2026-3002'"))[0]).toEqual({ epss: 0.4, last_event_at: '2026-10-03T00:00:00.000Z' });
   });
 
   it('handles pages larger than one JSON chunk', async () => {

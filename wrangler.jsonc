@@ -70,10 +70,13 @@
   // Per-IP limits (the IP is used only as the limiter key and never logged).
   // Periods can be 10 or 60 s. RESOLVE_LIMITER: POST /api/resolve, where
   // Turnstile is the main gate. FEED_LIMITER: feed, Atom and badge requests
-  // that miss the cache; cached responses are never limited.
+  // that miss the cache; cached responses are never limited. FEED_HEAVY_LIMITER:
+  // the same, for stacks touching 1,000 or more vulns, whose misses read tens
+  // of thousands of D1 rows each.
   "ratelimits": [
     { "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
-    { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+    { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
+    { "name": "FEED_HEAVY_LIMITER", "namespace_id": "1003", "simple": { "limit": 6, "period": 60 } }
   ],
 
   "d1_databases": [
@@ -108,7 +111,8 @@
       "ai": { "binding": "AI" },
       "ratelimits": [
         { "name": "RESOLVE_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
-        { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+        { "name": "FEED_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
+        { "name": "FEED_HEAVY_LIMITER", "namespace_id": "1003", "simple": { "limit": 6, "period": 60 } }
       ],
       "d1_databases": [
         {

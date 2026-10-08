@@ -9,10 +9,13 @@
  *
  * GITHUB_TOKEN, if set, raises the GitHub API limit. CLOUDFLARE_ACCOUNT_ID and
  * CLOUDFLARE_API_TOKEN (with Workers AI read and edit) let it group similar
- * CVEs into families; --no-families skips that.
+ * CVEs into families; --no-families skips that. Families are assigned to at
+ * most --family-daily vulns a UTC day (default 8,000), which keeps the first
+ * pass over a fresh database inside Workers Free's 100,000 rows written a day;
+ * on Paid, raise it or pass 0 for no cap.
  */
 import { Budget } from '../src/ingest/budget';
-import { restEmbedder } from '../src/ingest/families';
+import { FREE_PLAN_FAMILY_DAILY, restEmbedder } from '../src/ingest/families';
 import { runIngest } from '../src/ingest/run';
 import { parseArgs, parseSources, parseTarget } from './lib/args';
 import { productionConfig } from './lib/production-config';
@@ -27,8 +30,12 @@ const { values } = parseArgs({
     'max-subrequests': { type: 'string', default: '20000' },
     'no-maintenance': { type: 'boolean' },
     'no-families': { type: 'boolean' },
+    'family-daily': { type: 'string', default: String(FREE_PLAN_FAMILY_DAILY) },
   },
 });
+
+const familyDaily = Number(values['family-daily']);
+if (!Number.isInteger(familyDaily) || familyDaily < 0) throw new Error('--family-daily must be a whole number (0 for no cap)');
 
 const target = parseTarget(values);
 const store = new WranglerStore({ target, config: target === 'remote' ? productionConfig() : undefined });
@@ -52,6 +59,7 @@ const report = await runIngest({
   sources: parseSources(values.sources),
   maintenance: !values['no-maintenance'],
   embed,
+  familyDailyVulns: familyDaily === 0 ? undefined : familyDaily,
   log: (m) => console.log(m),
 });
 

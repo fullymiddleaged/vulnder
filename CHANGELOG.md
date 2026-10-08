@@ -26,6 +26,13 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - `GET /api/health` no longer returns record counts. It reports source freshness only and is cached for 15 minutes. Counting the tables read every row in the database on each page load.
 - New look: a cooler palette, the Atkinson Hyperlegible typefaces (self-hosted, so no font requests leave the site), and a results page that opens with a strip showing how your matches split across the four priorities.
 
+- Feeds, Atom and badges are kept at the edge for up to an hour (until new data arrives); browsers still keep them for 5 minutes. Each component's CVEs are cached too, so a new stack or window that shares components with an earlier one loads without re-reading them: a Linux kernel stack reads about 2,700 database rows instead of 30,500.
+- Stacks touching 1,000 or more CVEs, such as the Linux kernel, are limited to 6 uncached requests a minute per IP (`FEED_HEAVY_LIMITER`); other stacks keep the limit of 60. Self-hosters add the binding from `wrangler.jsonc`.
+- `POST /api/resolve` refuses requests that look up more than 200 different products, the most a stack can hold, with HTTP 413.
+- Ingest from Node (GitHub Actions on the free plan) assigns similar-CVE families to at most 8,000 CVEs a day, so the first pass stays inside the free plan's D1 writes; `--family-daily` changes it (0 for no cap). The Paid cron has no cap.
+
 ### Fixed
 
 - A focus outline no longer frames the whole page after loading or changing view.
+- Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in about 20.
+- The daily EPSS update writes about a third of the database rows it did.

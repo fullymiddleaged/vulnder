@@ -217,6 +217,19 @@ describe('assignFamilies (ingest stage)', () => {
     expect(fakeEmbed.calls).toEqual([]);
   });
 
+  it('assigns at most the daily cap, counted across runs', async () => {
+    await seed(
+      Array.from({ length: 5 }, (_, i) => ({ id: `CVE-2026-000${i + 1}`, title: `Bug number ${i + 1} in parsing`, published: `2026-10-0${i + 1}T00:00:00Z` })),
+    );
+    const capped = () => assignFamilies({ store: store(), budget: unlimitedBudget(), embed: fakeEmbed, now: () => NOW, log: () => {}, dailyVulns: 3 });
+    expect(await capped()).toMatchObject({ assigned: 3, stopped: 'daily cap' });
+    expect(await capped()).toMatchObject({ assigned: 0, stopped: 'daily cap' });
+    expect(await rows("SELECT count FROM usage_counters WHERE bucket = 'family'")).toEqual([{ count: 3 }]);
+    expect(await rows('SELECT id FROM vulns WHERE family_id IS NULL')).toHaveLength(2);
+    // Without a cap (the Paid cron), the rest go.
+    expect(await run()).toMatchObject({ assigned: 2 });
+  });
+
   it('stops before the budget runs out', async () => {
     await seed([{ id: 'CVE-2026-0001', title: 'Sandbox escape', published: '2026-10-01T00:00:00Z' }]);
     const tight = new Budget({ maxSubrequests: 5, deadline: Number.MAX_SAFE_INTEGER });
