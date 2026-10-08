@@ -1,5 +1,6 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
+import { MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
 import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
@@ -15,6 +16,8 @@ import {
   eventDetail,
   formatScore,
   itemMarks,
+  describeLength,
+  examplePlaceholder,
   groupChanges,
   matchHeadline,
   passNotice,
@@ -38,11 +41,12 @@ declare global {
 }
 
 const EXAMPLES = [
-  { label: 'Web app', text: 'Next.js 14.2.3 on Vercel, Postgres 16, Redis, nginx' },
-  { label: 'Python API', text: 'Django 4.2, Celery, RabbitMQ, PostgreSQL 15, running behind Apache httpd' },
-  { label: 'Office network', text: 'Cisco IOS XE switches, FortiGate firewall, Microsoft Exchange, VMware vCenter' },
+  { label: 'SaaS app', text: 'Next.js 16 and React 19 on Vercel, a Hono API with Better Auth, Postgres 18 via Drizzle, Valkey for caching' },
+  { label: 'AI app', text: 'FastAPI on Python 3.14, LangGraph agents, vLLM and Ollama serving models, LiteLLM gateway, Open WebUI, pgvector on Postgres 18' },
+  { label: 'Cloud platform', text: 'Astro and a NestJS API on AWS: EKS with Cilium and Envoy Gateway, Aurora Postgres 18, Valkey, Keycloak SSO, OpenTelemetry into Grafana' },
+  { label: 'Office network', text: 'FortiGate firewalls, Cisco Catalyst switches, Windows Server 2025 domain controllers, Exchange Server SE' },
 ];
-const MAX_TEXT = 2000;
+const MAX_TEXT = MAX_TEXT_CHARS;
 const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
 const app = document.getElementById('app')!;
@@ -81,15 +85,19 @@ function renderInput(prefill = ''): void {
     id: 'stack-text',
     rows: 6,
     maxlength: 200_000,
-    placeholder: 'For example: Next.js 14 on Vercel, Postgres 16, Redis, nginx, a couple of Cisco switches',
+    placeholder: examplePlaceholder(EXAMPLES),
     'aria-describedby': 'stack-help',
   });
   textarea.value = prefill;
-  const counter = h('span', { class: 'counter', 'aria-hidden': 'true' });
+  const counter = h('span', { class: 'counter', id: 'stack-length' });
+  // Over the limit, the button stays greyed out, so a description that would be refused is never sent.
+  const submitButton = h('button', { type: 'submit', class: 'primary', 'aria-describedby': 'stack-length' }, 'Find vulnerabilities');
+  const passBlocked = !!passNotice(pass);
   const updateCounter = () => {
-    const isManifest = !!parseManifest(textarea.value);
-    counter.textContent = isManifest ? 'Manifest detected' : `${textarea.value.length} / ${MAX_TEXT}`;
-    counter.classList.toggle('over', !isManifest && textarea.value.length > MAX_TEXT);
+    const { label, over } = describeLength(textarea.value, !!parseManifest(textarea.value), MAX_TEXT);
+    counter.textContent = label;
+    counter.classList.toggle('over', over);
+    submitButton.toggleAttribute('disabled', over || passBlocked);
   };
   textarea.addEventListener('input', updateCounter);
   updateCounter();
@@ -124,7 +132,6 @@ function renderInput(prefill = ''): void {
   });
 
   const turnstileBox = h('div', { class: 'turnstile' });
-  const submitButton = h('button', { type: 'submit', class: 'primary' }, 'Find vulnerabilities');
   const form = h(
     'form',
     {

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getCookie, setCookie } from 'hono/cookie';
 import { D1BindingStore } from '../ingest/d1-store';
+import { BodyTooLarge, readCapped } from '../lib/body';
 import { issuePass, PASS_COOKIE, PASS_TTL_SECONDS, passStatus } from '../lib/pass';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
@@ -71,6 +72,8 @@ const Body = z
   .refine((b) => (b.text === undefined) !== (b.candidates === undefined), { message: 'send either text or candidates' });
 
 export const resolve = new Hono<AppEnv>().post('/', async (c) => {
+  // A declared size over the cap is refused before anything else; readCapped
+  // below also stops a body that declares none.
   const length = Number(c.req.header('content-length') ?? 0);
   if (length > MAX_BODY_BYTES) return c.json({ error: 'request too large' }, 413);
 
@@ -80,9 +83,16 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     if (!success) return c.json({ error: 'too many requests; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
 
+  let raw: string;
+  try {
+    raw = await readCapped(c.req.raw, MAX_BODY_BYTES);
+  } catch (err) {
+    if (err instanceof BodyTooLarge) return c.json({ error: 'request too large' }, 413);
+    throw err;
+  }
   let body: z.infer<typeof Body>;
   try {
-    const parsed = Body.safeParse(await c.req.json());
+    const parsed = Body.safeParse(JSON.parse(raw));
     if (!parsed.success) return c.json({ error: 'invalid request', details: parsed.error.issues.map((i) => i.message) }, 400);
     body = parsed.data;
   } catch {

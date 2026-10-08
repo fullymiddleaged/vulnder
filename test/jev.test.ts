@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_TEXT_CHARS } from '../src/resolve/limits';
 import type { Chip } from '../src/resolve/catalog';
 import {
   blocks,
@@ -25,7 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('screen', () => {
   it('asks one injection question and a choice per axis, about the text alone', () => {
     const req = screenRequest('Redis on my NAS' + 'x'.repeat(3000));
-    expect(req.state.description).toHaveLength(2000);
+    expect(req.state.description).toHaveLength(MAX_TEXT_CHARS);
     expect(Object.keys(req.questions)).toEqual(['injection', 'scale', 'hosting']);
     expect(req.questions.injection.type).toBe('noul');
     expect(Object.keys(req.questions.scale.criteria)).toEqual(['enterprise', 'smb', 'home', 'unclear']);

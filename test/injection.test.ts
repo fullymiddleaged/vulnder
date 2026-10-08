@@ -11,6 +11,11 @@ const REAL_STACKS = [
   'Next.js 14.2.3 on Vercel, Postgres 16, Redis, nginx',
   'Django 4.2, Celery, RabbitMQ, PostgreSQL 15, running behind Apache httpd',
   'Cisco IOS XE switches, FortiGate firewall, Microsoft Exchange, VMware vCenter',
+  // The examples on the input page.
+  'Next.js 16 and React 19 on Vercel, a Hono API with Better Auth, Postgres 18 via Drizzle, Valkey for caching',
+  'FastAPI on Python 3.14, LangGraph agents, vLLM and Ollama serving models, LiteLLM gateway, Open WebUI, pgvector on Postgres 18',
+  'Astro and a NestJS API on AWS: EKS with Cilium and Envoy Gateway, Aurora Postgres 18, Valkey, Keycloak SSO, OpenTelemetry into Grafana',
+  'FortiGate firewalls, Cisco Catalyst switches, Windows Server 2025 domain controllers, Exchange Server SE',
   'Microsoft System Center Configuration Manager, System Center Operations Manager, Windows Server 2022',
   'Prompt Security for our LLM gateway, plus OpenAI API, LangChain agents and Ollama on a GPU box',
   'Jenkins agent on Ubuntu 22.04, Jenkins controller 2.440, GitLab runner, SonarQube',

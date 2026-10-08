@@ -30,10 +30,13 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - Feeds, Atom and badges are kept at the edge for up to an hour (until new data arrives); browsers still keep them for 5 minutes. Each component's CVEs are cached too, so a new stack or window that shares components with an earlier one loads without re-reading them: a Linux kernel stack reads about 2,700 database rows instead of 30,500.
 - Stacks touching 1,000 or more CVEs, such as the Linux kernel, are limited to 6 uncached requests a minute per IP (`FEED_HEAVY_LIMITER`); other stacks keep the limit of 60. Self-hosters add the binding from `wrangler.jsonc`.
 - `POST /api/resolve` refuses requests that look up more than 200 different products, the most a stack can hold, with HTTP 413.
+- The examples on the input page are 2026 stacks: a SaaS app, an AI app, a cloud platform on AWS and an office network. The empty text box shows one of them at random.
+- Free-text descriptions are limited to 500 characters (was 2,000), and "Find vulnerabilities" greys out while a description is over it. Longer lists belong in a manifest, which has no such limit.
 - Ingest from Node (GitHub Actions on the free plan) assigns similar-CVE families to at most 8,000 CVEs a day, so the first pass stays inside the free plan's D1 writes; `--family-daily` changes it (0 for no cap). The Paid cron has no cap.
 
 ### Fixed
 
 - A focus outline no longer frames the whole page after loading or changing view.
-- Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in about 20.
+- Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in 15.
 - The daily EPSS update writes about a third of the database rows it did.
+- `POST /api/resolve` stops reading a body once it passes 1 MB. Before, a body sent without a `Content-Length` was read in full.

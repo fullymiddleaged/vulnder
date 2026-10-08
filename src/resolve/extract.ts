@@ -9,7 +9,9 @@ import type { Candidate } from './types';
  * schema, and anything that does not validate is discarded.
  */
 
-export const MAX_TEXT_CHARS = 2000;
+import { MAX_TEXT_CHARS } from './limits';
+
+export { MAX_TEXT_CHARS };
 const MAX_ITEMS = 50;
 
 const ECOSYSTEMS = ['npm', 'PyPI', 'crates.io', 'Go', 'Maven', 'NuGet', 'Packagist', 'RubyGems', 'Hex', 'Pub'] as const;

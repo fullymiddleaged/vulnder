@@ -44,6 +44,22 @@ export function ago(iso: string, now = Date.now()): string {
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
 }
 
+/** The text box's placeholder: one of the examples, picked at random on each visit. */
+export function examplePlaceholder(examples: readonly { text: string }[], random = Math.random): string {
+  const pick = examples[Math.min(examples.length - 1, Math.floor(random() * examples.length))];
+  return pick ? `For example: ${pick.text}` : '';
+}
+
+/**
+ * The description counter's text, and whether the description is too long to
+ * send. Counts the trimmed text, as submitting does; manifests have no limit.
+ */
+export function describeLength(text: string, isManifest: boolean, max: number): { label: string; over: boolean } {
+  if (isManifest) return { label: 'Manifest detected', over: false };
+  const n = text.trim().length;
+  return n > max ? { label: `${n} / ${max}: too long. Shorten it, or paste a manifest`, over: true } : { label: `${n} / ${max}`, over: false };
+}
+
 /**
  * Why looking up another stack is greyed out, or null when it isn't: the pass
  * has used its stacks for the hour and the hour isn't over.

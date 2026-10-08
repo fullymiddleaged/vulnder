@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -242,5 +242,31 @@ describe('passNotice', () => {
     );
     expect(passNotice(pass(2, 0.5), now)).toContain('Please wait 1 minute to');
     expect(passNotice(pass(2, 37), now)).toContain('Please wait 37 minutes to');
+  });
+});
+
+describe('describeLength', () => {
+  it('allows exactly the limit and greys out one over, counting trimmed text', () => {
+    expect(describeLength('x'.repeat(499), false, 500)).toEqual({ label: '499 / 500', over: false });
+    expect(describeLength('x'.repeat(500), false, 500)).toEqual({ label: '500 / 500', over: false });
+    expect(describeLength('x'.repeat(501), false, 500)).toEqual({ label: '501 / 500: too long. Shorten it, or paste a manifest', over: true });
+    expect(describeLength(`  ${'x'.repeat(500)}\n\n`, false, 500).over).toBe(false);
+  });
+
+  it('never limits a manifest', () => {
+    expect(describeLength('x'.repeat(100_000), true, 500)).toEqual({ label: 'Manifest detected', over: false });
+  });
+});
+
+describe('examplePlaceholder', () => {
+  const examples = [{ text: 'first' }, { text: 'second' }, { text: 'third' }];
+
+  it('picks each example across the range of random values, including the ends', () => {
+    expect(examplePlaceholder(examples, () => 0)).toBe('For example: first');
+    expect(examplePlaceholder(examples, () => 0.5)).toBe('For example: second');
+    expect(examplePlaceholder(examples, () => 0.999999)).toBe('For example: third');
+    // Math.random never returns 1, but a bad source can't index past the end.
+    expect(examplePlaceholder(examples, () => 1)).toBe('For example: third');
+    expect(examplePlaceholder([], () => 0)).toBe('');
   });
 });
