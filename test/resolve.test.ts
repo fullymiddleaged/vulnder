@@ -5,7 +5,7 @@ import { MAX_PRODUCT_LOOKUPS, resolveCandidates, similarity } from '../src/resol
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
 import { SITEVERIFY_URL, verifyTurnstile } from '../src/resolve/turnstile';
-import { resetDb, store } from './helpers/db';
+import { resetDb, rows, store } from './helpers/db';
 import { choice, CLEAN_SCREEN, jevReply, noul } from './helpers/jev';
 
 const BRIEF_EXAMPLE = 'Next.js on Vercel, Postgres 16, Redis, nginx, a couple of Cisco switches';
@@ -331,6 +331,28 @@ describe('POST /api/resolve', () => {
     );
     const body = (await res.json()) as { chips: { items: { item: string }[] }[] };
     expect(body.chips.map((c) => c.items[0]!.item)).toEqual(['npm:next@14.2.3', 'p:postgresql/postgresql@16']);
+  });
+
+  it('issues a feed pass in an HttpOnly cookie after Turnstile, and keeps a live one', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => {
+      throw new Error('model must not be called');
+    });
+    const body = { turnstileToken: 't', candidates: [{ kind: 'package', ecosystem: 'npm', name: 'next', version: null, direct: true }] };
+    const first = await post(body, e);
+    expect(first.status).toBe(200);
+    const cookie = first.headers.get('set-cookie')!;
+    expect(cookie).toMatch(/^vulnder_pass=[0-9a-f]{32}; Max-Age=86400; Path=\/; HttpOnly; Secure; SameSite=Strict$/);
+    const id = /vulnder_pass=([0-9a-f]+)/.exec(cookie)![1];
+
+    const again = await post(body, e, { cookie: `vulnder_pass=${id}` });
+    expect(again.headers.get('set-cookie')).toBeNull();
+    expect(await rows('SELECT id FROM feed_passes')).toEqual([{ id }]);
+
+    // A failed check earns nothing.
+    vi.restoreAllMocks();
+    stubTurnstile(false);
+    expect((await post(body, e)).headers.get('set-cookie')).toBeNull();
   });
 
   it('refuses more products than a stack can hold, before reading the catalog for them', async () => {

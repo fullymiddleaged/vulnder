@@ -15,6 +15,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - A suggested **response window** on each result: 24 hours for Act now on an internet-facing item, 48 hours otherwise, 7 days for Attend, 30 days for Watch. It's guidance, based on 2026 time-to-exploit data, not a deadline.
 - Act now and Attend results with no fixed version known say **what to do meanwhile**: CISA's required action when it's on KEV, and a link to the advisory.
 - The JSON feed adds `why`, `respondWithinHours` and `mitigation` to each result (`reasons` is unchanged), and Atom entries now include the priority, the window and the reasons.
+- **Feed passes.** After its Turnstile check, a browser gets a pass (an HttpOnly cookie, no account) that loads 2 different stacks an hour, counted from the first; the same stacks, and their other time windows, load as often as you like. Once both are used, editing and new lookups are greyed out with how long to wait. Browsers with a pass skip the per-IP limits, so people sharing an office IP no longer limit each other; feed readers, badges and scripts without one keep them. Needs migration 0005.
 - A loader, built from the logo, while your stack is read and while matches load. It stays still if your system asks for reduced motion.
 
 ### Changed

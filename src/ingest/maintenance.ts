@@ -1,4 +1,5 @@
 import { RETENTION_DAYS } from '../config';
+import { prunePassesStatement } from '../lib/pass';
 import { windowStart } from '../lib/time';
 import { stmt, type Statement } from './store';
 
@@ -8,6 +9,7 @@ import { stmt, type Statement } from './store';
  *   inside it (an old CVE that lands on KEV this week stays);
  * - drop events older than the window, and orphaned rows (family leaders too:
  *   their members keep the family id, but nothing new can join);
+ * - drop feed passes older than a day;
  * - recount catalog entries, writing only rows whose count changed.
  */
 export function maintenanceStatements(now: Date): Statement[] {
@@ -23,6 +25,7 @@ export function maintenanceStatements(now: Date): Statement[] {
     stmt(`DELETE FROM aliases WHERE vuln_id IN (${stale})`, cutoff),
     stmt(`DELETE FROM vulns WHERE id IN (${stale})`, cutoff),
     stmt('DELETE FROM events WHERE occurred_at < ?', cutoff),
+    prunePassesStatement(now),
     stmt(`UPDATE catalog SET count = c.n
       FROM (
         SELECT 'package' AS kind, ecosystem || ':' || package_name AS key, COUNT(DISTINCT vuln_id) AS n

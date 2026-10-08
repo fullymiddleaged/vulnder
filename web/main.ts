@@ -2,7 +2,7 @@ import { parseManifest } from '../src/resolve/manifests';
 import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
-import { ApiError, getConfig, getFeed, getHealth, resolve, type AppConfig, type Feed, type Priority, type Reason, type Result } from './api';
+import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import {
   ago,
@@ -17,6 +17,7 @@ import {
   itemMarks,
   groupChanges,
   matchHeadline,
+  passNotice,
   ordinal,
   pct,
   preview,
@@ -49,9 +50,27 @@ const status = document.getElementById('status')!;
 let config: AppConfig | null = null;
 let turnstileToken: string | null = null;
 let turnstileWidget: string | undefined;
+/** This browser's allowance of different stacks this hour; null until known. */
+let pass: PassStatus | null = null;
 
 function say(message: string): void {
   status.textContent = message;
+}
+
+async function refreshPass(): Promise<void> {
+  pass = await getPass().catch(() => null);
+}
+
+/**
+ * Greys out a button that would look up another stack once this hour's
+ * allowance is used, and says why next to it. Returns the notice, or null.
+ */
+function guardNewStack(button: HTMLElement): HTMLElement | null {
+  const notice = passNotice(pass);
+  if (!notice) return null;
+  button.setAttribute('disabled', '');
+  button.setAttribute('aria-describedby', 'pass-notice');
+  return h('p', { class: 'notice', id: 'pass-notice' }, notice);
 }
 
 // ---------- Input ----------
@@ -135,6 +154,8 @@ function renderInput(prefill = ''): void {
     submitButton,
   );
 
+  const notice = guardNewStack(submitButton);
+  if (notice) form.append(notice);
   app.append(form, drop);
   mountTurnstile(turnstileBox);
 }
@@ -330,6 +351,7 @@ function renderEdit(initial: string[]): void {
       addForm,
       h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '.'),
       h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => renderInput() }, 'Start over'), show),
+      guardNewStack(show),
     ),
   );
 }
@@ -353,9 +375,16 @@ async function renderResults(stack: string, days: number): Promise<void> {
   } catch (err) {
     done();
     say('');
+    if (err instanceof ApiError && err.reason === 'pass-limit') {
+      await refreshPass();
+      app.append(h('div', { class: 'block' }, h('h2', {}, 'Please wait before looking up another stack'), h('p', {}, passNotice(pass) ?? err.message)));
+      return;
+    }
     app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
     return;
   }
+  // Loading this stack may have used the allowance; editing is greyed out once it has.
+  await refreshPass();
   say([`${feed.results.length} vulnerabilities found.`, pendingNote].filter(Boolean).join(' '));
   pendingNote = '';
   document.title = `${config?.displayName ?? 'Vulnder'}: ${feed.summary.exploited} exploited`;
@@ -363,6 +392,9 @@ async function renderResults(stack: string, days: number): Promise<void> {
   const items = parseStack(feed.stack);
   const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
   daySelect.addEventListener('change', () => navigate(feed.stack, Number(daySelect.value)));
+  // Another time window of this stack is free; a different stack is what the pass counts.
+  const editButton = h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack');
+  const editNotice = guardNewStack(editButton);
 
   app.append(
     h(
@@ -381,7 +413,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
           ),
         ),
       ),
-      h('div', { class: 'row wrap' }, h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack'), copyButtons(feed)),
+      h('div', { class: 'row wrap' }, editButton, copyButtons(feed)),
+      editNotice,
       feed.versionCheckUnavailable ? h('p', { class: 'notice' }, 'Version checks are unavailable right now, so every match is shown as a product match.') : null,
     ),
   );
@@ -852,7 +885,10 @@ async function route(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const s = params.get('s');
   if (s) await renderResults(s, Number(params.get('days') ?? 30) || 30);
-  else renderInput();
+  else {
+    await refreshPass();
+    renderInput();
+  }
   app.focus();
 }
 

@@ -4,7 +4,7 @@ A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (f
 
 ## Principles (don't undo these)
 
-- **Privacy:** user text and stacks are never stored or logged. Parses are cached under a hash of the normalised text; IPs are only rate-limit keys or a daily-salted hash. Manifests are parsed in the browser.
+- **Privacy:** user text and stacks are never stored or logged. Parses are cached under a hash of the normalised text; IPs are only rate-limit keys or a daily-salted hash. Feed passes (`src/lib/pass.ts`) hold a random id and keyed hashes of stacks, never stacks, and are deleted after a day. Manifests are parsed in the browser.
 - **Evidence beats severity:** exploitation evidence (CISA KEV, SSVC "active") always outranks prediction (EPSS) and severity (CVSS). Every priority shows its reasons; scores are heuristics for ordering, not probabilities.
 - **AI only extracts and judges; code decides.** Models never rank CVEs or hide matches. Their output is schema-validated, grounded against the user's text, and treated as untrusted.
 - **Never hide a match.** Vague names expand to close matches (marked `?` in the stack); ranking only reorders them.

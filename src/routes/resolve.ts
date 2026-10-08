@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { getCookie, setCookie } from 'hono/cookie';
 import { D1BindingStore } from '../ingest/d1-store';
+import { issuePass, PASS_COOKIE, PASS_TTL_SECONDS, passStatus } from '../lib/pass';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
@@ -95,6 +97,12 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   });
   if (!check.success) return c.json({ error: 'verification failed; reload the page and try again', codes: check.errors }, 403);
 
+  // Passing Turnstile earns a feed pass (src/lib/pass.ts), unless this browser has a live one.
+  const passId = getCookie(c, PASS_COOKIE);
+  const passStore = new D1BindingStore(c.env.DB);
+  if (!passId || !(await passStatus(passStore, passId, new Date()))) {
+    setCookie(c, PASS_COOKIE, await issuePass(passStore, new Date()), { path: '/', maxAge: PASS_TTL_SECONDS, httpOnly: true, secure: true, sameSite: 'Strict' });
+  }
 
   let candidates: Candidate[];
   // Only free text gets a profile; manifests keep catalog order.

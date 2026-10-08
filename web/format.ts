@@ -1,4 +1,4 @@
-import type { Change, FixItem, Priority, Result } from './api';
+import type { Change, FixItem, PassStatus, Priority, Result } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
 
@@ -42,6 +42,18 @@ export function ago(iso: string, now = Date.now()): string {
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+/**
+ * Why looking up another stack is greyed out, or null when it isn't: the pass
+ * has used its stacks for the hour and the hour isn't over.
+ */
+export function passNotice(pass: PassStatus | null, now = Date.now()): string | null {
+  if (!pass?.active || pass.used < pass.limit || !pass.resetsAt) return null;
+  const minutes = Math.ceil((Date.parse(pass.resetsAt) - now) / 60_000);
+  if (minutes <= 0) return null;
+  const wait = minutes >= 60 ? '1 hour' : `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  return `Your usage is restricted: you've looked up ${pass.limit} stacks this hour. Please wait ${wait} to look up another. The stacks you've already opened, and their time windows, still work.`;
 }
 
 /** Most important first: confirmed exploitation, then a jump in predicted risk, then fixes, then new CVEs. */

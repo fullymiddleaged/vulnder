@@ -113,21 +113,32 @@ export interface Health {
   sources: Record<string, { health: 'ok' | 'stale' | 'error' | 'never'; lastSuccessAt: string | null }>;
 }
 
+/** This browser's allowance of different stacks an hour (src/lib/pass.ts). */
+export interface PassStatus {
+  active: boolean;
+  used: number;
+  limit: number;
+  resetsAt: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly fallback?: string,
+    readonly reason?: string,
   ) {
     super(message);
   }
 }
 
 async function json<T>(res: Response): Promise<T> {
-  const body = (await res.json().catch(() => ({}))) as { error?: string; fallback?: string };
-  if (!res.ok) throw new ApiError(body.error ?? `request failed (${res.status})`, res.status, body.fallback);
+  const body = (await res.json().catch(() => ({}))) as { error?: string; fallback?: string; reason?: string };
+  if (!res.ok) throw new ApiError(body.error ?? `request failed (${res.status})`, res.status, body.fallback, body.reason);
   return body as T;
 }
+
+export const getPass = () => fetch('/api/pass').then((r) => json<PassStatus>(r));
 
 export const getConfig = () => fetch('/api/config').then((r) => json<AppConfig>(r));
 export const getHealth = () => fetch('/api/health').then((r) => json<Health>(r));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -217,5 +217,30 @@ describe('preview', () => {
     expect(preview([1, 2, 3], 3)).toEqual({ shown: [1, 2, 3], rest: 0 });
     expect(preview([1, 2, 3, 4], 3)).toEqual({ shown: [1, 2, 3, 4], rest: 0 });
     expect(preview([1, 2, 3, 4, 5], 3)).toEqual({ shown: [1, 2, 3], rest: 2 });
+  });
+});
+
+describe('passNotice', () => {
+  const now = Date.parse('2026-10-08T10:00:00Z');
+  const pass = (used: number, minutesLeft: number | null) => ({
+    active: true,
+    used,
+    limit: 2,
+    resetsAt: minutesLeft === null ? null : new Date(now + minutesLeft * 60_000).toISOString(),
+  });
+
+  it('says nothing while the allowance lasts, or once its hour is over', () => {
+    expect(passNotice(null, now)).toBeNull();
+    expect(passNotice({ ...pass(2, 30), active: false }, now)).toBeNull();
+    expect(passNotice(pass(1, 30), now)).toBeNull();
+    expect(passNotice(pass(2, 0), now)).toBeNull();
+  });
+
+  it('says how long to wait once both stacks are used', () => {
+    expect(passNotice(pass(2, 60), now)).toBe(
+      "Your usage is restricted: you've looked up 2 stacks this hour. Please wait 1 hour to look up another. The stacks you've already opened, and their time windows, still work.",
+    );
+    expect(passNotice(pass(2, 0.5), now)).toContain('Please wait 1 minute to');
+    expect(passNotice(pass(2, 37), now)).toContain('Please wait 37 minutes to');
   });
 });

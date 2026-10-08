@@ -3,6 +3,8 @@ import { D1BindingStore } from '../ingest/d1-store';
 import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
+import { getCookie } from 'hono/cookie';
+import { PASS_COOKIE, usePass } from '../lib/pass';
 import type { ComponentCache, ComponentData } from '../match/components';
 import { createOsvClient } from '../match/osv';
 import { PRIORITIES, type Priority } from '../match/priority';
@@ -84,6 +86,23 @@ async function cached(
   build: (dataVersion: number) => Promise<Response>,
 ): Promise<Response> {
   const store = new D1BindingStore(c.env.DB);
+  // A browser's pass (src/lib/pass.ts) counts new stacks, whether cached or not,
+  // and stands in for the per-IP limits, which a shared office IP would hit.
+  let passed = false;
+  const passId = getCookie(c, PASS_COOKIE);
+  const secret = c.env.TURNSTILE_SECRET_KEY;
+  if (passId && secret) {
+    const use = await usePass(store, passId, req.canonical, secret, new Date());
+    if (use && !use.ok) {
+      const retry = use.status.resetsAt ? Math.max(1, Math.ceil((Date.parse(use.status.resetsAt) - Date.now()) / 1000)) : 60;
+      return c.json(
+        { error: 'your usage is restricted: you can look up a different stack after the time shown', reason: 'pass-limit', pass: use.status },
+        429,
+        { 'Retry-After': String(retry), 'Cache-Control': 'no-store' },
+      );
+    }
+    passed = use !== null;
+  }
   const dataVersion = Number((await getMeta<number>(store, DATA_VERSION_KEY)) ?? 0);
   const key = new Request(
     `${baseUrl(c.env)}/__cache/${route}?s=${encodeURIComponent(req.canonical)}&days=${req.days}&v=${dataVersion}`,
@@ -99,11 +118,11 @@ async function cached(
   }
 
   const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
-  if (c.env.FEED_LIMITER) {
+  if (!passed && c.env.FEED_LIMITER) {
     const { success } = await c.env.FEED_LIMITER.limit({ key: ip });
     if (!success) return c.json({ error: 'too many new feed requests; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
-  if (c.env.FEED_HEAVY_LIMITER && (await stackSize(store, req.items)) >= HEAVY_STACK_VULNS) {
+  if (!passed && c.env.FEED_HEAVY_LIMITER && (await stackSize(store, req.items)) >= HEAVY_STACK_VULNS) {
     const { success } = await c.env.FEED_HEAVY_LIMITER.limit({ key: ip });
     if (!success) return c.json({ error: 'too many new requests for large stacks; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
