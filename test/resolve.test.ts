@@ -4,6 +4,7 @@ import { app } from '../src/index';
 import { MAX_PRODUCT_LOOKUPS, resolveCandidates, similarity } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, MAX_TEXT_CHARS, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
+import { MAX_MANIFEST_ENTRIES } from '../src/resolve/limits';
 import { SITEVERIFY_URL, verifyTurnstile } from '../src/resolve/turnstile';
 import { resetDb, rows, store } from './helpers/db';
 import { choice, CLEAN_SCREEN, jevReply, noul } from './helpers/jev';
@@ -365,6 +366,19 @@ describe('POST /api/resolve', () => {
     const res = await post({ turnstileToken: 't', candidates: products(MAX_PRODUCT_LOOKUPS + 1) }, e);
     expect(res.status).toBe(413);
     expect(((await res.json()) as { error: string }).error).toMatch(/at most 200 different products/);
+  });
+
+  it('takes up to MAX_MANIFEST_ENTRIES parsed entries and refuses one more', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => {
+      throw new Error('model must not be called');
+    });
+    // Indirect packages the catalog doesn't know are dropped, so this stays cheap.
+    const entries = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'package', ecosystem: 'npm', name: `left-pad-${i}`, version: '1.0.0', direct: false }));
+    const ok = await post({ turnstileToken: 't', candidates: entries(MAX_MANIFEST_ENTRIES) }, e);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ droppedTransitive: MAX_MANIFEST_ENTRIES });
+    expect((await post({ turnstileToken: 't', candidates: entries(MAX_MANIFEST_ENTRIES + 1) }, e)).status).toBe(400);
   });
 
   it('falls back to the manual path when the model is unavailable', async () => {

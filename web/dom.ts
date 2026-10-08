@@ -25,16 +25,8 @@ function append(el: Element, children: (Child | Child[])[]): void {
   }
 }
 
-/** Only http(s) links are ever rendered, so a stored javascript: URL cannot run. */
-export function safeHref(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
-  } catch {
-    return null;
-  }
-}
+// Kept DOM-free in url.ts so the export module and its tests can use it.
+export { safeHref } from './url';
 
 export function clear(el: Element): void {
   el.replaceChildren();

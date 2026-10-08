@@ -4,7 +4,8 @@ import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
 import { getCookie } from 'hono/cookie';
-import { PASS_COOKIE, usePass } from '../lib/pass';
+import { isSpent, lockedStatus, PASS_COOKIE, usePass } from '../lib/pass';
+import { passLimited, readLock, withLock } from './pass';
 import type { ComponentCache, ComponentData } from '../match/components';
 import { createOsvClient } from '../match/osv';
 import { PRIORITIES, type Priority } from '../match/priority';
@@ -85,24 +86,42 @@ async function cached(
   req: StackRequest,
   build: (dataVersion: number) => Promise<Response>,
 ): Promise<Response> {
+  const now = new Date();
+  // A locked browser is turned away before anything touches D1 or the cache.
+  const locked = readLock(c, now);
+  if (locked) return passLimited(c, lockedStatus(locked), now);
+
   const store = new D1BindingStore(c.env.DB);
   // A browser's pass (src/lib/pass.ts) counts new stacks, whether cached or not,
   // and stands in for the per-IP limits, which a shared office IP would hit.
   let passed = false;
+  // Set once the pass is spent: this stack, if it took the last place, still
+  // loads, and the browser is locked from the next request on.
+  let lockUntil: string | null = null;
   const passId = getCookie(c, PASS_COOKIE);
   const secret = c.env.TURNSTILE_SECRET_KEY;
   if (passId && secret) {
-    const use = await usePass(store, passId, req.canonical, secret, new Date());
+    const use = await usePass(store, passId, req.canonical, secret, now);
+    if (use && isSpent(use.status)) lockUntil = use.status.resetsAt;
+    passed = use?.ok === true;
     if (use && !use.ok) {
-      const retry = use.status.resetsAt ? Math.max(1, Math.ceil((Date.parse(use.status.resetsAt) - Date.now()) / 1000)) : 60;
-      return c.json(
-        { error: 'your usage is restricted: you can look up a different stack after the time shown', reason: 'pass-limit', pass: use.status },
-        429,
-        { 'Retry-After': String(retry), 'Cache-Control': 'no-store' },
-      );
+      const refused = passLimited(c, use.status, now);
+      return lockUntil ? withLock(refused, lockUntil, now) : refused;
     }
-    passed = use !== null;
   }
+  const res = await load(c, route, req, store, passed, build);
+  return lockUntil ? withLock(res, lockUntil, now) : res;
+}
+
+/** The response from the edge cache, or built and cached. */
+async function load(
+  c: Context<AppEnv>,
+  route: string,
+  req: StackRequest,
+  store: D1BindingStore,
+  passed: boolean,
+  build: (dataVersion: number) => Promise<Response>,
+): Promise<Response> {
   const dataVersion = Number((await getMeta<number>(store, DATA_VERSION_KEY)) ?? 0);
   const key = new Request(
     `${baseUrl(c.env)}/__cache/${route}?s=${encodeURIComponent(req.canonical)}&days=${req.days}&v=${dataVersion}`,

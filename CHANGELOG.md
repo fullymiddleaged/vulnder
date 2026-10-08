@@ -15,11 +15,13 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - A suggested **response window** on each result: 24 hours for Act now on an internet-facing item, 48 hours otherwise, 7 days for Attend, 30 days for Watch. It's guidance, based on 2026 time-to-exploit data, not a deadline.
 - Act now and Attend results with no fixed version known say **what to do meanwhile**: CISA's required action when it's on KEV, and a link to the advisory.
 - The JSON feed adds `why`, `respondWithinHours` and `mitigation` to each result (`reasons` is unchanged), and Atom entries now include the priority, the window and the reasons.
-- **Feed passes.** After its Turnstile check, a browser gets a pass (an HttpOnly cookie, no account) that loads 2 different stacks an hour, counted from the first; the same stacks, and their other time windows, load as often as you like. Once both are used, editing and new lookups are greyed out with how long to wait. Browsers with a pass skip the per-IP limits, so people sharing an office IP no longer limit each other; feed readers, badges and scripts without one keep them. Needs migration 0005.
-- A loader, built from the logo, while your stack is read and while matches load. It stays still if your system asks for reduced motion.
+- **Feed passes.** After its Turnstile check, a browser gets a pass (an HttpOnly cookie, no account) that loads 2 different stacks an hour, counted from the first; until the second, the first stack and its other time windows load as often as you like. Once both are used, the browser is locked until the hour is over: nothing loads, including stacks already opened, and the server turns it away from a lock cookie without reading the database. The page greys out Start over, Edit stack, the time window and new lookups, shows a red countdown next to them, and points at it when you click one. Browsers with a pass skip the per-IP limits, so people sharing an office IP no longer limit each other; feed readers, badges and scripts without one keep them. Needs migration 0005.
+- A loader, built from the logo, while your stack is read and while matches load. While matches load it ticks off each source it checks (CVE records, GitHub advisories, CISA KEV, EPSS, OSV) and then the exact and close matches. It stays still if your system asks for reduced motion.
+- **Export** the results as Markdown or JSON from the results page: every CVE with its priority, risk score, response window, why, exploitation evidence, fixed versions and what to do, plus the fix-first order and instructions for a person or an AI assistant to work through it. Built in your browser from the page, so it costs no request.
 
 ### Changed
 
+- The manifest upload is now one short line under the examples, inside the form, and the page no longer suggests pasting a manifest into the description box, which has a length limit. Uploads were never held to that limit, and now accept files up to 10 MB (was 5 MB) and 300,000 lines. Only manifest names and text extensions (.json, .txt, .toml, .xml, .lock, .mod, .in) are read, and binary files are refused with a reason.
 - The most urgent priority is now labelled **Act now** (was Act). The feed's `priority` value is still `act`.
 - CVSS 9.0 or more now puts a result in **Attend** (was Watch), but only when an attacker can reach it: over the network, with no login and no user action, or judged automatable by CISA. Criticals that need local access, a login or someone's help go to **Watch**.
 - **Watch** now starts at CVSS 8.0 (was 9.0). Results from 8.0 to 8.9 with no exploit signal move up from Track.
@@ -36,6 +38,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Fixed
 
+- A manifest with more than 5,000 entries, such as a large monorepo lockfile, no longer fails with "invalid request": the first 5,000 are checked, direct dependencies first, and the results say how many were left out.
 - A focus outline no longer frames the whole page after loading or changing view.
 - Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in 15.
 - The daily EPSS update writes about a third of the database rows it did.

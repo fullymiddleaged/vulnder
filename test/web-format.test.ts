@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, foldFamilies, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -236,12 +236,23 @@ describe('passNotice', () => {
     expect(passNotice(pass(2, 0), now)).toBeNull();
   });
 
-  it('says how long to wait once both stacks are used', () => {
-    expect(passNotice(pass(2, 60), now)).toBe(
-      "Your usage is restricted: you've looked up 2 stacks this hour. Please wait 1 hour to look up another. The stacks you've already opened, and their time windows, still work.",
-    );
-    expect(passNotice(pass(2, 0.5), now)).toContain('Please wait 1 minute to');
-    expect(passNotice(pass(2, 37), now)).toContain('Please wait 37 minutes to');
+  it('counts down to the unlock once both stacks are used', () => {
+    expect(passNotice(pass(2, 60), now)).toBe("You've looked up 2 stacks this hour, the most it allows. New lookups, edits and time windows unlock in 60:00.");
+    expect(passNotice(pass(2, 0.5), now)).toContain('unlock in 0:30.');
+    expect(passNotice(pass(2, 37), now)).toContain('unlock in 37:00.');
+    expect(lockRemaining(pass(2, 37), now)).toBe(37 * 60_000);
+    expect(lockRemaining(pass(1, 37), now)).toBeNull();
+  });
+});
+
+describe('countdown', () => {
+  it('shows minutes and seconds, rounding up so it never reads 0:00 while locked', () => {
+    expect(countdown(3_600_000)).toBe('60:00');
+    expect(countdown(59 * 60_000 + 32_000)).toBe('59:32');
+    expect(countdown(4_001)).toBe('0:05');
+    expect(countdown(1)).toBe('0:01');
+    expect(countdown(0)).toBe('0:00');
+    expect(countdown(-5)).toBe('0:00');
   });
 });
 
@@ -249,7 +260,7 @@ describe('describeLength', () => {
   it('allows exactly the limit and greys out one over, counting trimmed text', () => {
     expect(describeLength('x'.repeat(499), false, 500)).toEqual({ label: '499 / 500', over: false });
     expect(describeLength('x'.repeat(500), false, 500)).toEqual({ label: '500 / 500', over: false });
-    expect(describeLength('x'.repeat(501), false, 500)).toEqual({ label: '501 / 500: too long. Shorten it, or paste a manifest', over: true });
+    expect(describeLength('x'.repeat(501), false, 500)).toEqual({ label: '501 / 500: too long. Shorten it, or upload a manifest below', over: true });
     expect(describeLength(`  ${'x'.repeat(500)}\n\n`, false, 500).over).toBe(false);
   });
 

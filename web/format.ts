@@ -57,19 +57,30 @@ export function examplePlaceholder(examples: readonly { text: string }[], random
 export function describeLength(text: string, isManifest: boolean, max: number): { label: string; over: boolean } {
   if (isManifest) return { label: 'Manifest detected', over: false };
   const n = text.trim().length;
-  return n > max ? { label: `${n} / ${max}: too long. Shorten it, or paste a manifest`, over: true } : { label: `${n} / ${max}`, over: false };
+  return n > max ? { label: `${n} / ${max}: too long. Shorten it, or upload a manifest below`, over: true } : { label: `${n} / ${max}`, over: false };
 }
 
 /**
- * Why looking up another stack is greyed out, or null when it isn't: the pass
- * has used its stacks for the hour and the hour isn't over.
+ * How long until a spent pass unlocks, in ms, or null when it isn't locked:
+ * stacks are left this hour, or the hour is over.
  */
-export function passNotice(pass: PassStatus | null, now = Date.now()): string | null {
+export function lockRemaining(pass: PassStatus | null, now = Date.now()): number | null {
   if (!pass?.active || pass.used < pass.limit || !pass.resetsAt) return null;
-  const minutes = Math.ceil((Date.parse(pass.resetsAt) - now) / 60_000);
-  if (minutes <= 0) return null;
-  const wait = minutes >= 60 ? '1 hour' : `${minutes} minute${minutes === 1 ? '' : 's'}`;
-  return `Your usage is restricted: you've looked up ${pass.limit} stacks this hour. Please wait ${wait} to look up another. The stacks you've already opened, and their time windows, still work.`;
+  const ms = Date.parse(pass.resetsAt) - now;
+  return ms > 0 ? ms : null;
+}
+
+/** A wait as a clock: "59:32", "0:05". Rounds up, so it never shows 0:00 while still locked. */
+export function countdown(ms: number): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/** Why looking up, editing or reloading a stack is greyed out, or null when it isn't. */
+export function passNotice(pass: PassStatus | null, now = Date.now()): string | null {
+  const ms = lockRemaining(pass, now);
+  if (ms === null) return null;
+  return `You've looked up ${pass!.limit} stacks this hour, the most it allows. New lookups, edits and time windows unlock in ${countdown(ms)}.`;
 }
 
 /** Most important first: confirmed exploitation, then a jump in predicted risk, then fixes, then new CVEs. */

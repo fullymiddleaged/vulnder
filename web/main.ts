@@ -1,10 +1,12 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
-import { MAX_TEXT_CHARS } from '../src/resolve/limits';
+import { MAX_MANIFEST_BYTES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
 import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
+import { exportFileName, exportJson, exportMarkdown } from './export';
+import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
 import {
   ago,
   byPriority,
@@ -19,6 +21,7 @@ import {
   describeLength,
   examplePlaceholder,
   groupChanges,
+  lockRemaining,
   matchHeadline,
   passNotice,
   ordinal,
@@ -65,16 +68,60 @@ async function refreshPass(): Promise<void> {
   pass = await getPass().catch(() => null);
 }
 
+const isLocked = () => lockRemaining(pass) !== null;
+let lockTimer: ReturnType<typeof setInterval> | undefined;
+
 /**
- * Greys out a button that would look up another stack once this hour's
- * allowance is used, and says why next to it. Returns the notice, or null.
+ * While this hour's allowance is spent: greys out the controls that would load
+ * a stack and returns a red countdown to place next to them (null when not
+ * locked). The controls still take clicks, to point at the countdown and say
+ * why. When it reaches zero they work again and `onUnlock` runs.
  */
-function guardNewStack(button: HTMLElement): HTMLElement | null {
-  const notice = passNotice(pass);
-  if (!notice) return null;
-  button.setAttribute('disabled', '');
-  button.setAttribute('aria-describedby', 'pass-notice');
-  return h('p', { class: 'notice', id: 'pass-notice' }, notice);
+function lockControls(controls: (HTMLElement | null)[], onUnlock?: () => void): HTMLElement | null {
+  clearInterval(lockTimer);
+  if (!isLocked()) return null;
+  const text = h('span', { class: 'countdown' });
+  const notice = h('p', { class: 'notice locked', id: 'pass-notice' }, h('strong', {}, 'Usage limit reached. '), text);
+  const owned = controls.filter((el): el is HTMLElement => el !== null);
+  const refuse = (e: Event) => {
+    if (!isLocked()) return;
+    if (e instanceof KeyboardEvent && (e.key === 'Tab' || e.key === 'Shift')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    nudge(notice);
+  };
+  for (const el of owned) {
+    el.setAttribute('aria-disabled', 'true');
+    el.setAttribute('aria-describedby', 'pass-notice');
+    // Capture, so this runs before the control's own handler. A select opens on mousedown and changes by key.
+    for (const type of ['click', 'mousedown', 'keydown', 'drop']) {
+      if (type === 'click' || type === 'drop' || el instanceof HTMLSelectElement) el.addEventListener(type, refuse, { capture: true });
+    }
+  }
+  const tick = () => {
+    const message = passNotice(pass);
+    if (message) return void (text.textContent = message);
+    clearInterval(lockTimer);
+    for (const el of owned) {
+      el.removeAttribute('aria-disabled');
+      el.removeAttribute('aria-describedby');
+    }
+    notice.remove();
+    say('You can look up stacks again.');
+    onUnlock?.();
+  };
+  tick();
+  lockTimer = setInterval(() => (notice.isConnected ? tick() : clearInterval(lockTimer)), 1000);
+  return notice;
+}
+
+/** Points at the countdown when someone tries a locked control. */
+function nudge(notice: HTMLElement): void {
+  say(passNotice(pass) ?? '');
+  notice.classList.remove('nudge');
+  void notice.offsetWidth; // restart the animation
+  notice.classList.add('nudge');
+  notice.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 // ---------- Input ----------
@@ -92,33 +139,54 @@ function renderInput(prefill = ''): void {
   const counter = h('span', { class: 'counter', id: 'stack-length' });
   // Over the limit, the button stays greyed out, so a description that would be refused is never sent.
   const submitButton = h('button', { type: 'submit', class: 'primary', 'aria-describedby': 'stack-length' }, 'Find vulnerabilities');
-  const passBlocked = !!passNotice(pass);
   const updateCounter = () => {
     const { label, over } = describeLength(textarea.value, !!parseManifest(textarea.value), MAX_TEXT);
     counter.textContent = label;
     counter.classList.toggle('over', over);
-    submitButton.toggleAttribute('disabled', over || passBlocked);
+    submitButton.toggleAttribute('disabled', over);
   };
   textarea.addEventListener('input', updateCounter);
   updateCounter();
 
   const fileInput = h('input', { type: 'file', id: 'file', class: 'visually-hidden', accept: '.json,.txt,.toml,.mod,.xml,.lock,Dockerfile,*' }) as HTMLInputElement;
+  // One quiet line under the examples; the full list of formats is in the tooltip.
   const drop = h(
     'div',
-    { class: 'drop', id: 'drop' },
-    h('p', {}, 'Drop a manifest here, or ', h('label', { for: 'file', class: 'link' }, 'choose a file'), '.'),
-    h('p', { class: 'muted small' }, 'package.json, lockfiles, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, Gemfile.lock, composer.json, Dockerfile, CycloneDX or SPDX JSON. Files are read in your browser; only package names and versions are sent.'),
+    {
+      class: 'drop small',
+      id: 'drop',
+      title: `Up to ${MAX_MANIFEST_BYTES / 1_000_000} MB: ${MANIFEST_FORMATS}`,
+    },
+    h(
+      'p',
+      {},
+      'Have a manifest? Drop it here or ',
+      h('label', { for: 'file', class: 'link' }, 'choose a file'),
+      '. ',
+      h('span', { class: 'muted' }, 'Lockfiles, SBOMs and more, read in your browser: only package names and versions are sent.'),
+    ),
     fileInput,
   );
+  // Uploads skip the description's length limit: only the parsed names and versions are sent.
   const onFile = async (file: File) => {
-    if (file.size > 5_000_000) return say('That file is larger than 5 MB.');
+    const problem = fileProblem(file.name, file.size);
+    if (problem) return say(problem);
     const text = await file.text();
+    const unusable = textProblem(file.name, text);
+    if (unusable) return say(unusable);
     const manifest = parseManifest(text, file.name);
-    if (!manifest) return say(`${file.name} is not a manifest format Vulnder reads.`);
+    if (!manifest) return say(`${file.name} isn't a manifest format Vulnder reads. Try ${MANIFEST_FORMATS}.`);
+    if (manifest.candidates.length === 0) return say(`${file.name} lists no packages.`);
+    const { sent, note } = capEntries(manifest.candidates);
     say(`Read ${manifest.candidates.length} entries from ${file.name}.`);
-    await submit({ candidates: manifest.candidates });
+    await submit({ candidates: sent }, note);
   };
-  fileInput.addEventListener('change', () => fileInput.files?.[0] && onFile(fileInput.files[0]));
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    // Cleared, so choosing the same file again (after an edit) reads it again.
+    fileInput.value = '';
+    if (file) void onFile(file);
+  });
   drop.addEventListener('dragover', (e) => {
     e.preventDefault();
     drop.classList.add('over');
@@ -139,16 +207,21 @@ function renderInput(prefill = ''): void {
       onsubmit: (e: Event) => {
         e.preventDefault();
         const text = textarea.value.trim();
-        if (!text) return say('Describe your stack or paste a manifest first.');
+        if (!text) return say('Describe your stack, or upload a manifest, first.');
         const manifest = parseManifest(text);
-        if (manifest) return void submit({ candidates: manifest.candidates });
-        if (text.length > MAX_TEXT) return say(`Descriptions are limited to ${MAX_TEXT} characters. Paste a manifest file instead.`);
+        if (manifest) {
+          const { sent, note } = capEntries(manifest.candidates);
+          return void submit({ candidates: sent }, note);
+        }
+        if (text.length > MAX_TEXT) return say(`Descriptions are limited to ${MAX_TEXT} characters. Shorten it, or upload a manifest file instead.`);
         void submit({ text });
       },
     },
     h('label', { for: 'stack-text', class: 'compose-label' }, 'What do you run?'),
+    // The countdown goes first, so it's seen before anything is typed.
+    lockControls([submitButton, drop], updateCounter),
     textarea,
-    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe it in your own words, with versions where you know them, or paste a manifest.'), counter),
+    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe it in your own words, with versions where you know them.'), counter),
     h(
       'div',
       { class: 'examples' },
@@ -157,13 +230,12 @@ function renderInput(prefill = ''): void {
         h('button', { type: 'button', class: 'chip-button', onclick: () => ((textarea.value = ex.text), updateCounter(), textarea.focus()) }, ex.label),
       ),
     ),
+    drop,
     turnstileBox,
     submitButton,
   );
 
-  const notice = guardNewStack(submitButton);
-  if (notice) form.append(notice);
-  app.append(form, drop);
+  app.append(form);
   mountTurnstile(turnstileBox);
 }
 
@@ -193,8 +265,24 @@ function svg(tag: string, attrs: Record<string, string>, ...children: Element[])
   return el;
 }
 
+/** What a feed load checks, ticked off in turn under the loader. */
+const FEED_STEPS = [
+  'CVE records, with CISA’s exploitation assessments',
+  'GitHub security advisories',
+  'CISA Known Exploited Vulnerabilities',
+  'EPSS exploit predictions',
+  'OSV, to confirm affected versions',
+  'Exact and close matches, ranked by what to fix first',
+];
+/** How long each step shows while the request runs; the last one waits for the answer. */
+const STEP_MS = 2000;
+/** Once the answer is in, the steps left tick off this quickly, so each is still seen. */
+const STEP_FINISH_MS = 250;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** The logo at work: the magnifier circles as if scanning while the heart beats. */
-function loader(title: string, detail: string): HTMLElement {
+function loader(title: string, detail: string, steps: HTMLElement | null): HTMLElement {
   const mark = svg(
     'svg',
     { viewBox: '0 0 48 48', 'aria-hidden': 'true', focusable: 'false' },
@@ -209,19 +297,44 @@ function loader(title: string, detail: string): HTMLElement {
       }),
     ),
   );
-  return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail)));
+  return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail), steps));
 }
 
 /**
  * Shows the loader and hides the rest of the page until the returned function
  * is called. The page underneath is left intact, so a failed request can show
- * the form again as it was.
+ * the form again as it was. With steps, one is ticked off every STEP_MS while
+ * waiting; `done(true)` ticks off the rest before the loader goes, and
+ * `done()` removes it at once.
  */
-function showBusy(title: string, detail: string): () => void {
-  const el = loader(title, detail);
+function showBusy(title: string, detail: string, steps: readonly string[] = []): (complete?: boolean) => Promise<void> {
+  const rows = steps.map((s) => h('li', { class: 'step' }, s));
+  let at = 0;
+  const mark = (i: number, state: 'active' | 'done') => {
+    rows[i]?.setAttribute('data-state', state);
+    if (state === 'active') rows[i]?.setAttribute('aria-current', 'step');
+    else rows[i]?.removeAttribute('aria-current');
+  };
+  const advance = () => {
+    mark(at, 'done');
+    mark(++at, 'active');
+  };
+  mark(0, 'active');
+  const timer = setInterval(() => at < rows.length - 1 && advance(), STEP_MS);
+  const el = loader(title, detail, rows.length > 0 ? h('ol', { class: 'steps small' }, rows) : null);
   app.setAttribute('aria-busy', 'true');
   app.prepend(el);
-  return () => {
+  return async (complete = false) => {
+    clearInterval(timer);
+    if (complete && rows.length > 0) {
+      while (at < rows.length - 1) {
+        await sleep(STEP_FINISH_MS);
+        advance();
+      }
+      await sleep(STEP_FINISH_MS);
+      mark(at, 'done');
+      await sleep(STEP_FINISH_MS);
+    }
     el.remove();
     app.removeAttribute('aria-busy');
   };
@@ -230,7 +343,9 @@ function showBusy(title: string, detail: string): () => void {
 /** Shown once on the results page after a submit, e.g. names that matched nothing. */
 let pendingNote = '';
 
-async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }): Promise<void> {
+/** Sends a description or parsed entries; `note` (e.g. what a big file left out) shows with the results. */
+async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<void> {
+  if (isLocked()) return say(passNotice(pass) ?? '');
   if (!turnstileToken) return say('Please wait for the verification check to finish, then try again.');
   const token = turnstileToken;
   turnstileToken = null;
@@ -239,11 +354,12 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
   const done = showBusy('Reading your stack…', 'Picking out the software and devices you named.');
   try {
     const res = await resolve(body, token);
-    done();
+    void done();
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
     const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
     const exposed = res.chips.filter((c) => c.items.some((i) => i.exposed)).map((c) => c.input);
     const notes = [
+      note,
       unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. Use "Edit stack" to add them by hand.` : '',
       exposed.length > 0 ? `Marked as internet-facing from your description: ${exposed.join(', ')}. Use "Edit stack" to change that.` : '',
       res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
@@ -260,7 +376,7 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
     pendingNote = notes.join(' ');
     navigate(serializeStack(stack), 30);
   } catch (err) {
-    done();
+    void done();
     if (err instanceof ApiError && err.fallback === 'manual') {
       say(err.message);
       renderEdit([]);
@@ -329,6 +445,7 @@ function renderEdit(initial: string[]): void {
     h('button', { type: 'submit' }, 'Add'),
   );
 
+  const startOver = h('button', { type: 'button', onclick: () => renderInput() }, 'Start over');
   const show = h(
     'button',
     {
@@ -357,8 +474,8 @@ function renderEdit(initial: string[]): void {
       list,
       addForm,
       h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '.'),
-      h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => renderInput() }, 'Start over'), show),
-      guardNewStack(show),
+      h('div', { class: 'row' }, startOver, show),
+      lockControls([startOver, show]),
     ),
   );
 }
@@ -373,18 +490,31 @@ function navigate(stack: string, days: number): void {
 
 async function renderResults(stack: string, days: number): Promise<void> {
   clear(app);
+  clearInterval(lockTimer);
   say('Finding matches…');
-  const done = showBusy('Finding matches…', 'Checking your stack against recent CVEs, CISA KEV and EPSS.');
+  const done = showBusy('Finding matches…', 'Checking your stack against these sources, for exact and close matches:', FEED_STEPS);
   let feed: Feed;
   try {
     feed = await getFeed(stack, days);
-    done();
+    await done(true);
   } catch (err) {
-    done();
+    void done();
     say('');
     if (err instanceof ApiError && err.reason === 'pass-limit') {
+      // Answered from the lock cookie, without a database read.
       await refreshPass();
-      app.append(h('div', { class: 'block' }, h('h2', {}, 'Please wait before looking up another stack'), h('p', {}, passNotice(pass) ?? err.message)));
+      const retry = h('button', { type: 'button', class: 'primary', onclick: () => void route() }, 'Load this stack');
+      const notice = lockControls([retry]);
+      app.append(
+        h(
+          'div',
+          { class: 'block' },
+          h('h2', {}, 'Please wait before loading a stack'),
+          notice ?? h('p', {}, err.message),
+          h('p', { class: 'muted' }, 'Nothing loads until the countdown ends, including stacks you have already opened. Your link stays the same, so come back to it then.'),
+          retry,
+        ),
+      );
       return;
     }
     app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
@@ -398,10 +528,14 @@ async function renderResults(stack: string, days: number): Promise<void> {
 
   const items = parseStack(feed.stack);
   const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
-  daySelect.addEventListener('change', () => navigate(feed.stack, Number(daySelect.value)));
-  // Another time window of this stack is free; a different stack is what the pass counts.
+  daySelect.addEventListener('change', () => {
+    // A key press can still get through on some browsers; put the window back.
+    if (isLocked()) return void (daySelect.value = String(feed.days));
+    navigate(feed.stack, Number(daySelect.value));
+  });
   const editButton = h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack');
-  const editNotice = guardNewStack(editButton);
+  // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
+  const editNotice = lockControls([editButton, daySelect]);
 
   app.append(
     h(
@@ -420,7 +554,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
           ),
         ),
       ),
-      h('div', { class: 'row wrap' }, editButton, copyButtons(feed)),
+      h('div', { class: 'row wrap' }, editButton, copyButtons(feed), exportButtons(feed)),
       editNotice,
       feed.versionCheckUnavailable ? h('p', { class: 'notice' }, 'Version checks are unavailable right now, so every match is shown as a product match.') : null,
     ),
@@ -865,6 +999,28 @@ function copyButtons(feed: Feed): HTMLElement {
         },
       }, label),
     ),
+  );
+}
+
+/** Saves the results as Markdown or JSON, built here from the feed already loaded. */
+function exportButtons(feed: Feed): HTMLElement {
+  const name = config?.displayName ?? 'Vulnder';
+  const save = (ext: 'md' | 'json') => {
+    const text = ext === 'md' ? exportMarkdown(feed, name) : exportJson(feed, name);
+    const url = URL.createObjectURL(new Blob([text], { type: ext === 'md' ? 'text/markdown;charset=utf-8' : 'application/json' }));
+    const a = h('a', { href: url, download: exportFileName(feed, ext) });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    say(`Saved ${exportFileName(feed, ext)}.`);
+  };
+  const title = 'Every CVE here with its priority, why, and how to fix it, with instructions for a person or an AI assistant to work through';
+  return h(
+    'div',
+    { class: 'copy' },
+    h('button', { type: 'button', title, onclick: () => save('md') }, 'Export Markdown'),
+    h('button', { type: 'button', title, onclick: () => save('json') }, 'Export JSON'),
   );
 }
 

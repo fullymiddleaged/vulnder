@@ -4,14 +4,20 @@ import { stmt, type Statement, type Store } from '../ingest/store';
  * Feed passes: what one browser may look up. A pass is issued after a
  * Turnstile check (POST /api/resolve) and carried in an HttpOnly cookie. Each
  * hour, starting from its first use, it may load PASS_STACKS different stacks;
- * the same stack again, or the same stack over another window, is free.
- * Requests without a pass (feed readers, badges, scripts) keep the per-IP limits.
+ * until the last of them, the same stack again, or over another window, is
+ * free. Once all are used the pass is locked until the hour is over: nothing
+ * loads, not even the stacks it has opened. Requests without a pass (feed
+ * readers, badges, scripts) keep the per-IP limits.
  *
  * The count lives in D1, not the cookie, so replaying an old cookie can't reset
- * it. Stacks are stored only as keyed hashes, and rows go after a day.
+ * it. Stacks are stored only as keyed hashes, and rows go after a day. A lock
+ * cookie (LOCK_COOKIE) lets the routes refuse a locked browser without reading
+ * D1 at all; dropping it only brings back the D1 check, which also refuses.
  */
 
 export const PASS_COOKIE = 'vulnder_pass';
+/** When a spent pass unlocks, in epoch ms. Unsigned: forging one only locks yourself out. */
+export const LOCK_COOKIE = 'vulnder_lock';
 export const PASS_STACKS = 2;
 export const PASS_WINDOW_MS = 3_600_000;
 /** How long a pass lives, as a cookie and as a row. */
@@ -60,9 +66,9 @@ export async function usePass(store: Store, id: string, canonical: string, secre
   const row = await load(store, id, now);
   if (!row) return null;
   const { stacks, windowStart, status } = current(row, now);
+  if (stacks.length >= PASS_STACKS || attempt >= 3) return { ok: false, status };
   const hash = await stackHash(secret, id, canonical);
   if (stacks.includes(hash)) return { ok: true, status };
-  if (stacks.length >= PASS_STACKS || attempt >= 3) return { ok: false, status };
 
   const start = windowStart ?? now.toISOString();
   const next = [...stacks, hash];
@@ -70,6 +76,26 @@ export async function usePass(store: Store, id: string, canonical: string, secre
   // Another request changed the pass first: count again from what it wrote.
   if (updated.length === 0) return usePass(store, id, canonical, secret, now, attempt + 1);
   return { ok: true, status: { used: next.length, limit: PASS_STACKS, resetsAt: resetAt(start) } };
+}
+
+/** Whether a pass has used every stack in its current hour. */
+export function isSpent(status: PassStatus): status is PassStatus & { resetsAt: string } {
+  return status.used >= status.limit && status.resetsAt !== null;
+}
+
+/**
+ * When a lock cookie's value says the browser unlocks, as ISO, or null when it
+ * is missing, malformed, over, or further off than a pass window could be.
+ */
+export function lockedUntil(value: string | undefined, now: Date): string | null {
+  if (!value || !/^\d{1,15}$/.test(value)) return null;
+  const until = Number(value);
+  return until > now.getTime() && until <= now.getTime() + PASS_WINDOW_MS ? new Date(until).toISOString() : null;
+}
+
+/** The status a locked browser reports, read from its lock cookie alone. */
+export function lockedStatus(resetsAt: string): PassStatus {
+  return { used: PASS_STACKS, limit: PASS_STACKS, resetsAt };
 }
 
 /** Daily maintenance: drop passes past their lifetime. */

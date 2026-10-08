@@ -3,11 +3,13 @@ import { z } from 'zod';
 import { getCookie, setCookie } from 'hono/cookie';
 import { D1BindingStore } from '../ingest/d1-store';
 import { BodyTooLarge, readCapped } from '../lib/body';
-import { issuePass, PASS_COOKIE, PASS_TTL_SECONDS, passStatus } from '../lib/pass';
+import { issuePass, lockedStatus, PASS_COOKIE, PASS_TTL_SECONDS, passStatus } from '../lib/pass';
+import { passLimited, readLock } from './pass';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { looksLikeInjection } from '../resolve/injection';
+import { MAX_MANIFEST_ENTRIES } from '../resolve/limits';
 import { blocks, exposureTargets, fitTargets, judgeStack, screenText, type Judgement } from '../resolve/jev';
 import { parseManifest } from '../resolve/manifests';
 import { canRank, markExposed, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
@@ -41,7 +43,7 @@ const PARSE_CACHE_SECONDS = 7 * 86_400;
  */
 const DEFAULT_PARSE_PER_CLIENT = 30;
 const DEFAULT_PARSE_TOTAL = 600;
-const MANUAL_HINT = 'add items manually or paste a manifest';
+const MANUAL_HINT = 'add items manually or upload a manifest';
 
 const ECOSYSTEMS = Object.values(PREFIXES) as [string, ...string[]];
 
@@ -67,7 +69,7 @@ const Body = z
     turnstileToken: z.string().max(2048),
     text: z.string().max(MAX_MANIFEST_TEXT).optional(),
     filename: z.string().max(255).optional(),
-    candidates: z.array(CandidateInput).max(5000).optional(),
+    candidates: z.array(CandidateInput).max(MAX_MANIFEST_ENTRIES).optional(),
   })
   .refine((b) => (b.text === undefined) !== (b.candidates === undefined), { message: 'send either text or candidates' });
 
@@ -76,6 +78,10 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   // below also stops a body that declares none.
   const length = Number(c.req.header('content-length') ?? 0);
   if (length > MAX_BODY_BYTES) return c.json({ error: 'request too large' }, 413);
+  // A browser whose pass is spent couldn't load the result; refuse before Turnstile or D1.
+  const now = new Date();
+  const locked = readLock(c, now);
+  if (locked) return passLimited(c, lockedStatus(locked), now);
 
   const ip = c.req.header('cf-connecting-ip') ?? null;
   if (c.env.RESOLVE_LIMITER) {
@@ -133,7 +139,7 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     } else {
       text = input;
       if (text.length > MAX_TEXT_CHARS) {
-        return c.json({ error: `descriptions are limited to ${MAX_TEXT_CHARS} characters; paste a manifest file instead` }, 413);
+        return c.json({ error: `descriptions are limited to ${MAX_TEXT_CHARS} characters; upload a manifest file instead` }, 413);
       }
       if (!text.trim()) return c.json({ error: 'nothing to resolve' }, 400);
       if (looksLikeInjection(text)) return c.json(BLOCKED, 422);

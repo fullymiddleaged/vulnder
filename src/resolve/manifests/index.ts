@@ -386,6 +386,12 @@ export interface ManifestResult {
  * Parses text as a known manifest, by file name when one is given, otherwise
  * by content. Returns null for anything else (free text goes to the model).
  */
+/** Whether a file name is one a parser claims (package.json, go.mod, Dockerfile.prod, app.cdx.json, …). */
+export function isManifestFilename(filename: string): boolean {
+  const base = filename.split(/[\\/]/).pop() ?? '';
+  return PARSERS.some((p) => p.matchesFilename(base));
+}
+
 export function parseManifest(text: string, filename?: string): ManifestResult | null {
   const base = filename?.split(/[\\/]/).pop();
   const byName = base ? PARSERS.find((p) => p.matchesFilename(base)) : undefined;
