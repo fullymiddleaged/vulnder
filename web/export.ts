@@ -25,8 +25,12 @@ export const EXPORT_INSTRUCTIONS = [
 
 // ---------- Shared ----------
 
-/** What to do about one CVE, in plain steps. */
+/** What to do about one CVE, in plain steps, in the order to do them. The results page shows the same steps. */
 export function remediation(r: Result): string {
+  return remediationSteps(r).join(' ');
+}
+
+export function remediationSteps(r: Result): string[] {
   const steps: string[] = [];
   if (r.match === 'close') steps.push('Confirm you run this product: it is a close match for a vaguely named item.');
   if (r.confidence === 'product_match') steps.push('Confirm the installed version is affected: only the product matched, not the version.');
@@ -38,7 +42,7 @@ export function remediation(r: Result): string {
         : 'No fixed version is known yet. Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships.',
     );
   } else steps.push('No fixed version is listed. Check the advisory for a fix or workaround.');
-  return steps.join(' ');
+  return steps;
 }
 
 const KIND: Record<Reason['kind'], string> = { evidence: 'evidence', prediction: 'prediction', severity: 'severity', context: 'context' };

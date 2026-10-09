@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Feed, Result } from '../web/api';
-import { EXPORT_INSTRUCTIONS, exportFileName, exportJson, exportMarkdown, mdText, remediation } from '../web/export';
+import { EXPORT_INSTRUCTIONS, exportFileName, exportJson, exportMarkdown, mdText, remediation, remediationSteps } from '../web/export';
 
 function result(id: string, over: Partial<Result> = {}): Result {
   return {
@@ -82,6 +82,13 @@ describe('remediation', () => {
   it("gives CISA's action, or a general mitigation, when there is no fix yet", () => {
     expect(remediation(result('X', { mitigation: { action: 'Apply vendor mitigations.', advisory: null } }))).toContain("CISA's required action: Apply vendor mitigations.");
     expect(remediation(result('X', { mitigation: { action: null, advisory: null } }))).toContain('limit who can reach it');
+  });
+
+  it('gives the same steps, one per entry, that the results page shows', () => {
+    const steps = remediationSteps(closeMatch);
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toMatch(/^Confirm you run this product/);
+    expect(steps.join(' ')).toBe(remediation(closeMatch));
   });
 });
 

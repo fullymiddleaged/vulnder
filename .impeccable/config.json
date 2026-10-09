@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          "public/how-it-works.html"
+        ],
+        "createdAt": "2026-10-09T08:58:27.911Z",
+        "reason": "Claude: diagram labels are SVG user units in a 420-wide viewBox; .arch min-width 30rem renders them at >=12px"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "public/styles.css"
+        ],
+        "createdAt": "2026-10-09T10:10:18.388Z",
+        "reason": "Claude: 4px tier-coloured left borders on results/changes/components and the spent-pass notice are documented in DESIGN.md (Elevation & Depth, Do's); the pipeline rail is a 2px pseudo-element"
+      }
+    ]
+  }
+}

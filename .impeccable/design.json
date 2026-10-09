@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T12:00:00Z",
+  "title": "Design System: Vulnder",
+  "extensions": {
+    "colorMeta": {
+      "match-violet": { "role": "primary", "displayName": "Match Violet", "canonical": "oklch(43.1% 0.182 297)", "tonalRamp": ["oklch(15% 0.182 297)", "oklch(26% 0.182 297)", "oklch(37% 0.182 297)", "oklch(48% 0.182 297)", "oklch(60% 0.182 297)", "oklch(72% 0.182 297)", "oklch(84% 0.182 297)", "oklch(95% 0.073 297)"] },
+      "lavender-paper": { "role": "neutral", "displayName": "Lavender Paper", "canonical": "oklch(96.7% 0.007 304)", "tonalRamp": ["oklch(15% 0.007 304)", "oklch(26% 0.007 304)", "oklch(37% 0.007 304)", "oklch(48% 0.007 304)", "oklch(60% 0.007 304)", "oklch(72% 0.007 304)", "oklch(84% 0.007 304)", "oklch(95% 0.007 304)"] },
+      "plum-ink": { "role": "neutral", "displayName": "Plum Ink", "canonical": "oklch(21.6% 0.026 298)", "tonalRamp": ["oklch(15% 0.026 298)", "oklch(26% 0.026 298)", "oklch(37% 0.026 298)", "oklch(48% 0.026 298)", "oklch(60% 0.026 298)", "oklch(72% 0.026 298)", "oklch(84% 0.026 298)", "oklch(95% 0.026 298)"] },
+      "dusk-muted": { "role": "neutral", "displayName": "Dusk Muted", "canonical": "oklch(47.2% 0.028 301)", "tonalRamp": ["oklch(15% 0.028 301)", "oklch(26% 0.028 301)", "oklch(37% 0.028 301)", "oklch(48% 0.028 301)", "oklch(60% 0.028 301)", "oklch(72% 0.028 301)", "oklch(84% 0.028 301)", "oklch(95% 0.028 301)"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(89% 0.018 303)", "tonalRamp": ["oklch(15% 0.018 303)", "oklch(26% 0.018 303)", "oklch(37% 0.018 303)", "oklch(48% 0.018 303)", "oklch(60% 0.018 303)", "oklch(72% 0.018 303)", "oklch(84% 0.018 303)", "oklch(95% 0.018 303)"] },
+      "rule": { "role": "neutral", "displayName": "Rule", "canonical": "oklch(82.5% 0.026 303)", "tonalRamp": ["oklch(15% 0.026 303)", "oklch(26% 0.026 303)", "oklch(37% 0.026 303)", "oklch(48% 0.026 303)", "oklch(60% 0.026 303)", "oklch(72% 0.026 303)", "oklch(84% 0.026 303)", "oklch(95% 0.026 303)"] },
+      "act-red": { "role": "tertiary", "displayName": "Act Red", "canonical": "oklch(50.1% 0.178 29)", "tonalRamp": ["oklch(15% 0.178 29)", "oklch(26% 0.178 29)", "oklch(37% 0.178 29)", "oklch(48% 0.178 29)", "oklch(60% 0.178 29)", "oklch(72% 0.178 29)", "oklch(84% 0.178 29)", "oklch(95% 0.073 29)"] },
+      "attend-amber": { "role": "tertiary", "displayName": "Attend Amber", "canonical": "oklch(55.5% 0.146 49)", "tonalRamp": ["oklch(15% 0.146 49)", "oklch(26% 0.146 49)", "oklch(37% 0.146 49)", "oklch(48% 0.146 49)", "oklch(60% 0.146 49)", "oklch(72% 0.146 49)", "oklch(84% 0.146 49)", "oklch(95% 0.073 49)"] },
+      "watch-yellow": { "role": "tertiary", "displayName": "Watch Yellow", "canonical": "oklch(68.1% 0.142 76)", "tonalRamp": ["oklch(15% 0.142 76)", "oklch(26% 0.142 76)", "oklch(37% 0.142 76)", "oklch(48% 0.142 76)", "oklch(60% 0.142 76)", "oklch(72% 0.142 76)", "oklch(84% 0.142 76)", "oklch(95% 0.073 76)"] },
+      "track-slate": { "role": "tertiary", "displayName": "Track Slate", "canonical": "oklch(46.7% 0.021 264)", "tonalRamp": ["oklch(15% 0.021 264)", "oklch(26% 0.021 264)", "oklch(37% 0.021 264)", "oklch(48% 0.021 264)", "oklch(60% 0.021 264)", "oklch(72% 0.021 264)", "oklch(84% 0.021 264)", "oklch(95% 0.021 264)"] },
+      "fixed-green": { "role": "tertiary", "displayName": "Fixed Green", "canonical": "oklch(52.3% 0.135 144)", "tonalRamp": ["oklch(15% 0.135 144)", "oklch(26% 0.135 144)", "oklch(37% 0.135 144)", "oklch(48% 0.135 144)", "oklch(60% 0.135 144)", "oklch(72% 0.135 144)", "oklch(84% 0.135 144)", "oklch(95% 0.073 144)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The results headline. One per view." },
+      "headline": { "displayName": "Headline", "purpose": "The compose question, prose page titles, the loader message." },
+      "title": { "displayName": "Title", "purpose": "Section and tier headings." },
+      "body": { "displayName": "Body", "purpose": "Everything else, within the 48rem column." },
+      "label": { "displayName": "Label", "purpose": "Priority pills, scores, counts, tags; tabular numerals." },
+      "mono": { "displayName": "Mono", "purpose": "CVE and GHSA IDs, package names, versions, code." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "grow", "value": "0.6s cubic-bezier(0.2, 0.7, 0.2, 1)", "purpose": "Risk strip segments growing in from the left, staggered 80ms." },
+      { "name": "appear", "value": "0.25s 0.15s", "purpose": "Loader fade-in, delayed so fast responses never flash it." },
+      { "name": "expand", "value": "transform 0.15s", "purpose": "Disclosure chevron rotation." },
+      { "name": "nudge", "value": "0.45s ease-in-out", "purpose": "Shake on the spent-pass notice when a locked control is clicked; an outline under reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "36rem" },
+      { "name": "column", "value": "48rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one solid action per view, such as Check my stack.",
+      "html": "<button class=\"ds-btn-primary\">Check my stack</button>",
+      "css": ".ds-btn-primary { font: inherit; font-weight: 700; background: var(--accent, #5e2ca5); color: var(--accent-fg, #fff); border: 1px solid var(--accent, #5e2ca5); border-radius: 4px; padding: 0.6rem 1.2rem; min-height: 2.5rem; cursor: pointer; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--accent, #5e2ca5) 85%, var(--fg, #1b1724)); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other action: copy a link, add an item, examples.",
+      "html": "<button class=\"ds-btn\">Copy feed link</button>",
+      "css": ".ds-btn { font: inherit; color: var(--fg, #1b1724); background: var(--card, #fff); border: 1px solid var(--control, #8d849b); border-radius: 4px; padding: 0.45rem 0.85rem; min-height: 2.5rem; cursor: pointer; } .ds-btn:hover { border-color: var(--accent, #5e2ca5); } .ds-btn:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Description Field",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "The free-text stack description and the add-item field.",
+      "html": "<textarea class=\"ds-input\" rows=\"4\">nginx 1.25, PostgreSQL 16, Django 5 behind Cloudflare</textarea>",
+      "css": ".ds-input { width: 100%; font: inherit; color: var(--fg, #1b1724); background: var(--card, #fff); border: 1px solid var(--control, #8d849b); border-radius: 4px; padding: 0.6rem 0.75rem; } .ds-input:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 0; border-color: var(--focus, #5e2ca5); }"
+    },
+    {
+      "name": "Stack Chip",
+      "kind": "chip",
+      "refersTo": "chip-stack-item",
+      "description": "One resolved stack item; dashed amber for a close match.",
+      "html": "<span class=\"ds-chip\">nginx <button class=\"ds-chip-x\" aria-label=\"Remove nginx\">×</button></span> <span class=\"ds-chip ds-chip-close\">postgres? <button class=\"ds-chip-x\" aria-label=\"Remove postgres\">×</button></span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border, #ddd8e5); border-radius: 999px; padding: 0.2rem 0.4rem 0.2rem 0.75rem; background: var(--card, #fff); color: var(--fg, #1b1724); } .ds-chip-close { border-style: dashed; border-color: var(--likely, #b45309); } .ds-chip-x { font: inherit; font-size: 1.2rem; line-height: 1; border: none; background: none; color: inherit; padding: 0 0.4rem; cursor: pointer; } .ds-chip-x:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Priority Pill",
+      "kind": "chip",
+      "refersTo": "pill-priority",
+      "description": "Tier label filled with the tier colour.",
+      "html": "<span class=\"ds-pill ds-red\">Act now</span> <span class=\"ds-pill ds-amber\">Attend</span> <span class=\"ds-pill ds-yellow\">Watch</span> <span class=\"ds-pill ds-grey\">Track</span>",
+      "css": ".ds-pill { display: inline-block; font-size: 0.8rem; font-weight: 700; border-radius: 3px; padding: 0.05rem 0.45rem; color: #fff; white-space: nowrap; } .ds-red { background: #b3261e; } .ds-amber { background: #b45309; } .ds-yellow { background: #ca8a04; color: #1b1724; } .ds-grey { background: #545a66; }"
+    },
+    {
+      "name": "Result",
+      "kind": "card",
+      "refersTo": "result-card",
+      "description": "One CVE in a tier: mono ID, title, the reasons behind its place.",
+      "html": "<article class=\"ds-result\"><h3 class=\"ds-result-id\"><a href=\"#\">CVE-2026-41234</a></h3><p class=\"ds-result-title\">Request smuggling in nginx HTTP/2</p><p class=\"ds-result-why\"><strong>On CISA KEV</strong> since 7 Oct. EPSS 71%.</p></article>",
+      "css": ".ds-result { background: var(--card, #fff); border: 1px solid var(--border, #ddd8e5); border-left: 4px solid #b3261e; border-radius: 4px; padding: 0.75rem 1rem; color: var(--fg, #1b1724); } .ds-result-id { margin: 0; font-size: 1rem; } .ds-result-id a { font-family: 'Atkinson Mono', ui-monospace, monospace; color: var(--accent, #5e2ca5); } .ds-result-id a:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 2px; } .ds-result-title { margin: 0.3rem 0; font-weight: 700; } .ds-result-why { margin: 0.3rem 0; } .ds-result-why strong { color: #b3261e; }"
+    },
+    {
+      "name": "Site Navigation",
+      "kind": "nav",
+      "description": "Header links; the current page is ink, bold and not underlined.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\">About</a><a href=\"#\" aria-current=\"page\">How it works</a><a href=\"#\">Use it with AI</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 0.25rem 1rem; flex-wrap: wrap; } .ds-nav a { color: var(--accent, #5e2ca5); text-underline-offset: 0.15em; } .ds-nav a:hover { color: var(--fg, #1b1724); } .ds-nav a:focus-visible { outline: 2px solid var(--focus, #5e2ca5); outline-offset: 2px; } .ds-nav a[aria-current='page'] { color: var(--fg, #1b1724); font-weight: 700; text-decoration: none; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Triage Ledger",
+    "overview": "Vulnder reads like a working ledger kept by someone who patches things for a living. Sections sit directly on the page, divided by hairline rules, not boxed into cards. The order is the point: the headline count, a strip in proportion to each priority, then a numbered \"Fix first\" list and the evidence behind every line. IDs, versions and package names are set in mono so they can be copied and compared. Colour is spent almost entirely on risk; everything else is lavender-tinted paper and plum ink.\n\nThe density is that of a tool, not a landing page. One column (48rem) carries everything, and type does the hierarchy work: a large heavy headline asks or answers the question, and the rest is body text at a comfortable 1.55 line height. Playfulness is kept to the logo (a magnifier with a heart inside, the \"it's a match\" nod), the loader that sweeps the lens and beats the heart, and the tagline. Anything that describes a vulnerability stays plain.\n\nAtkinson Hyperlegible was chosen because it tells 0/O and 1/l/I apart on pages full of CVE IDs and version strings. Fonts are self-hosted: the CSP allows no third-party fonts, and a font CDN would see every visitor.",
+    "keyCharacteristics": [
+      "Flat, ruled sections on tinted paper; containers only for individual results and changes.",
+      "Traffic-light colour reserved for priority; Match Violet for action, links and brand.",
+      "Heavy, tightly tracked headlines over calm body text.",
+      "Mono for every identifier.",
+      "Full light and dark themes from the same tokens, following the system setting."
+    ],
+    "rules": [
+      { "name": "The Risk Colour Rule", "body": "Red, amber, yellow and slate mean the four priority tiers, plus the two documented extensions above (red: something blocks you; amber: something to check). Never use them for decoration, branding or generic emphasis, and never for evidence badges such as ransomware use.", "section": "colors" },
+      { "name": "The No Opacity Dimming Rule", "body": "Quiet text recedes through Dusk Muted, never through opacity, so it keeps its contrast. Opacity is kept for disabled controls only.", "section": "colors" },
+      { "name": "The Green Is Good News Rule", "body": "Green appears only when something got better (fixed, confirmed, done). It is never a tier colour.", "section": "colors" },
+      { "name": "The Tinted Neutral Rule", "body": "Paper and ink lean towards the brand violet. No pure greys and no pure black.", "section": "colors" },
+      { "name": "The Mono Means Identifier Rule", "body": "If a string is an ID, a package name or a version, it is set in Atkinson Mono. Prose never is.", "section": "typography" },
+      { "name": "The One Big Line Rule", "body": "Each view has one display or headline line. Every other heading is a title or smaller.", "section": "typography" },
+      { "name": "The Legible For Everyone Rule", "body": "Atkinson is the statement: a typeface built for low-vision readers, in a category where every other tool is set in Geist or Inter. Don't swap it for a trend font; push hierarchy with weight, size and tracking instead.", "section": "typography" },
+      { "name": "The Ruled Not Boxed Rule", "body": "Sections sit on the page, divided by a rule. Only individual results and changes get a container, and containers never nest.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every page in the single 48rem column with the 1rem gutter.",
+      "Do tie each result to its tier with the 4px left border and the tier's --light / --ink pair.",
+      "Do set IDs, package names and versions in Atkinson Mono.",
+      "Do define every colour as a token in both the light and dark blocks.",
+      "Do give every animation a prefers-reduced-motion fallback.",
+      "Do use dashed borders to say \"less certain\", and only for that, always alongside words.",
+      "Do put the answer first on results: headline, stack line, priorities, Fix first; sharing and export go last.",
+      "Do give every result a plain \"What to do\" line, the same steps the export writes.",
+      "Do keep stacked tap targets at least 24px tall (WCAG 2.5.8)."
+    ],
+    "donts": [
+      "Don't add shadows, gradients or glassy surfaces.",
+      "Don't use red, amber, yellow or slate for anything but the four tiers, or green for anything but good news.",
+      "Don't nest containers or wrap whole sections in cards.",
+      "Don't load third-party fonts or font CDNs.",
+      "Don't switch to the category's default faces (Geist, Geist Mono, Inter, Mona Sans, Space Grotesk, Instrument Sans).",
+      "Don't add vulture imagery; the brand is bugs, scanning and the match.",
+      "Don't put jokes or brand playfulness into tier names, scores, reasons or vulnerability text."
+    ]
+  }
+}

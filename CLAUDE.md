@@ -1,6 +1,6 @@
 # Vulnder
 
-A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (free text, a pasted manifest, or items added by hand); Vulnder resolves that to stack items and shows which recent CVEs affect them, ranked by what to fix first. The stack lives in the URL (`?s=`, see docs/STACK_FORMAT.md), so results, the JSON feed, the Atom feed and the badge are all shareable links. Design history: docs/BRIEF.md, docs/DESIGN.md.
+A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (free text, a pasted manifest, or items added by hand); Vulnder resolves that to stack items and shows which recent CVEs affect them, ranked by what to fix first. The stack lives in the URL (`?s=`, see docs/STACK_FORMAT.md), so results, the JSON feed, the Atom feed and the badge are all shareable links. Design history: docs/BRIEF.md, docs/ENGINEERING.md. Visual design: PRODUCT.md and DESIGN.md at the root (Impeccable skill).
 
 ## Principles (don't undo these)
 

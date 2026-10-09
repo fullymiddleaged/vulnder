@@ -9,3 +9,6 @@ public/app.js
 public/app.js.map
 .env
 wrangler.production.jsonc
+
+# Impeccable skill binary (19 MB); its launcher downloads it to ~/.impeccable/bin on first run.
+.claude/skills/impeccable/scripts/bin/

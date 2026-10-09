@@ -4,6 +4,18 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ## [Unreleased]
 
+### Changed
+
+- **Results lead with the answer.** The headline comes first, then your stack in one line ("5 items: 4 exact, 1 close match, 1 internet-facing") with the time window and Edit stack, then priorities and Fix first. Long stacks fold their items away. Copy links and exports move to a "Share and follow" section at the end.
+- **Every result says what to do** in plain words: confirm it's yours for a close match, check your version when only the product matched, then upgrade to the fixed version or apply the mitigation. These are the same steps the Markdown and JSON exports give.
+- Each priority shows its **response window** (Act now within 24–48 hours, Attend within 7 days, Watch within 30 days, Track in your next routine update), and the Attend description now lists everything that puts a CVE there.
+- **Exact and close matches are labelled in words**, on the stack and in results, not just with a dashed border. "Product match" is now "Version not confirmed".
+- A **glossary** under the priorities explains KEV, EPSS, LEV, CVSS, the risk scores and the match labels, and results link to how ranking works.
+- **Notes about your lookup stay on the page**: names that couldn't be matched, items marked internet-facing, and dependencies left out. With no matches, the headline no longer says your stack is clear when some names weren't checked.
+- **Errors show next to the form** you're using, not in a line under the page. If the verification check can't run, the page says so and offers adding items by hand, instead of asking you to wait forever.
+- "What changed this week" is now "What changed in the last 7 days", since it ignores the time window. Empty priorities are no longer listed in the By priority view.
+- **Accessibility:** field and button borders now meet 3:1 contrast in both themes. Keyboard focus on "choose a file" is visible. Empty priorities and pending loader steps keep readable contrast. CVE links in the priority tiles and the remove buttons are easier to tap. Start over and Start again move focus and reset the page title. "+N more below" respects reduced motion and moves focus to the results. The How it works diagram scrolls sideways on phones rather than shrinking its labels.
+
 ### Added
 
 - **About** (`/about`) and **How it works** (`/how-it-works`) pages: why Vulnder exists, the data pipeline, where AI is used and where code decides, how priorities work, and how to hand results to an AI assistant. Linked from the top right of every page, with a direct "Use it with AI" link, and from the sitemap and `llms.txt`.

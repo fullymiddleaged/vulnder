@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, stackSummary, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -57,6 +57,22 @@ describe('UI formatting', () => {
     expect(matchHeadline(0, 30)).toEqual({ title: 'No matches.', subtitle: "Nobody's been into your stack in the last 30 days. Keep it that way." });
     expect(matchHeadline(1, 7).subtitle).toBe('1 CVE is into your stack from the last 7 days. Red flags, ranked:');
     expect(matchHeadline(3, 30)).toEqual({ title: "It's a match. Unfortunately.", subtitle: '3 CVEs are into your stack from the last 30 days. Red flags, ranked:' });
+  });
+
+  it("doesn't call a stack clear when some of its names were never checked", () => {
+    expect(matchHeadline(0, 30, 2).subtitle).toBe("Nothing in the last 30 days for the items we recognised, but 2 names couldn't be matched and weren't checked. Add them with Edit stack.");
+    expect(matchHeadline(0, 7, 1).subtitle).toContain("1 name couldn't be matched");
+    expect(matchHeadline(0, 30, 0).subtitle).toMatch(/^Nobody's been into your stack/);
+    // With matches, unmatched names don't change the headline; the stack notes cover them.
+    expect(matchHeadline(2, 30, 3).title).toBe("It's a match. Unfortunately.");
+  });
+
+  it('sums up a stack by how sure each match is and what faces the internet', () => {
+    expect(stackSummary([])).toBe('0 items');
+    expect(stackSummary([{ close: false, exposed: false }])).toBe('1 item');
+    expect(stackSummary([{}, { close: true }, { close: true, exposed: true }, { exposed: true }])).toBe('4 items: 2 exact, 2 close matches, 2 internet-facing');
+    expect(stackSummary([{ close: true }])).toBe('1 item: 1 close match');
+    expect(stackSummary([{ exposed: true }, {}])).toBe('2 items: 1 internet-facing');
   });
 
   it('writes percentages with sensible precision', () => {
@@ -148,6 +164,15 @@ describe('priority display', () => {
       ['attend', 'Attend', 'amber'],
       ['watch', 'Watch', 'yellow'],
       ['track', 'Track', 'grey'],
+    ]);
+  });
+
+  it('gives each priority a response window matching the server and How it works', () => {
+    expect(Object.values(RISK).map((r) => r.window)).toEqual([
+      'Within 24 hours if internet-facing, 48 hours otherwise',
+      'Within 7 days',
+      'Within 30 days',
+      'In your next routine update',
     ]);
   });
 

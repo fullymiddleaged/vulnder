@@ -1,4 +1,4 @@
-# Vulnder design notes
+# Vulnder engineering notes
 
 What I checked before phase 1, and the changes to [BRIEF.md](BRIEF.md) that came out of it. All checks were made on 2026-10-04.
 

@@ -6,7 +6,7 @@ import { describeHours } from '../src/lib/time';
 import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
-import { exportFileName, exportJson, exportMarkdown } from './export';
+import { exportFileName, exportJson, exportMarkdown, remediationSteps } from './export';
 import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
 import {
   ago,
@@ -30,6 +30,7 @@ import {
   preview,
   RISK,
   shortSummary,
+  stackSummary,
   withItemMarks,
   type ChangeGroup,
   type ComponentGroup,
@@ -55,14 +56,48 @@ const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
 const app = document.getElementById('app')!;
 const status = document.getElementById('status')!;
+const DEFAULT_TITLE = document.title;
 let config: AppConfig | null = null;
 let turnstileToken: string | null = null;
 let turnstileWidget: string | undefined;
+/** Set when the verification widget fails or can't load, so submitting says so instead of waiting forever. */
+let turnstileFailed = false;
 /** This browser's allowance of different stacks this hour; null until known. */
 let pass: PassStatus | null = null;
 
 function say(message: string): void {
   status.textContent = message;
+}
+
+/** The current form's error line, next to the control that needs fixing; null on pages without a form. */
+let formError: HTMLElement | null = null;
+
+function errorSlot(): HTMLElement {
+  formError = h('p', { class: 'form-error', role: 'alert', hidden: true });
+  return formError;
+}
+
+/** A problem the person has to fix: shown by the form when there is one, else in the status line. `action` offers a way out. */
+function report(message: string, action?: HTMLElement): void {
+  if (formError?.isConnected) {
+    formError.replaceChildren(message, ...(action ? [' ', action] : []));
+    formError.hidden = !message;
+    say('');
+  } else say(message);
+}
+
+/** A cross, drawn rather than typed, for remove buttons. */
+function crossIcon(): SVGElement {
+  return svg('svg', { viewBox: '0 0 16 16', width: '16', height: '16', 'aria-hidden': 'true', focusable: 'false' }, svg('path', { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', fill: 'none' }));
+}
+
+/** Back to the empty form, with the page's own title, address and focus. */
+function showInput(): void {
+  if (location.search) history.pushState(null, '', '/');
+  markIndexable();
+  document.title = DEFAULT_TITLE;
+  renderInput();
+  app.focus();
 }
 
 async function refreshPass(): Promise<void> {
@@ -171,13 +206,14 @@ function renderInput(prefill = ''): void {
   // Uploads skip the description's length limit: only the parsed names and versions are sent.
   const onFile = async (file: File) => {
     const problem = fileProblem(file.name, file.size);
-    if (problem) return say(problem);
+    if (problem) return report(problem);
     const text = await file.text();
     const unusable = textProblem(file.name, text);
-    if (unusable) return say(unusable);
+    if (unusable) return report(unusable);
     const manifest = parseManifest(text, file.name);
-    if (!manifest) return say(`${file.name} isn't a manifest format Vulnder reads. Try ${MANIFEST_FORMATS}.`);
-    if (manifest.candidates.length === 0) return say(`${file.name} lists no packages.`);
+    if (!manifest) return report(`${file.name} isn't a manifest format Vulnder reads. Try ${MANIFEST_FORMATS}.`);
+    if (manifest.candidates.length === 0) return report(`${file.name} lists no packages.`);
+    report('');
     const { sent, note } = capEntries(manifest.candidates);
     say(`Read ${manifest.candidates.length} entries from ${file.name}.`);
     await submit({ candidates: sent }, note);
@@ -208,13 +244,13 @@ function renderInput(prefill = ''): void {
       onsubmit: (e: Event) => {
         e.preventDefault();
         const text = textarea.value.trim();
-        if (!text) return say('Describe your stack, or upload a manifest, first.');
+        if (!text) return report('Describe your stack, or upload a manifest, first.');
         const manifest = parseManifest(text);
         if (manifest) {
           const { sent, note } = capEntries(manifest.candidates);
           return void submit({ candidates: sent }, note);
         }
-        if (text.length > MAX_TEXT) return say(`Descriptions are limited to ${MAX_TEXT} characters. Shorten it, or upload a manifest file instead.`);
+        if (text.length > MAX_TEXT) return report(`Descriptions are limited to ${MAX_TEXT} characters. Shorten it, or upload a manifest file instead.`);
         void submit({ text });
       },
     },
@@ -233,6 +269,7 @@ function renderInput(prefill = ''): void {
     ),
     drop,
     turnstileBox,
+    errorSlot(),
     submitButton,
   );
 
@@ -240,19 +277,33 @@ function renderInput(prefill = ''): void {
   mountTurnstile(turnstileBox);
 }
 
+/** How long to wait for the verification script before calling it unavailable. */
+const TURNSTILE_WAIT_MS = 15_000;
+
 function mountTurnstile(box: HTMLElement): void {
-  if (!config) return;
+  turnstileFailed = false;
+  if (!config) return void (turnstileFailed = true);
+  const started = Date.now();
   const tryRender = () => {
-    if (!window.turnstile) return void setTimeout(tryRender, 200);
+    if (!box.isConnected) return;
+    if (!window.turnstile) {
+      if (Date.now() - started > TURNSTILE_WAIT_MS) return void (turnstileFailed = true);
+      return void setTimeout(tryRender, 200);
+    }
     turnstileWidget = window.turnstile.render(box, {
       sitekey: config!.turnstileSiteKey,
       action: TURNSTILE_ACTION,
-      callback: (token: string) => (turnstileToken = token),
+      callback: (token: string) => ((turnstileToken = token), (turnstileFailed = false)),
       'expired-callback': () => (turnstileToken = null),
-      'error-callback': () => (turnstileToken = null),
+      'error-callback': () => ((turnstileToken = null), (turnstileFailed = true)),
     });
   };
   tryRender();
+}
+
+/** Offered when free text can't be read: the verification check failed or the model is unavailable. */
+function addByHandButton(): HTMLElement {
+  return h('button', { type: 'button', class: 'link', onclick: () => (renderEdit([]), app.focus()) }, 'Add items by hand instead');
 }
 
 // ---------- Loading ----------
@@ -277,7 +328,7 @@ const FEED_STEPS = [
 ];
 /** How long each step shows while the request runs; the last one waits for the answer. */
 const STEP_MS = 2000;
-/** Once the answer is in, the steps left tick off this quickly, so each is still seen. */
+/** Once the answer is in, the steps left tick off this quickly, so each is still seen, even on a fast answer. */
 const STEP_FINISH_MS = 250;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -341,16 +392,23 @@ function showBusy(title: string, detail: string, steps: readonly string[] = []):
   };
 }
 
-/** Shown once on the results page after a submit, e.g. names that matched nothing. */
-let pendingNote = '';
+/** Shown on the results page after a submit, e.g. names that matched nothing; cleared once shown. */
+let pendingNotes: string[] = [];
+/** How many names in that submit resolved to nothing, so a no-match headline doesn't overclaim. */
+let pendingUnmatched = 0;
 
 /** Sends a description or parsed entries; `note` (e.g. what a big file left out) shows with the results. */
 async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<void> {
   if (isLocked()) return say(passNotice(pass) ?? '');
-  if (!turnstileToken) return say('Please wait for the verification check to finish, then try again.');
+  if (!turnstileToken) {
+    return turnstileFailed
+      ? report("The verification check couldn't run, so a description can't be read right now. Reload the page to try again.", addByHandButton())
+      : report('Please wait a moment for the verification check to finish, then try again.');
+  }
   const token = turnstileToken;
   turnstileToken = null;
   window.turnstile?.reset(turnstileWidget);
+  report('');
   say('Working out what is in your stack…');
   const done = showBusy('Reading your stack…', 'Picking out the software and devices you named.');
   try {
@@ -361,28 +419,32 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
     const exposed = res.chips.filter((c) => c.items.some((i) => i.exposed)).map((c) => c.input);
     const notes = [
       note,
-      unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. Use "Edit stack" to add them by hand.` : '',
-      exposed.length > 0 ? `Marked as internet-facing from your description: ${exposed.join(', ')}. Use "Edit stack" to change that.` : '',
+      unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. These weren't checked; use Edit stack to add them by hand.` : '',
+      exposed.length > 0 ? `Marked as internet-facing from your description: ${exposed.join(', ')}. Use Edit stack to change that.` : '',
       res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
     ].filter(Boolean);
     if (items.length === 0) {
-      say(notes.join(' ') || 'Nothing recognisable there.');
-      return renderEdit([]);
+      renderEdit([]);
+      report(notes.join(' ') || 'Nothing recognisable there. Add items by hand below.');
+      return void app.focus();
     }
     const stack = parseStack(items.join(','));
     if (stack.length > 200) {
-      say('That is more than 200 items. Trim the list, or self-host Vulnder for larger stacks.');
-      return renderEdit(items);
+      renderEdit(items);
+      report('That is more than 200 items. Trim the list, or self-host Vulnder for larger stacks.');
+      return void app.focus();
     }
-    pendingNote = notes.join(' ');
+    pendingNotes = notes;
+    pendingUnmatched = unrecognised.length;
     navigate(serializeStack(stack), 30);
   } catch (err) {
     void done();
     if (err instanceof ApiError && err.fallback === 'manual') {
-      say(err.message);
       renderEdit([]);
+      report(err.message);
+      app.focus();
     } else {
-      say(err instanceof Error ? err.message : 'Something went wrong.');
+      report(err instanceof Error ? err.message : 'Something went wrong. Try again in a moment.');
     }
   }
 }
@@ -403,7 +465,7 @@ function renderEdit(initial: string[]): void {
           'li',
           { class: `chip ${close ? 'close' : 'resolved'}` },
           h('code', {}, name),
-          close ? h('span', { class: 'muted small' }, ' close match') : null,
+          close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
           h(
             'button',
             {
@@ -416,7 +478,7 @@ function renderEdit(initial: string[]): void {
             },
             'Internet-facing',
           ),
-          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, '×'),
+          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
         ),
       );
     });
@@ -434,10 +496,10 @@ function renderEdit(initial: string[]): void {
         try {
           for (const item of parseStack(addInput.value)) items.push(serializeStack([withMarks(item, { exposed: item.exposed })]));
           addInput.value = '';
-          say('');
+          report('');
           draw();
         } catch (err) {
-          say(err instanceof StackFormatError ? err.message : 'That is not a valid item.');
+          report(err instanceof StackFormatError ? err.message : 'That is not a valid item.');
         }
       },
     },
@@ -446,16 +508,16 @@ function renderEdit(initial: string[]): void {
     h('button', { type: 'submit' }, 'Add'),
   );
 
-  const startOver = h('button', { type: 'button', onclick: () => renderInput() }, 'Start over');
+  const startOver = h('button', { type: 'button', onclick: showInput }, 'Start over');
   const show = h(
     'button',
     {
       type: 'button',
       class: 'primary',
       onclick: () => {
-        if (items.length === 0) return say('Add at least one item.');
+        if (items.length === 0) return report('Add at least one item.');
         const stack: StackItem[] = parseStack(items.join(','));
-        if (stack.length > 200) return say('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
+        if (stack.length > 200) return report('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
         navigate(serializeStack(stack), 30);
       },
     },
@@ -470,11 +532,12 @@ function renderEdit(initial: string[]): void {
       h(
         'p',
         { class: 'muted' },
-        'Remove anything that is not yours and add what is missing. Close matches are products your description loosely fits. Mark what the internet can reach, so bugs an attacker could get at there rank higher. Items with nothing reported are still watched.',
+        'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Mark what the internet can reach, so bugs an attacker could get at there rank higher. Items with nothing reported are still watched.',
       ),
       list,
       addForm,
-      h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '.'),
+      h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '. Not sure of the name? Go back and describe it in words instead.'),
+      errorSlot(),
       h('div', { class: 'row' }, startOver, show),
       lockControls([startOver, show]),
     ),
@@ -518,63 +581,34 @@ async function renderResults(stack: string, days: number): Promise<void> {
       );
       return;
     }
-    app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: () => (history.pushState(null, '', '/'), renderInput()) }, 'Start again')));
+    app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: showInput }, 'Start again')));
     return;
   }
   // Loading this stack may have used the allowance; editing is greyed out once it has.
   await refreshPass();
-  say([`${feed.results.length} vulnerabilities found.`, pendingNote].filter(Boolean).join(' '));
-  pendingNote = '';
+  const notes = pendingNotes;
+  const unmatched = pendingUnmatched;
+  pendingNotes = [];
+  pendingUnmatched = 0;
+  say(`${feed.results.length} vulnerabilities found.`);
   document.title = `${config?.displayName ?? 'Vulnder'}: ${feed.summary.exploited} exploited`;
 
-  const items = parseStack(feed.stack);
-  const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
-  daySelect.addEventListener('change', () => {
-    // A key press can still get through on some browsers; put the window back.
-    if (isLocked()) return void (daySelect.value = String(feed.days));
-    navigate(feed.stack, Number(daySelect.value));
-  });
-  const editButton = h('button', { type: 'button', onclick: () => renderEdit(items.map((i) => serializeStack([i]))) }, 'Edit stack');
-  // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
-  const editNotice = lockControls([editButton, daySelect]);
-
-  app.append(
-    h(
-      'section',
-      { class: 'block summary', 'aria-labelledby': 'stack-title' },
-      h('div', { class: 'row' }, h('h2', { id: 'stack-title' }, 'Your stack'), daySelect),
-      h(
-        'ul',
-        { class: 'chips compact' },
-        items.map((i) =>
-          h(
-            'li',
-            { class: `chip ${i.close ? 'close' : 'resolved'}`, title: i.close ? 'Close match' : null },
-            h('code', {}, identity(i)),
-            i.exposed ? h('span', { class: 'exposed-mark small' }, 'Internet-facing') : null,
-          ),
-        ),
-      ),
-      h('div', { class: 'row wrap' }, editButton, copyButtons(feed), exportButtons(feed)),
-      editNotice,
-      feed.versionCheckUnavailable ? h('p', { class: 'notice' }, 'Version checks are unavailable right now, so every match is shown as a product match.') : null,
-    ),
-  );
-
-  const headline = matchHeadline(feed.results.length, feed.days);
+  // The answer first: the headline, the stack it answers for, priorities at a glance, what to fix first,
+  // the week's changes, every result, then ways to share and follow it.
+  const headline = matchHeadline(feed.results.length, feed.days, unmatched);
   app.append(
     h('section', { class: 'headline', 'aria-labelledby': 'match-title' }, h('h2', { id: 'match-title' }, headline.title), h('p', { class: 'muted' }, headline.subtitle)),
+    renderStack(feed, notes),
   );
-  // Priorities at a glance, what to fix first, the week's changes, then every result.
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
-    const view = h('div', { class: 'results-view', id: 'results' });
+    const view = h('div', { class: 'results-view', id: 'results', tabindex: -1 });
     const draw = (grouping: Grouping) => {
       clear(view);
       view.append(...(grouping === 'component' ? renderByComponent(componentGroups(feed.fixFirst, feed.results)) : renderByPriority(feed.results)));
     };
-    app.append(groupingToggle(draw), view);
+    app.append(h('div', { class: 'results-head' }, groupingToggle(draw), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
     draw(savedGrouping());
   }
   if (feed.watching.length > 0) {
@@ -588,6 +622,72 @@ async function renderResults(stack: string, days: number): Promise<void> {
       ),
     );
   }
+  app.append(renderShare(feed));
+}
+
+/** Short stacks show their items; long ones (a lockfile) fold them away behind the summary. */
+const STACK_SHOWN = 12;
+
+/**
+ * The stack these results answer for, in one line with its time window and Edit,
+ * then what the lookup couldn't do (names it couldn't match, what it marked).
+ * Those notes stay on the page rather than passing through the status line.
+ */
+function renderStack(feed: Feed, notes: string[]): HTMLElement {
+  const items = parseStack(feed.stack);
+  const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
+  daySelect.addEventListener('change', () => {
+    // A key press can still get through on some browsers; put the window back.
+    if (isLocked()) return void (daySelect.value = String(feed.days));
+    navigate(feed.stack, Number(daySelect.value));
+  });
+  const editButton = h('button', { type: 'button', onclick: () => (renderEdit(items.map((i) => serializeStack([i]))), app.focus()) }, 'Edit stack');
+  // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
+  const editNotice = lockControls([editButton, daySelect]);
+  const anyClose = items.some((i) => i.close);
+  const allNotes = [
+    ...notes,
+    feed.versionCheckUnavailable ? 'Version checks are unavailable right now, so every match shows as "Version not confirmed".' : '',
+  ].filter(Boolean);
+  return h(
+    'section',
+    { class: 'block stack', 'aria-labelledby': 'stack-title' },
+    h('div', { class: 'row wrap' }, h('h2', { id: 'stack-title', class: 'stack-title' }, 'Your stack'), h('span', { class: 'muted' }, stackSummary(items)), h('span', { class: 'stack-actions' }, daySelect, editButton)),
+    editNotice,
+    allNotes.length > 0 ? h('ul', { class: 'notice notes', 'aria-label': 'About this lookup' }, allNotes.map((n) => h('li', {}, n))) : null,
+    h(
+      'details',
+      { class: 'stack-items', open: items.length <= STACK_SHOWN },
+      h('summary', { class: 'small' }, h('span', { class: 'when-closed' }, `Show the ${items.length} items`), h('span', { class: 'when-open' }, 'Hide the items')),
+      h(
+        'ul',
+        { class: 'chips compact' },
+        items.map((i) =>
+          h(
+            'li',
+            { class: `chip ${i.close ? 'close' : 'resolved'}` },
+            h('code', {}, identity(i)),
+            i.close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
+            i.exposed ? h('span', { class: 'exposed-mark small' }, 'Internet-facing') : null,
+          ),
+        ),
+      ),
+      anyClose
+        ? h('p', { class: 'muted small' }, 'Exact matches are the products you named. Close matches are products your description loosely fits: check they are yours, and remove any that aren’t with Edit stack.')
+        : null,
+    ),
+  );
+}
+
+/** Links that keep showing this stack's latest results, and exports of them as they are now. */
+function renderShare(feed: Feed): HTMLElement {
+  return h(
+    'section',
+    { class: 'block share', 'aria-labelledby': 'share-title' },
+    h('h2', { id: 'share-title' }, 'Share and follow'),
+    h('p', { class: 'muted small' }, 'The page link, Atom feed and JSON feed always show the latest results for this stack, so you can come back or subscribe. Exports save the results as they are now.'),
+    h('div', { class: 'row wrap' }, copyButtons(feed), exportButtons(feed)),
+  );
 }
 
 /** How many CVEs each priority tile links before pointing at the full list. */
@@ -615,21 +715,47 @@ function riskSummary(feed: Feed): HTMLElement {
         'li',
         { class: `risk-tile ${RISK[p].light}${n === 0 ? ' empty' : ''}` },
         h('span', { class: 'risk-head' }, h('span', { class: 'risk-count' }, String(n)), h('span', { class: 'risk-label' }, RISK[p].label)),
-        h('span', { class: 'risk-note small' }, RISK[p].note),
+        h('span', { class: 'risk-note small' }, RISK[p].brief),
+        h('span', { class: 'risk-window small' }, RISK[p].window),
         shown.length > 0
           ? h(
               'ul',
               { class: 'tile-vulns small', 'aria-label': `${RISK[p].label} CVEs` },
               shown.map((r) => h('li', {}, externalLink(r.links.advisory, r.id))),
-              rest > 0
-                ? h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }) }, `+${rest} more below`))
-                : null,
+              rest > 0 ? h('li', {}, h('button', { type: 'button', class: 'link', onclick: jumpToResults }, `+${rest} more below`)) : null,
             )
           : null,
       );
     }),
   );
-  return h('div', { class: 'risk' }, strip, ledger);
+  return h('div', { class: 'risk' }, strip, ledger, glossary());
+}
+
+/** Moves to the full results, smoothly unless motion is reduced, and takes focus there so keyboard and screen reader users land too. */
+function jumpToResults(): void {
+  const results = document.getElementById('results');
+  if (!results) return;
+  results.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  results.focus({ preventScroll: true });
+}
+
+/** The terms the results use, in plain words, one click away rather than only in tooltips. */
+function glossary(): HTMLElement {
+  const terms: [string, string][] = [
+    ['KEV', 'CISA’s Known Exploited Vulnerabilities catalog: bugs with evidence of real attacks. The strongest signal there is.'],
+    ['EPSS', 'FIRST’s predicted chance that a bug is exploited in the next 30 days. A forecast, not evidence. The percentile compares it with every other CVE.'],
+    ['LEV', 'NIST’s estimate, from a bug’s EPSS history, of the chance it has already been exploited. A lower bound, not evidence.'],
+    ['CVSS', 'A 0–10 severity score: how bad a bug would be if used, not whether anyone is using it.'],
+    ['Risk score', 'A 0–100 score that orders results within a priority. Total risk adds up a component’s scores. Neither is a probability.'],
+    ['Exact or close match', 'An exact match is a product you named. A close match is one your description loosely fits: check it is yours.'],
+    ['Version confirmed', 'Your version is in the affected range. "Version not confirmed" means only the product matched, so compare your version with "Fixed in".'],
+  ];
+  return h(
+    'details',
+    { class: 'glossary small' },
+    h('summary', {}, 'What KEV, EPSS, CVSS and the other terms mean'),
+    h('dl', {}, terms.flatMap(([term, meaning]) => [h('dt', {}, term), h('dd', {}, meaning)])),
+  );
 }
 
 /** A link that opens in a new tab, or plain text when the URL isn't http(s). */
@@ -643,7 +769,8 @@ const FIX_SHOWN = 5;
 
 function renderFixFirst(feed: Feed): HTMLElement {
   const items = componentGroups(feed.fixFirst, feed.results);
-  const list = (from: number, to: number) => h('ol', { class: 'fix-list', start: from + 1 }, items.slice(from, to).map(renderFixItem));
+  // role=list: Safari drops list semantics from a list styled without markers, and here the order is the point.
+  const list = (from: number, to: number) => h('ol', { class: 'fix-list', role: 'list', start: from + 1 }, items.slice(from, to).map(renderFixItem));
   return h(
     'section',
     { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
@@ -669,11 +796,15 @@ function renderFixItem(g: ComponentGroup): HTMLElement {
         {},
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
         h('code', {}, g.component),
-        g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
-        g.exposed ? h('span', { class: 'badge exposed' }, 'Internet-facing') : null,
-        h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
+        g.close ? [pause(), h('span', { class: 'badge match-close' }, 'Close match')] : null,
+        g.exposed ? [pause(), h('span', { class: 'badge exposed' }, 'Internet-facing')] : null,
+        pause(),
         tally(g.counts),
+        pause(),
         h('span', { class: 'small muted' }, g.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${g.fixable} of ${total} with a fix`),
+        pause(),
+        h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
+        pause(),
         h('span', { class: 'expand small' }, h('span', { class: 'when-closed' }, `Show ${total === 1 ? 'CVE' : `${total} CVEs`}`), h('span', { class: 'when-open' }, 'Hide')),
       ),
       h('ol', { class: 'briefs' }, g.results.map(renderBrief)),
@@ -699,6 +830,11 @@ function renderBrief(r: Result): HTMLElement {
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
     ),
   );
+}
+
+/** A comma only screen readers hear, so a row of badges reads as a list rather than one run-on phrase. */
+function pause(): HTMLElement {
+  return h('span', { class: 'visually-hidden' }, ', ');
 }
 
 function tally(counts: Record<Priority, number>): HTMLElement {
@@ -745,15 +881,16 @@ function groupingToggle(draw: (g: Grouping) => void): HTMLElement {
   return h('fieldset', { class: 'grouping' }, h('legend', { class: 'small muted' }, 'Group results'), option('risk', 'By priority'), option('component', 'By component'));
 }
 
+/** One section per priority that has results; the ledger above already shows the empty ones as 0. */
 function renderByPriority(results: Result[]): HTMLElement[] {
   const groups = byPriority(results);
-  return PRIORITIES.map((p) =>
+  return PRIORITIES.filter((p) => groups[p].length > 0).map((p) =>
     h(
       'section',
       { class: `tier ${RISK[p].light}`, 'aria-labelledby': `tier-${p}` },
       h('h2', { id: `tier-${p}` }, h('span', { class: 'light', 'aria-hidden': 'true' }), `${RISK[p].label} `, h('span', { class: 'count' }, String(groups[p].length))),
-      h('p', { class: 'muted small' }, RISK[p].note),
-      groups[p].length === 0 ? h('p', { class: 'muted' }, 'Nothing here.') : renderList(groups[p]),
+      h('p', { class: 'muted small' }, RISK[p].note, ' ', h('strong', { class: 'window' }, `${RISK[p].window}.`)),
+      renderList(groups[p]),
     ),
   );
 }
@@ -810,7 +947,8 @@ function renderChanges(feed: Feed): HTMLElement {
   const section = h(
     'section',
     { class: 'block changes', 'aria-labelledby': 'changes-title' },
-    h('h2', { id: 'changes-title' }, 'What changed this week'),
+    // Always the last 7 days, whatever the results window, so the heading says so.
+    h('h2', { id: 'changes-title' }, 'What changed in the last 7 days'),
   );
   if (groups.length === 0) {
     section.append(h('p', { class: 'muted' }, 'No changes in the last 7 days.'));
@@ -879,6 +1017,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
 function renderResult(r: Result): HTMLElement {
   const advisory = safeHref(r.links.advisory);
   const patch = safeHref(r.links.patch);
+  const mitigationLink = safeHref(r.mitigation?.advisory);
   const e = r.evidence;
   const light = RISK[r.priority].light;
   return h(
@@ -900,6 +1039,8 @@ function renderResult(r: Result): HTMLElement {
     ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
     renderWhy(r),
+    // The same steps as the export, so the page and a file handed to an assistant say the same thing.
+    h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), remediationSteps(r).join(' ')),
     h(
       'p',
       { class: 'facts row wrap small' },
@@ -918,21 +1059,20 @@ function renderResult(r: Result): HTMLElement {
             `LEV ${pct(e.lev)}`,
           )
         : null,
-      e.knownRansomware ? h('span', { class: 'pill red' }, 'Ransomware') : null,
+      e.knownRansomware ? h('span', { class: 'badge ransomware' }, 'Used in ransomware') : null,
       h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
-      h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Product match'),
+      h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Version not confirmed'),
     ),
     e.kevAddedAt
       ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
       : null,
     h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
-    r.fixedVersions.length > 0 ? h('p', { class: 'small' }, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : null,
-    r.mitigation ? renderMitigation(r.mitigation) : null,
     h(
       'p',
       { class: 'small links' },
       advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
+      mitigationLink && mitigationLink !== advisory ? h('a', { href: mitigationLink, rel: 'noreferrer noopener', target: '_blank' }, 'Mitigation guidance') : null,
     ),
   );
 }
@@ -963,18 +1103,6 @@ const KIND_LABEL: Record<Reason['kind'], string> = {
   severity: 'severity',
   context: 'reachability and context',
 };
-
-/** An urgent CVE with no fixed version known: what to do until there is one. */
-function renderMitigation(m: { action: string | null; advisory: string | null }): HTMLElement {
-  const advisory = safeHref(m.advisory);
-  return h(
-    'p',
-    { class: 'small mitigate' },
-    h('strong', {}, 'No fixed version known yet: mitigate meanwhile. '),
-    m.action ? `CISA: ${m.action} ` : 'Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships. ',
-    advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
-  );
-}
 
 function copyButtons(feed: Feed): HTMLElement {
   const badgeMd = `[![known-exploited CVEs](${feed.links.badge})](${feed.links.page})`;

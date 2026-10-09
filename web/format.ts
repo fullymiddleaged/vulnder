@@ -16,8 +16,16 @@ export function describeChange(c: Change): string {
   }
 }
 
-/** The playful headline above the results. Tier and evidence wording stays plain. */
-export function matchHeadline(count: number, days: number): { title: string; subtitle: string } {
+/**
+ * The playful headline above the results. Tier and evidence wording stays plain.
+ * With no matches it says so only for what was recognised: `unmatched` names
+ * that resolved to nothing were never checked, so "nobody's been into it" would overclaim.
+ */
+export function matchHeadline(count: number, days: number, unmatched = 0): { title: string; subtitle: string } {
+  if (count === 0 && unmatched > 0) {
+    const names = unmatched === 1 ? '1 name' : `${unmatched} names`;
+    return { title: 'No matches.', subtitle: `Nothing in the last ${days} days for the items we recognised, but ${names} couldn't be matched and weren't checked. Add them with Edit stack.` };
+  }
   if (count === 0) {
     return { title: 'No matches.', subtitle: `Nobody's been into your stack in the last ${days} days. Keep it that way.` };
   }
@@ -176,12 +184,49 @@ export function shortSummary(text: string | null, max = 220): string | null {
  * Traffic lights for each priority. Colour carries priority and nothing else;
  * green is kept for good news such as a released fix.
  */
-export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'yellow' | 'grey'; note: string }> = {
-  act: { label: 'Act now', light: 'red', note: 'Being exploited: on CISA KEV, or CISA reports active exploitation.' },
-  attend: { label: 'Attend', light: 'amber', note: 'Likely to be exploited, or critical and within reach: EPSS of 10% or more, CVSS 9.0 or more with no login or user action needed, or a working exploit that is easy to use or gives full control.' },
-  watch: { label: 'Watch', light: 'yellow', note: 'High severity or a public exploit: CVSS 8.0 or more, 7.0 or more within reach on an internet-facing item, or a proof-of-concept exploit.' },
-  track: { label: 'Track', light: 'grey', note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation.' },
+export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'yellow' | 'grey'; brief: string; window: string; note: string }> = {
+  act: {
+    label: 'Act now',
+    light: 'red',
+    brief: 'Being exploited now.',
+    window: 'Within 24 hours if internet-facing, 48 hours otherwise',
+    note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation.',
+  },
+  attend: {
+    label: 'Attend',
+    light: 'amber',
+    brief: 'Likely to be exploited soon.',
+    window: 'Within 7 days',
+    note: 'Likely to be exploited, or critical and within reach: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more with no login or user action needed, or a working exploit that is easy to use or gives full control.',
+  },
+  watch: {
+    label: 'Watch',
+    light: 'yellow',
+    brief: 'Serious, but less pressing.',
+    window: 'Within 30 days',
+    note: 'High severity or a public exploit: CVSS 8.0 or more, 7.0 or more within reach on an internet-facing item, or a proof-of-concept exploit.',
+  },
+  track: {
+    label: 'Track',
+    light: 'grey',
+    brief: 'Affects your stack, nothing urgent.',
+    window: 'In your next routine update',
+    note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation.',
+  },
 };
+
+/** "14 items: 12 exact, 2 close matches, 3 internet-facing", for the folded stack on the results page. */
+export function stackSummary(items: readonly { close?: boolean; exposed?: boolean }[]): string {
+  const n = items.length;
+  const close = items.filter((i) => i.close).length;
+  const exposed = items.filter((i) => i.exposed).length;
+  const parts = [
+    close > 0 && n > close ? `${n - close} exact` : '',
+    close > 0 ? `${close} close ${close === 1 ? 'match' : 'matches'}` : '',
+    exposed > 0 ? `${exposed} internet-facing` : '',
+  ].filter(Boolean);
+  return `${n} ${n === 1 ? 'item' : 'items'}${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`;
+}
 
 /** Results by priority, keeping feed order within each. */
 export function byPriority(results: Result[]): Record<Priority, Result[]> {

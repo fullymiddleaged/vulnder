@@ -133,7 +133,7 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 
 ## How it works
 
-[docs/DESIGN.md](docs/DESIGN.md) records the limits that were checked, the design decisions, and what the build turned up. Briefly: ingest is one set of source modules (`src/ingest/sources/`) behind a `Store` interface. It runs either in the Worker's cron (D1 binding) or in Node (Wrangler CLI). Every run works to a budget and saves its cursor, so it can stop at any point and resume.
+[docs/ENGINEERING.md](docs/ENGINEERING.md) records the limits that were checked, the design decisions, and what the build turned up. Briefly: ingest is one set of source modules (`src/ingest/sources/`) behind a `Store` interface. It runs either in the Worker's cron (D1 binding) or in Node (Wrangler CLI). Every run works to a budget and saves its cursor, so it can stop at any point and resume.
 
 ## Contributing
 

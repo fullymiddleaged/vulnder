@@ -49,6 +49,8 @@
       <section class="block" aria-labelledby="pipeline">
         <h2 id="pipeline">The pipeline</h2>
         <figure class="arch-figure">
+          <!-- Scrolls sideways on narrow screens rather than shrinking its labels; focusable so the keyboard can scroll it too. -->
+          <div class="arch-scroll" tabindex="0" role="region" aria-label="Architecture diagram">
           <svg class="arch" viewBox="0 0 420 488" role="img" aria-labelledby="arch-title arch-desc">
             <title id="arch-title">Vulnder's architecture</title>
             <desc id="arch-desc">
@@ -150,6 +152,7 @@
             <rect class="box" x="0" y="448" width="300" height="34" />
             <text class="t" x="150" y="465">Results · JSON · Atom · badge</text>
           </svg>
+          </div>
           <figcaption class="small legend">
             <span><span class="key ai"></span> Calls a model on Workers AI</span>
             <span><span class="key"></span> Plain code</span>
