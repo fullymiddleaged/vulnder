@@ -5,6 +5,7 @@ import { D1BindingStore } from '../ingest/d1-store';
 import { BodyTooLarge, readCapped } from '../lib/body';
 import { issuePass, lockedStatus, PASS_COOKIE, PASS_TTL_SECONDS, passStatus } from '../lib/pass';
 import { passLimited, readLock } from './pass';
+import { clientKey } from '../lib/client';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
@@ -84,8 +85,10 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   if (locked) return passLimited(c, lockedStatus(locked), now);
 
   const ip = c.req.header('cf-connecting-ip') ?? null;
+  // Limits and daily counts go by IPv6 /64, not the full address (src/lib/client.ts).
+  const client = clientKey(ip);
   if (c.env.RESOLVE_LIMITER) {
-    const { success } = await c.env.RESOLVE_LIMITER.limit({ key: ip ?? 'unknown' });
+    const { success } = await c.env.RESOLVE_LIMITER.limit({ key: client });
     if (!success) return c.json({ error: 'too many requests; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
 
@@ -148,7 +151,7 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
         takeDailyQuota(
           new D1BindingStore(c.env.DB),
           'parse',
-          ip,
+          client,
           { perClient: limitFromVar(c.env.PARSE_DAILY_PER_CLIENT, DEFAULT_PARSE_PER_CLIENT), total: limitFromVar(c.env.PARSE_DAILY_TOTAL, DEFAULT_PARSE_TOTAL) },
           new Date(),
         );

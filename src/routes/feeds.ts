@@ -4,6 +4,7 @@ import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
 import { getCookie } from 'hono/cookie';
+import { clientKey } from '../lib/client';
 import { isSpent, lockedStatus, PASS_COOKIE, usePass } from '../lib/pass';
 import { passLimited, readLock, withLock } from './pass';
 import type { ComponentCache, ComponentData } from '../match/components';
@@ -93,8 +94,10 @@ async function cached(
 
   const store = new D1BindingStore(c.env.DB);
   // A browser's pass (src/lib/pass.ts) counts new stacks, whether cached or not,
-  // and stands in for the per-IP limits, which a shared office IP would hit.
-  let passed = false;
+  // and gives the browser limits of its own in place of its IP's, which a shared
+  // office IP would hit. It still has limits: one pass can ask for each of its
+  // stacks under three routes and 90 windows, all of them cache misses at once.
+  let limitKey = clientKey(c.req.header('cf-connecting-ip'));
   // Set once the pass is spent: this stack, if it took the last place, still
   // loads, and the browser is locked from the next request on.
   let lockUntil: string | null = null;
@@ -103,13 +106,13 @@ async function cached(
   if (passId && secret) {
     const use = await usePass(store, passId, req.canonical, secret, now);
     if (use && isSpent(use.status)) lockUntil = use.status.resetsAt;
-    passed = use?.ok === true;
+    if (use?.ok) limitKey = `pass:${passId}`;
     if (use && !use.ok) {
       const refused = passLimited(c, use.status, now);
       return lockUntil ? withLock(refused, lockUntil, now) : refused;
     }
   }
-  const res = await load(c, route, req, store, passed, build);
+  const res = await load(c, route, req, store, limitKey, build);
   return lockUntil ? withLock(res, lockUntil, now) : res;
 }
 
@@ -119,7 +122,7 @@ async function load(
   route: string,
   req: StackRequest,
   store: D1BindingStore,
-  passed: boolean,
+  limitKey: string,
   build: (dataVersion: number) => Promise<Response>,
 ): Promise<Response> {
   const dataVersion = Number((await getMeta<number>(store, DATA_VERSION_KEY)) ?? 0);
@@ -136,13 +139,12 @@ async function load(
     return out;
   }
 
-  const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
-  if (!passed && c.env.FEED_LIMITER) {
-    const { success } = await c.env.FEED_LIMITER.limit({ key: ip });
+  if (c.env.FEED_LIMITER) {
+    const { success } = await c.env.FEED_LIMITER.limit({ key: limitKey });
     if (!success) return c.json({ error: 'too many new feed requests; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
-  if (!passed && c.env.FEED_HEAVY_LIMITER && (await stackSize(store, req.items)) >= HEAVY_STACK_VULNS) {
-    const { success } = await c.env.FEED_HEAVY_LIMITER.limit({ key: ip });
+  if (c.env.FEED_HEAVY_LIMITER && (await stackSize(store, req.items)) >= HEAVY_STACK_VULNS) {
+    const { success } = await c.env.FEED_HEAVY_LIMITER.limit({ key: limitKey });
     if (!success) return c.json({ error: 'too many new requests for large stacks; try again in a minute' }, 429, { 'Retry-After': '60' });
   }
   const res = await build(dataVersion);

@@ -118,9 +118,9 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 |---|---|---|
 | `DB` | D1 | All data |
 | `AI` | Workers AI | Free-text extraction and Jev (AI Gateway credits); on the Paid cron, also the similar-CVE embeddings (capped at a million tokens, about 1,075 neurons, a day) |
-| `RESOLVE_LIMITER` | Rate limiting | Per-IP limit on `POST /api/resolve` (20 a minute) |
-| `FEED_LIMITER` | Rate limiting | Per-IP limit on feed, Atom and badge requests that miss the cache (60 a minute) |
-| `FEED_HEAVY_LIMITER` | Rate limiting | A tighter per-IP limit on those misses for stacks touching 1,000 or more vulns, such as the Linux kernel (6 a minute) |
+| `RESOLVE_LIMITER` | Rate limiting | Per-IP limit on `POST /api/resolve` (20 a minute). IPv6 clients are limited and counted by their /64. |
+| `FEED_LIMITER` | Rate limiting | Per-IP limit on feed, Atom and badge requests that miss the cache (60 a minute); a browser with a feed pass gets its own instead |
+| `FEED_HEAVY_LIMITER` | Rate limiting | A tighter limit on those misses for stacks touching 1,000 or more vulns, such as the Linux kernel (6 a minute), per IP or per feed pass |
 | `ASSETS` | Static assets | The front end in `public/` |
 | `BASE_URL`, `DISPLAY_NAME` | Vars | Public URL and name |
 | `INGEST_RUNTIME` | Var | `actions` (free plan) or `worker` (Paid cron) |

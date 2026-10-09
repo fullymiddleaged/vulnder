@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AFFECTED_KEYS_SQL, CATALOG_COUNTS_SQL, LEADERS_SQL, UNASSIGNED_SQL } from '../src/ingest/families';
 import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EXPLOITED_IN_FAMILIES_SQL, VULNS_BY_ID_SQL } from '../src/match/components';
 import { eventsSinceSql, RECENT_EVENTS_SQL } from '../src/match/match';
-import { KNOWN_KEYS_SQL, PREFIX_SQL, VENDOR_SQL } from '../src/resolve/catalog';
+import { KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
 import { UPDATE_EPSS } from '../src/ingest/apply';
@@ -18,7 +18,8 @@ async function scans(sql: string, params: unknown[]): Promise<string[]> {
   const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`)
     .bind(...params)
     .all<{ detail: string }>();
-  return results.map((r) => r.detail).filter((d) => /^SCAN /.test(d) && !/^SCAN (json_each|j)\b/.test(d));
+  // A subquery's own output (at most its LIMIT rows) is fine to scan; a table is not.
+  return results.map((r) => r.detail).filter((d) => /^SCAN /.test(d) && !/^SCAN (json_each|j)\b/.test(d) && !/^SCAN \(subquery-\d+\)$/.test(d));
 }
 
 const SINCE = '2026-09-01T00:00:00.000Z';
@@ -26,8 +27,10 @@ const SINCE = '2026-09-01T00:00:00.000Z';
 describe('request-path query plans', () => {
   it.each([
     ['health', HEALTH_META_SQL, ['["status:cve","data_version"]']],
-    ['catalog prefix', PREFIX_SQL, ['[["cis","cit"]]', 4000]],
+    ['catalog prefix', PREFIX_SQL, ['[["cis","cit"]]', 4001]],
+    ['catalog prefix neighbours', PREFIX_NEAR_SQL, ['[["cisc","cisd","cisco_asa"]]', 2000]],
     ['catalog vendor', VENDOR_SQL, ['["cisco"]', 4000]],
+    ['catalog vendor top', VENDOR_TOP_SQL, ['["cisco"]', 8]],
     ['catalog keys', KNOWN_KEYS_SQL, ['["npm:next","cisco/ios_xe"]']],
     ['affected packages', AFFECTED_PACKAGES_SQL, ['[["npm","next"]]']],
     ['affected products', AFFECTED_PRODUCTS_SQL, ['[["cisco","ios_xe"]]']],
@@ -44,6 +47,13 @@ describe('request-path query plans', () => {
     ['EPSS update', UPDATE_EPSS, ['[{"id":"CVE-2026-0001","epss":0.1}]']],
   ] as const)('%s searches an index', async (_name, sql, params) => {
     expect(await scans(sql, [...params])).toEqual([]);
+  });
+
+  it("reads each vendor's top products from its index, without sorting all of them", async () => {
+    const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${VENDOR_TOP_SQL}`).bind('["cisco"]', 8).all<{ detail: string }>();
+    const plan = results.map((r) => r.detail);
+    expect(plan).toContain('SEARCH catalog USING COVERING INDEX catalog_vendor_count (vendor=?)');
+    expect(plan.some((d) => d.includes('TEMP B-TREE'))).toBe(false);
   });
 
   it('walks only the small unassigned-families index for family work', async () => {

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
-import { MAX_PRODUCT_LOOKUPS, resolveCandidates, similarity } from '../src/resolve/catalog';
+import { MAX_PRODUCT_LOOKUPS, mergeVendorRows, prefixShare, resolveCandidates, similarity } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, MAX_TEXT_CHARS, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
 import { MAX_MANIFEST_ENTRIES } from '../src/resolve/limits';
@@ -161,6 +161,96 @@ describe('resolveCandidates', () => {
       { input: 'Fast API', status: 'resolved', items: [{ item: 'pypi:fastapi', label: 'fastapi', close: false, known: true }] },
       { input: 'my lib 1.0.0', status: 'unrecognised', items: [] },
     ]);
+  });
+
+  it('resolves repeated names once, keeping each copy its own label and version', async () => {
+    const res = await resolveCandidates(store(), [
+      { kind: 'product', name: 'nginx', vendor: null, version: '1.25', direct: true },
+      { kind: 'product', name: 'NGINX', vendor: null, version: null, direct: true },
+      { kind: 'product', name: 'Postgres', vendor: null, version: '16', direct: true },
+      { kind: 'product', name: 'postgres', vendor: null, version: '15', direct: true },
+    ]);
+    const close = (item: string, label: string) => ({ item, label, close: true, known: true });
+    const pg = (v: string) => [{ item: `p:postgresql/postgresql@${v}`, label: 'postgresql postgresql', close: false, known: true }];
+    expect(res.chips).toEqual([
+      { input: 'nginx 1.25', status: 'resolved', items: [close('?p:f5/nginx@1.25', 'f5 nginx'), close('?p:nginx/nginx@1.25', 'nginx nginx')] },
+      { input: 'NGINX', status: 'resolved', items: [close('?p:f5/nginx', 'f5 nginx'), close('?p:nginx/nginx', 'nginx nginx')] },
+      { input: 'Postgres 16', status: 'resolved', items: pg('16') },
+      { input: 'postgres 15', status: 'resolved', items: pg('15') },
+    ]);
+  });
+
+  it('counts one name under many vendors against the product limit', async () => {
+    // One name, so one prefix query, but each vendor is a separate fuzzy lookup.
+    const vendors = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'product' as const, name: 'widget', vendor: `acme${i}`, version: null, direct: true }));
+    await expect(resolveCandidates(store(), vendors(MAX_PRODUCT_LOOKUPS))).resolves.toBeDefined();
+    await expect(resolveCandidates(store(), vendors(MAX_PRODUCT_LOOKUPS + 1))).rejects.toThrow(/at most 200 different products/);
+  });
+
+  it('keeps the closest fuzzy matches but lists them most-affected first', async () => {
+    const add = (product: string, count: number) =>
+      env.DB.prepare('INSERT INTO catalog (kind, key, ecosystem, name, vendor, product, normalized, label, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
+        'product', `acme/${product}`, null, null, 'acme', product, product, product, count,
+      );
+    // Similarity to "widgetry_server": servers 0.91, serve 0.90, srv 0.69; too close for a clear winner.
+    await env.DB.batch([add('widgetry_servers', 1), add('widgetry_serve', 9), add('widgetry_srv', 5)]);
+    const res = await resolveCandidates(store(), [{ kind: 'product', name: 'Widgetry Server', vendor: null, version: null, direct: true }]);
+    expect(res.chips[0]!.items.map((i) => i.item)).toEqual(['?p:acme/widgetry_serve', '?p:acme/widgetry_srv', '?p:acme/widgetry_servers']);
+  });
+
+  it('resolves each name the same whether asked alone or with others', async () => {
+    const names = [
+      { kind: 'product' as const, name: 'Postgres', vendor: null, version: '16', direct: true },
+      { kind: 'product' as const, name: 'Grafanna', vendor: null, version: null, direct: true },
+      { kind: 'product' as const, name: 'nginx', vendor: null, version: null, direct: true },
+      { kind: 'product' as const, name: 'switches', vendor: 'Cisco', version: null, direct: true },
+      { kind: 'product' as const, name: 'Cisco', vendor: null, version: null, direct: true },
+      { kind: 'product' as const, name: 'zamad', vendor: null, version: null, direct: true },
+      { kind: 'product' as const, name: 'redis cluster', vendor: null, version: null, direct: true },
+      { kind: 'product' as const, name: 'catalyst manager', vendor: 'Cisco', version: null, direct: true },
+      // Its prefix (xgra) has no rows of its own; scored against every row, it
+      // matched Grafana only when "Grafanna" above pulled Grafana's rows in.
+      { kind: 'product' as const, name: 'xgrafana', vendor: null, version: null, direct: true },
+    ];
+    const together = (await resolveCandidates(store(), names)).chips;
+    for (const [i, name] of names.entries()) {
+      expect(together[i], name.name).toEqual((await resolveCandidates(store(), [name])).chips[0]);
+    }
+  });
+
+  it("gives every name its own share of catalog rows, its alphabetical neighbours, so a busy prefix can't starve the rest", async () => {
+    // A busy prefix of 4,500 rows overflows the cheap query's 4,000, so each of
+    // the 2 names gets 1,000 rows each side of it instead. With one shared
+    // limit, filler from the start of the prefix took all 4,000.
+    const busy = Array.from({ length: 4500 }, (_, i) => `zzzz_filler_${String(i).padStart(4, '0')}`);
+    await env.DB.batch(
+      [...busy, 'zzzz_widget_manager'].map((n) =>
+        env.DB.prepare('INSERT INTO catalog (kind, key, ecosystem, name, vendor, product, normalized, label, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
+          'product', `zvendor/${n}`, null, null, 'zvendor', n, n, n, 1,
+        ),
+      ),
+    );
+    const res = await resolveCandidates(store(), [
+      { kind: 'product', name: 'zzzz widget managr', vendor: null, version: null, direct: true },
+      { kind: 'product', name: 'zammad', vendor: null, version: null, direct: true },
+    ]);
+    // The misspelt name sits past 4,500 filler rows in its prefix, but its neighbours include its match.
+    expect(res.chips[0]!.items.map((i) => i.item)).toEqual(['p:zvendor/zzzz_widget_manager']);
+    expect(res.chips[1]!.items.map((i) => i.item)).toEqual(['p:zammad/zammad']);
+  });
+
+  it('splits the prefix row budget evenly between names', () => {
+    expect(prefixShare(1)).toBe(2000);
+    expect(prefixShare(30)).toBe(66);
+    expect(prefixShare(200)).toBe(10);
+    expect(prefixShare(0)).toBe(2000);
+  });
+
+  it('merges full and top vendor rows in VENDOR_SQL order, preferring the full list', () => {
+    const row = (key: string, count: number) => ({ kind: 'product' as const, key, ecosystem: null, name: null, vendor: key.split('/')[0]!, product: key.split('/')[1]!, normalized: key, label: null, count });
+    const all = [row('cisco/ios_xe', 9), row('cisco/nx_os', 5), row('cisco/asa', 5)];
+    const top = [row('cisco/ios_xe', 9), row('acme/widget', 7), row('acme/gadget', 9)];
+    expect(mergeVendorRows(all, top).map((r) => r.key)).toEqual(['acme/gadget', 'cisco/ios_xe', 'acme/widget', 'cisco/asa', 'cisco/nx_os']);
   });
 
   it('scores similarity sensibly', () => {

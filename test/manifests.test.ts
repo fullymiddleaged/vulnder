@@ -176,6 +176,20 @@ describe('pom.xml', () => {
       'Maven:junit:junit@',
     ]);
   });
+
+  it('takes the project version from outside <parent> and <dependencies>, trimming element text', () => {
+    const text = `<project>
+  <parent><groupId>com.example</groupId><artifactId>parent</artifactId><version>9.9</version></parent>
+  <version>
+    2.0.0
+  </version>
+  <dependencies>
+    <dependency><groupId> com.example </groupId><artifactId>lib</artifactId><version>\${project.version}</version></dependency>
+    <dependency><groupId>com.example</groupId><artifactId>other</artifactId><version>3.1</version></dependency>
+  </dependencies>
+</project>`;
+    expect(names(parseManifest(text)!.candidates)).toEqual(['Maven:com.example:lib@2.0.0', 'Maven:com.example:other@3.1']);
+  });
 });
 
 describe('Gemfile.lock', () => {
@@ -270,5 +284,25 @@ describe('detection', () => {
 
   it('falls through when the named parser fails', () => {
     expect(parseManifest('this is not json', 'package.json')).toBeNull();
+  });
+
+  // The server parses pasted text up to 200,000 characters. Each of these took
+  // from 0.2 s to over 3 minutes before its regex was made linear; workerd's
+  // clock doesn't advance mid-test, so the test timeout is the check.
+  it('parses hostile input in linear time, by content and by every file name', { timeout: 10_000 }, () => {
+    const fill = (unit: string, head = '', tail = '') => head + unit.repeat(Math.floor((200_000 - head.length - tail.length) / unit.length)) + tail;
+    const hostile = [
+      fill(' ', 'a', '#'),
+      fill('\t', 'a[x]', '#'),
+      fill('\n', 'a==1\n'),
+      fill('<!--', '<project><dependency>'),
+      fill('<dependency>', '<project>'),
+      fill('<dependencies>', '<project><dependency>'),
+      fill('<properties><x>', '<project><dependency>'),
+      fill('<parent>', '<project><dependency>'),
+      fill(' ', '<project><dependency><groupId>'),
+    ];
+    const filenames = [undefined, 'package-lock.json', 'package.json', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml', 'pom.xml', 'Gemfile.lock', 'composer.json', 'Dockerfile', 'a.cdx.json', 'a.spdx.json'];
+    for (const text of hostile) for (const filename of filenames) expect(() => parseManifest(text, filename)).not.toThrow();
   });
 });

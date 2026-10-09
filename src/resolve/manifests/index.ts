@@ -94,7 +94,9 @@ const requirementsTxt: ManifestParser = {
     if (lines.length === 0) return false;
     // Every line must look like a requirement, and at least one must carry a version specifier,
     // so a pasted word list ("redis\nnginx") is not mistaken for a requirements file.
-    const req = /^(-[a-zA-Z-]+.*|[A-Za-z0-9][A-Za-z0-9._-]*\s*(\[[^\]]*\])?\s*(([=<>!~]=?|===).*)?(;.*)?)$/;
+    // The extras group takes its own trailing whitespace: two \s* either side of an
+    // optional group could split one run of spaces every way, which is quadratic.
+    const req = /^(?:-[a-zA-Z-]+.*|[A-Za-z0-9][A-Za-z0-9._-]*\s*(?:\[[^\]]*\]\s*)?(?:(?:[=<>!~]=?|===).*)?(?:;.*)?)$/;
     return lines.every((l) => req.test(l)) && lines.some((l) => /[=<>~]=|>|</.test(l));
   },
   parse(text) {
@@ -112,7 +114,9 @@ const requirementsTxt: ManifestParser = {
 const pyprojectToml: ManifestParser = {
   id: 'pyproject.toml',
   matchesFilename: (f) => f === 'pyproject.toml',
-  sniff: (t) => /^\s*\[(project|tool\.poetry)(\.[\w.-]+)?\]/m.test(t),
+  // [ \t]* rather than \s* after ^ in multiline sniffs: \s* runs on through blank
+  // lines from every line start, which is quadratic in a run of newlines.
+  sniff: (t) => /^[ \t]*\[(project|tool\.poetry)(\.[\w.-]+)?\]/m.test(t),
   parse(text) {
     const doc = parseToml(text) as Json;
     const out: Candidate[] = [];
@@ -149,7 +153,7 @@ const pyprojectToml: ManifestParser = {
 const goMod: ManifestParser = {
   id: 'go.mod',
   matchesFilename: (f) => f === 'go.mod',
-  sniff: (t) => /^\s*module\s+\S+/m.test(t) && /^\s*(go\s+\d|require\b)/m.test(t),
+  sniff: (t) => /^[ \t]*module[ \t]+\S+/m.test(t) && /^[ \t]*(go[ \t]+\d|require\b)/m.test(t),
   parse(text) {
     const out: Candidate[] = [];
     let inBlock = false;
@@ -175,7 +179,7 @@ const goMod: ManifestParser = {
 const cargoToml: ManifestParser = {
   id: 'Cargo.toml',
   matchesFilename: (f) => f === 'Cargo.toml',
-  sniff: (t) => /^\s*\[package\]/m.test(t) && /^\s*\[(dev-|build-)?dependencies\]/m.test(t),
+  sniff: (t) => /^[ \t]*\[package\]/m.test(t) && /^[ \t]*\[(dev-|build-)?dependencies\]/m.test(t),
   parse(text) {
     const doc = parseToml(text) as Json;
     const out: Candidate[] = [];
@@ -199,22 +203,25 @@ const pomXml: ManifestParser = {
   id: 'pom.xml',
   matchesFilename: (f) => f === 'pom.xml',
   sniff: (t) => /<project[\s>]/.test(t) && /<dependency>/.test(t),
+  // Blocks are found with indexOf, not lazy regexes: /<x>[\s\S]*?<\/x>/ rescans
+  // to the end from every unclosed <x>, which 200,000 characters of them make
+  // seconds of CPU on the server. Element text is [^<]* then trimmed, for the same reason.
   parse(text) {
-    const xml = text.replace(/<!--[\s\S]*?-->/g, '');
-    const tag = (block: string, name: string) => new RegExp(`<${name}>\\s*([^<]*?)\\s*</${name}>`).exec(block)?.[1] ?? null;
+    const xml = stripXmlComments(text);
+    const tag = (block: string, name: string) => new RegExp(`<${name}>([^<]*)</${name}>`).exec(block)?.[1]!.trim() ?? null;
     const props = new Map<string, string>();
-    const propsBlock = /<properties>([\s\S]*?)<\/properties>/.exec(xml)?.[1] ?? '';
-    for (const m of propsBlock.matchAll(/<([\w.-]+)>\s*([^<]*?)\s*<\/\1>/g)) props.set(m[1]!, m[2]!);
-    const projectVersion = tag(xml.replace(/<parent>[\s\S]*?<\/parent>/, '').replace(/<dependencies>[\s\S]*<\/dependencies>/, ''), 'version');
+    const propsBlock = xmlBlocks(xml, 'properties')[0] ?? '';
+    for (const m of propsBlock.matchAll(/<([\w.-]+)>([^<]*)<\/\1>/g)) props.set(m[1]!, m[2]!.trim());
+    const projectVersion = tag(withoutDependencies(withoutFirst(xml, 'parent')), 'version');
     if (projectVersion) props.set('project.version', projectVersion);
     const resolve = (v: string | null) => (v ? v.replace(/\$\{([^}]+)\}/g, (_, k: string) => props.get(k) ?? `\${${k}}`) : null);
 
     const out: Candidate[] = [];
-    for (const m of xml.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)) {
-      const g = resolve(tag(m[1]!, 'groupId'));
-      const a = resolve(tag(m[1]!, 'artifactId'));
+    for (const block of xmlBlocks(xml, 'dependency')) {
+      const g = resolve(tag(block, 'groupId'));
+      const a = resolve(tag(block, 'artifactId'));
       if (!g || !a || g.includes('${') || a.includes('${')) continue;
-      const v = resolve(tag(m[1]!, 'version'));
+      const v = resolve(tag(block, 'version'));
       // Maven ranges ([1.0,2.0)) and unresolved properties are not exact versions.
       const exact = v && !/[[\](),$]/.test(v) ? v : null;
       out.push(pkg('Maven', `${g}:${a}`, exact));
@@ -222,6 +229,49 @@ const pomXml: ManifestParser = {
     return out;
   },
 };
+
+/** The text without <!-- … --> comments; an unclosed one is left as it is. */
+function stripXmlComments(xml: string): string {
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf('<!--', at);
+    const end = start < 0 ? -1 : xml.indexOf('-->', start + 4);
+    if (end < 0) return out + xml.slice(at);
+    out += xml.slice(at, start);
+    at = end + 3;
+  }
+}
+
+/** The contents of each <name>…</name>, shortest first match, like /<name>([\s\S]*?)<\/name>/g. */
+function xmlBlocks(xml: string, name: string): string[] {
+  const open = `<${name}>`;
+  const close = `</${name}>`;
+  const out: string[] = [];
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf(open, at);
+    const end = start < 0 ? -1 : xml.indexOf(close, start + open.length);
+    // No close after this opener means none after any later one either.
+    if (end < 0) return out;
+    out.push(xml.slice(start + open.length, end));
+    at = end + close.length;
+  }
+}
+
+/** The text without its first <name>…</name> block. */
+function withoutFirst(xml: string, name: string): string {
+  const start = xml.indexOf(`<${name}>`);
+  const end = start < 0 ? -1 : xml.indexOf(`</${name}>`, start);
+  return end < 0 ? xml : xml.slice(0, start) + xml.slice(end + name.length + 3);
+}
+
+/** The text without everything from the first <dependencies> to the last </dependencies>. */
+function withoutDependencies(xml: string): string {
+  const start = xml.indexOf('<dependencies>');
+  const end = xml.lastIndexOf('</dependencies>');
+  return start < 0 || end < start ? xml : xml.slice(0, start) + xml.slice(end + '</dependencies>'.length);
+}
 
 // ---- Ruby ----
 

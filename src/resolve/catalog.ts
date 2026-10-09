@@ -56,6 +56,10 @@ interface CatalogRow {
 const RESOLVE_SCORE = 0.8;
 const SUGGEST_SCORE = 0.45;
 const CLEAR_LEAD = 0.1;
+/** Added to a fuzzy score when the row's vendor is the one named, or its product is the exact name. */
+const VENDOR_BONUS = 0.15;
+const PRODUCT_BONUS = 0.1;
+const MAX_BONUS = VENDOR_BONUS + PRODUCT_BONUS;
 /** Fuzzy guesses get noisy past this many. Category expansion is not capped. */
 const MAX_FUZZY = 8;
 /** "Cisco" alone: the vendor's most-affected products. */
@@ -68,12 +72,31 @@ const MAX_PREFIX_ROWS = 4000;
  */
 export const MAX_PRODUCT_LOOKUPS = MAX_ITEMS;
 
-/** More distinct products or vendors than MAX_PRODUCT_LOOKUPS. */
+/**
+ * Matches one request may return in all: ten per allowed lookup. A lookup
+ * returns at most 8 fuzzy or vendor matches, and the largest category seen
+ * ("Cisco switches" and the like) is under 30; a stack holds MAX_ITEMS anyway.
+ * So only input built to multiply matches reaches this: 5,000 copies of a
+ * category with different versions would otherwise be 1.5 million items.
+ */
+export const MAX_RESOLVED_ITEMS = 10 * MAX_PRODUCT_LOOKUPS;
+
+/** More distinct products or vendors than MAX_PRODUCT_LOOKUPS, or more matches than MAX_RESOLVED_ITEMS. */
 export class TooManyProducts extends Error {
-  constructor() {
-    super(`at most ${MAX_PRODUCT_LOOKUPS} different products can be looked up at once`);
+  constructor(message = `at most ${MAX_PRODUCT_LOOKUPS} different products can be looked up at once`) {
+    super(message);
     this.name = 'TooManyProducts';
   }
+}
+
+/** What resolveProduct shares across one request's candidates. */
+interface Lookup {
+  byVendor: CatalogRow[];
+  knownAlias: Set<string>;
+  /** The fetched rows in one prefix's range, with their trigram index; built once per prefix. */
+  scope: (prefix: string) => { rows: CatalogRow[]; index: GramIndex };
+  /** Each category's products for a vendor, by `category index|vendor`. */
+  categories: Map<string, ChipItem[]>;
 }
 
 type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
@@ -84,18 +107,31 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
   const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
   const queries = [...new Set(products.map((p) => normalizeKey(p.name)).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
-  // Every product of each vendor named (or implied by the first word), for categories and vendor-only input.
+  // Each vendor named (or implied by the first word). Most names only need to
+  // know the vendor exists, plus its top few products for vendor-only input;
+  // only a category ("Cisco switches") needs every product of its vendor.
   const vendors = [...new Set(products.flatMap((p) => vendorGuesses(p)))];
+  const categoryVendors = [...new Set(products.filter((p) => CATEGORIES.some((cat) => cat.words.test(p.name))).flatMap((p) => vendorGuesses(p)))];
+  // Each distinct product is resolved once (duplicates reuse it), and fuzzy
+  // scoring costs about rows × lookups, so lookups are capped by what drives
+  // resolveProduct, not only by name: 5,000 copies of a name, or one name with
+  // 5,000 vendors, would otherwise score the rows 5,000 times.
+  const lookupKeys = products.map(productLookupKey);
   // Each product makes up to two vendor guesses.
-  if (queries.length > MAX_PRODUCT_LOOKUPS || vendors.length > 2 * MAX_PRODUCT_LOOKUPS) throw new TooManyProducts();
+  if (queries.length > MAX_PRODUCT_LOOKUPS || vendors.length > 2 * MAX_PRODUCT_LOOKUPS || new Set(lookupKeys).size > MAX_PRODUCT_LOOKUPS) {
+    throw new TooManyProducts();
+  }
 
-  // Three independent queries, sent together. Each reads only index ranges:
-  // exact keys (packages and alias targets), name prefixes, vendor key prefixes.
-  const [known, rows, byVendor] = await Promise.all([
+  // Independent queries, sent together. Each reads only index ranges: exact keys
+  // (packages and alias targets), name prefixes, each vendor's top products, and
+  // every product of the vendors a category names.
+  const [known, rows, top, all] = await Promise.all([
     knownKeys(store, [...packageKeys.map((key) => ({ kind: 'package' as const, key })), ...aliasItems.map(catalogKey)]),
     queries.length === 0 ? [] : productCandidates(store, queries),
-    vendors.length === 0 ? [] : productsByVendor(store, vendors),
+    vendors.length === 0 ? [] : store.all<CatalogRow>(VENDOR_TOP_SQL, [JSON.stringify(vendors), MAX_VENDOR_ONLY]),
+    categoryVendors.length === 0 ? [] : productsByVendor(store, categoryVendors),
   ]);
+  const byVendor = mergeVendorRows(all, top);
   const knownPackages = new Set(packageKeys.filter((key) => known.has(`package ${key}`)));
   const knownAlias = new Set(aliasItems.filter((item) => {
     const { kind, key } = catalogKey(item);
@@ -104,6 +140,19 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
 
   const chips: Chip[] = [];
   let droppedTransitive = 0;
+  const lookups = new Map<string, Chip>();
+  const scopes = new Map<string, { rows: CatalogRow[]; index: GramIndex }>();
+  const scope = (prefix: string) => {
+    let s = scopes.get(prefix);
+    if (!s) {
+      const own = rows.filter((r) => r.normalized.startsWith(prefix));
+      scopes.set(prefix, (s = { rows: own, index: gramIndex(own.map((r) => r.normalized)) }));
+    }
+    return s;
+  };
+  const lookup: Lookup = { byVendor, knownAlias, scope, categories: new Map() };
+  let productIndex = 0;
+  let itemCount = 0;
   for (const c of candidates) {
     if (c.kind === 'package') {
       let name = normalizePackageName(c.ecosystem, c.name);
@@ -129,10 +178,32 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
       });
       continue;
     }
-    chips.push(resolveProduct(c, rows, byVendor, knownAlias));
+    const lookupKey = lookupKeys[productIndex++]!;
+    let chip = lookups.get(lookupKey);
+    if (!chip) lookups.set(lookupKey, (chip = resolveProduct({ ...c, version: null }, lookup)));
+    // Counted before forCandidate copies the items, so an oversized request stops early.
+    itemCount += chip.items.length;
+    if (itemCount > MAX_RESOLVED_ITEMS) throw new TooManyProducts(`these names match more than ${MAX_RESOLVED_ITEMS} products`);
+    chips.push(forCandidate(chip, c));
   }
 
   return { chips, droppedTransitive };
+}
+
+/** Everything resolveProduct reads from a candidate, apart from its version and label. */
+function productLookupKey(c: ProductCandidate): string {
+  return JSON.stringify([normalizeKey(c.name), vendorGuesses(c), CATEGORIES.findIndex((cat) => cat.words.test(c.name))]);
+}
+
+/** A resolved lookup, labelled and versioned for one candidate. */
+function forCandidate(chip: Chip, c: ProductCandidate): Chip {
+  const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
+  if (!c.version) return { ...chip, input };
+  const items = chip.items.map((i) => {
+    const parsed = parseStack(i.item.replace(/^\?/, ''))[0]!;
+    return { ...i, item: formatItem({ ...parsed, version: c.version, close: i.close || undefined }) };
+  });
+  return { ...chip, input, items };
 }
 
 /**
@@ -160,7 +231,7 @@ function roundTrips(ecosystem: Ecosystem, rawName: string, version: string | nul
   }
 }
 
-function resolveProduct(c: ProductCandidate, rows: CatalogRow[], byVendor: CatalogRow[], knownAlias: Set<string>): Chip {
+function resolveProduct(c: ProductCandidate, { byVendor, knownAlias, scope, categories }: Lookup): Chip {
   const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   const key = normalizeKey(c.name);
   if (!key) return { input, status: 'unrecognised', items: [] };
@@ -178,19 +249,35 @@ function resolveProduct(c: ProductCandidate, rows: CatalogRow[], byVendor: Catal
   }
 
   // 2. Categories: "Cisco switches" means every Cisco switch product.
-  const category = CATEGORIES.find((cat) => cat.words.test(c.name));
+  const categoryIndex = CATEGORIES.findIndex((cat) => cat.words.test(c.name));
+  const category = CATEGORIES[categoryIndex];
   const vendorKey = vendorGuesses(c).find((v) => byVendor.some((r) => r.vendor === v)) ?? null;
   if (category && vendorKey) {
-    const pattern = ownValue(category.byVendor, vendorKey) ?? category.generic;
-    const fitting = byVendor.filter((r) => r.vendor === vendorKey && pattern.test(stripVendor(r.product!, vendorKey)));
-    if (fitting.length > 0) return resolved(fitting.map((r) => make(itemOf(r), r.label ?? r.key, true, true)));
+    // The same for every name in this category and vendor ("Cisco switches", "Cisco access switches").
+    const cacheKey = `${categoryIndex}|${vendorKey}`;
+    let items = categories.get(cacheKey);
+    if (!items) {
+      const pattern = ownValue(category.byVendor, vendorKey) ?? category.generic;
+      const fitting = byVendor.filter((r) => r.vendor === vendorKey && pattern.test(stripVendor(r.product!, vendorKey)));
+      categories.set(cacheKey, (items = fitting.map((r) => make(itemOf(r), r.label ?? r.key, true, true))));
+    }
+    if (items.length > 0) return resolved(items);
   }
 
   // 3. Exact key or clear fuzzy winner; otherwise every plausible guess as close.
-  const scored = rows
-    .map((r) => ({ r, score: similarity(key, r.normalized) + (vendorKey && r.vendor === vendorKey ? 0.15 : 0) + (r.product === key ? 0.1 : 0) }))
-    .filter((s) => s.score >= SUGGEST_SCORE)
-    .sort((a, b) => b.score - a.score || b.r.count - a.r.count);
+  // Only rows in this name's own prefix range count, so a name resolves the
+  // same whatever else was asked for alongside it.
+  const { rows: own, index } = scope(prefixOf(key));
+  const sims = similarities(key, index);
+  const scored: { r: CatalogRow; score: number }[] = [];
+  for (let i = 0; i < own.length; i++) {
+    // Most rows share a letter or two and no more: skip them before building anything.
+    if (sims[i]! + MAX_BONUS < SUGGEST_SCORE) continue;
+    const r = own[i]!;
+    const score = sims[i]! + (vendorKey && r.vendor === vendorKey ? VENDOR_BONUS : 0) + (r.product === key ? PRODUCT_BONUS : 0);
+    if (score >= SUGGEST_SCORE) scored.push({ r, score });
+  }
+  scored.sort((a, b) => b.score - a.score || b.r.count - a.r.count);
   const unique = [...new Map(scored.map((s) => [s.r.key, s])).values()];
   const best = unique[0];
   if (best) {
@@ -198,7 +285,9 @@ function resolveProduct(c: ProductCandidate, rows: CatalogRow[], byVendor: Catal
     if (best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
       return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true)]);
     }
-    return resolved(unique.slice(0, MAX_FUZZY).map((s) => make(itemOf(s.r), s.r.label ?? s.r.key, true, true)));
+    // The closest names are kept, then listed most-affected first, like every other close match.
+    const closest = unique.slice(0, MAX_FUZZY).sort((a, b) => b.r.count - a.r.count || b.score - a.score);
+    return resolved(closest.map((s) => make(itemOf(s.r), s.r.label ?? s.r.key, true, true)));
   }
 
   // 4. Only a vendor: its most-affected products, as close matches.
@@ -239,12 +328,27 @@ function itemOf(r: CatalogRow): string {
 }
 
 /** Catalog rows whose normalized name shares a prefix with any query. */
+/** Rows each side of each name in PREFIX_SQL, so all names together read at most MAX_PREFIX_ROWS. */
+export function prefixShare(names: number): number {
+  return Math.max(1, Math.floor(MAX_PREFIX_ROWS / (2 * Math.max(1, names))));
+}
+
+/** The start of a name that catalog rows must share to be compared with it. */
+function prefixOf(key: string): string {
+  return key.slice(0, key.length >= 6 ? 4 : 3);
+}
+
 async function productCandidates(store: Store, queries: string[]): Promise<CatalogRow[]> {
   const ranges = queries.map((q) => {
-    const prefix = q.slice(0, q.length >= 6 ? 4 : 3);
-    return [prefix, `${prefix}\u{10FFFF}`];
+    const prefix = prefixOf(q);
+    return [prefix, `${prefix}\u{10FFFF}`, q];
   });
-  return store.all<CatalogRow>(PREFIX_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS]);
+  // Every row of every range, when they fit: the cheap query, and what nearly every request needs.
+  const all = await store.all<CatalogRow>(PREFIX_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS + 1]);
+  if (all.length <= MAX_PREFIX_ROWS) return all;
+  // They don't, so later names may have got nothing: give each name an even
+  // share of MAX_PREFIX_ROWS instead, half above it and half below.
+  return store.all<CatalogRow>(PREFIX_NEAR_SQL, [JSON.stringify(ranges), prefixShare(queries.length)]);
 }
 
 /*
@@ -254,11 +358,29 @@ async function productCandidates(store: Store, queries: string[]): Promise<Catal
  * lookups instead of the catalog driving a scan.
  */
 
-/** Catalog rows whose normalized name falls in any [from, to) range. */
+/** Catalog rows whose normalized name falls in any [from, to) range. About one row read per row returned. */
 export const PREFIX_SQL = `SELECT DISTINCT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
   FROM json_each(?1) j
   CROSS JOIN catalog c ON c.normalized >= json_extract(j.value, '$[0]') AND c.normalized < json_extract(j.value, '$[1]')
   LIMIT ?2`;
+
+/**
+ * For each [from, to, name]: up to ?2 catalog rows either side of the name in
+ * [from, to), nearest first. Each name gets its own share, so a busy prefix
+ * can't use up a shared limit and leave later names with no rows at all (one
+ * LIMIT over every range lost 58 of 200 names that way). Alphabetical
+ * neighbours share the longest start with the name, so they're the likeliest
+ * matches when a busy prefix has more rows than the share. D1 reads about
+ * three rows per row returned here, so it's only the fallback for PREFIX_SQL.
+ */
+export const PREFIX_NEAR_SQL = `SELECT DISTINCT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
+  FROM json_each(?1) j
+  CROSS JOIN catalog c ON c.rowid IN (
+    SELECT rowid FROM (SELECT rowid FROM catalog
+      WHERE normalized >= json_extract(j.value, '$[2]') AND normalized < json_extract(j.value, '$[1]') ORDER BY normalized LIMIT ?2)
+    UNION ALL
+    SELECT rowid FROM (SELECT rowid FROM catalog
+      WHERE normalized >= json_extract(j.value, '$[0]') AND normalized < json_extract(j.value, '$[2]') ORDER BY normalized DESC LIMIT ?2))`;
 
 /** Products of the given vendors, most-affected first. Product keys are `vendor/product`, and '0' sorts right after '/'. */
 export const VENDOR_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
@@ -270,8 +392,27 @@ export const VENDOR_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, 
 export const KNOWN_KEYS_SQL = `SELECT kind, key FROM catalog
   WHERE kind IN ('package', 'product') AND key IN (SELECT value FROM json_each(?))`;
 
+/**
+ * Each vendor's top products, most-affected first. Reads only those rows
+ * through catalog_vendor_count (migration 0006); VENDOR_SQL reads every
+ * product of every vendor to sort them, about 12,000 rows for 200 big vendors.
+ */
+export const VENDOR_TOP_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
+  FROM json_each(?1) j
+  CROSS JOIN catalog c ON c.rowid IN (
+    SELECT rowid FROM catalog WHERE kind = 'product' AND vendor = j.value ORDER BY count DESC, key LIMIT ?2)`;
+
 async function productsByVendor(store: Store, vendors: string[]): Promise<CatalogRow[]> {
   return store.all<CatalogRow>(VENDOR_SQL, [JSON.stringify(vendors), MAX_PREFIX_ROWS]);
+}
+
+/**
+ * Vendor rows in VENDOR_SQL's order (most-affected first, then key): every
+ * product for vendors fetched in full, the top few for the rest.
+ */
+export function mergeVendorRows(all: CatalogRow[], top: CatalogRow[]): CatalogRow[] {
+  const full = new Set(all.map((r) => r.vendor));
+  return [...all, ...top.filter((r) => !full.has(r.vendor))].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
 interface CatalogKey {
@@ -298,18 +439,61 @@ function labelFor(item: string): string {
 
 /** Sørensen–Dice coefficient over character trigrams (with padding). */
 export function similarity(a: string, b: string): number {
-  if (a === b) return 1;
-  const grams = (s: string) => {
-    const padded = `  ${s} `;
-    const out = new Map<string, number>();
-    for (let i = 0; i < padded.length - 2; i++) {
-      const g = padded.slice(i, i + 3);
-      out.set(g, (out.get(g) ?? 0) + 1);
+  return a === b ? 1 : dice(trigrams(a), trigrams(b));
+}
+
+type Grams = Map<string, number>;
+
+function trigrams(s: string): Grams {
+  const padded = `  ${s} `;
+  const out: Grams = new Map();
+  for (let i = 0; i < padded.length - 2; i++) {
+    const g = padded.slice(i, i + 3);
+    out.set(g, (out.get(g) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** Strings by trigram, with each string's trigram total. */
+interface GramIndex {
+  totals: number[];
+  postings: Map<string, [row: number, count: number][]>;
+}
+
+function gramIndex(strings: string[]): GramIndex {
+  const postings: GramIndex['postings'] = new Map();
+  const totals = strings.map((s, row) => {
+    let total = 0;
+    for (const [g, count] of trigrams(s)) {
+      const list = postings.get(g) ?? postings.set(g, []).get(g)!;
+      list.push([row, count]);
+      total += count;
     }
-    return out;
-  };
-  const ga = grams(a);
-  const gb = grams(b);
+    return total;
+  });
+  return { totals, postings };
+}
+
+/**
+ * similarity(key, s) for every indexed string, touching only strings that
+ * share a trigram with the key; the rest score 0. Comparing each name with
+ * every row instead cost seconds for 200 names against 4,000 rows.
+ */
+function similarities(key: string, { totals, postings }: GramIndex): Float64Array {
+  const shared = new Float64Array(totals.length);
+  let keyTotal = 0;
+  for (const [g, n] of trigrams(key)) {
+    keyTotal += n;
+    for (const [row, count] of postings.get(g) ?? []) shared[row]! += Math.min(n, count);
+  }
+  for (let row = 0; row < shared.length; row++) {
+    const total = keyTotal + totals[row]!;
+    shared[row] = total === 0 ? 0 : (2 * shared[row]!) / total;
+  }
+  return shared;
+}
+
+function dice(ga: Grams, gb: Grams): number {
   let shared = 0;
   let total = 0;
   for (const [g, n] of ga) {

@@ -59,11 +59,13 @@ describe('feed passes on the routes', () => {
   it('limits a pass to two different stacks an hour, then locks the browser', async () => {
     const id = await issuePass(store(), new Date());
     const cookie = `vulnder_pass=${id}`;
-    // A shared office IP whose limiter is spent doesn't stop a browser with a pass.
-    const refuse = { limit: async () => ({ success: false }) } as unknown as RateLimit;
+    // A shared office IP whose limiter is spent doesn't stop a browser with a pass: the pass has a bucket of its own.
+    const keys: string[] = [];
+    const refuse = { limit: async ({ key }: { key: string }) => (keys.push(key), { success: key.startsWith('pass:') }) } as unknown as RateLimit;
     const first = await feed('pypi:fastapi', cookie, refuse);
     expect(first.status).toBe(200);
     expect(lockCookie(first)).toBeNull();
+    expect(keys).toEqual([`pass:${id}`]);
 
     // The second stack loads, and its response locks the browser.
     const second = await feed('p:postgresql/postgresql', cookie, refuse);
@@ -85,6 +87,16 @@ describe('feed passes on the routes', () => {
     const status = await app.request('/api/pass', { headers: { cookie } }, e());
     expect(await status.json()).toMatchObject({ active: true, used: 2, limit: 2 });
     expect(await (await app.request('/api/pass', {}, e())).json()).toEqual({ active: false, used: 0, limit: 2, resetsAt: null });
+  });
+
+  it('still rate-limits cache misses for a pass, in its own bucket', async () => {
+    // One stack under many windows and routes counts once against the pass, so
+    // without this a pass could ask for hundreds of uncached feeds at once.
+    const id = await issuePass(store(), new Date());
+    const spentPass = { limit: async ({ key }: { key: string }) => ({ success: key !== `pass:${id}` }) } as unknown as RateLimit;
+    const res = await feed('npm:left-pad', `vulnder_pass=${id}`, spentPass);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
   });
 
   it('refuses a locked browser from its lock cookie alone, without D1', async () => {
