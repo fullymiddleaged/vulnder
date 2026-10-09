@@ -82,7 +82,7 @@ header.site, main, footer.site, .status { max-width: 48rem; margin: 0 auto; padd
 header.site { padding-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--fg); text-decoration: none; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
 .logo { width: 2.1rem; height: 2.1rem; color: var(--accent); align-self: center; }
-.tagline { color: var(--muted); margin: 0; font: inherit; }
+.tagline { flex-basis: 100%; color: var(--muted); margin: 0; font: inherit; }
 main { display: grid; gap: 2.25rem; margin-top: 2.5rem; }
 footer.site { margin: 4rem auto 2rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
 
@@ -342,7 +342,7 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 }
 
 /* About and How it works: static pages of prose. */
-.site-nav { margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap; }
+.site-nav { margin-left: auto; display: flex; gap: 0.25rem 1rem; flex-wrap: wrap; }
 .site-nav a[aria-current='page'] { color: var(--fg); font-weight: 700; text-decoration: none; }
 .footer-nav { display: flex; gap: 0.4rem 1rem; flex-wrap: wrap; }
 .prose { display: block; }
