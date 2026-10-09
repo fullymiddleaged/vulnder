@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="How Vulnder turns a description of your stack into a ranked list of CVEs: the hourly data pipeline, where AI is used and where code decides, how priorities work, and how to hand results to an AI assistant." />
+    <title>How Vulnder works: from your stack to ranked CVEs</title>
+    <!-- Self-hosting under another name? Change vulnder.com here and in robots.txt, sitemap.xml and llms.txt. -->
+    <link rel="canonical" href="https://vulnder.com/how-it-works" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Vulnder" />
+    <meta property="og:url" content="https://vulnder.com/how-it-works" />
+    <meta property="og:title" content="How Vulnder works: from your stack to ranked CVEs" />
+    <meta property="og:description" content="The pipeline behind Vulnder: hourly CVE, KEV and EPSS data, AI that only reads and judges, and code that ranks every match with its reasons." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site">
+      <a href="/" class="brand" aria-label="Vulnder home">
+        <svg class="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <g fill="currentColor">
+            <path fill-rule="evenodd" d="M20 3a17 17 0 1 0 0.01 0ZM20 8.5a11.5 11.5 0 1 1-0.01 0Z" />
+            <path d="M31.5 35.5l4-4 10 10a2.8 2.8 0 0 1-4 4Z" />
+            <path d="M20 27.7C14.96 24.1 12.44 21.22 12.44 17.62 12.44 15.1 14.24 13.3 16.58 13.3 18.02 13.3 19.28 14.2 20 15.46 20.72 14.2 21.98 13.3 23.42 13.3 25.76 13.3 27.56 15.1 27.56 17.62 27.56 21.22 25.04 24.1 20 27.7Z" />
+          </g>
+        </svg>
+        <span>Vulnder</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/">Check your stack</a>
+        <a href="/about">About</a>
+        <a href="/how-it-works" aria-current="page">How it works</a>
+      </nav>
+    </header>
+
+    <main id="main" class="prose" tabindex="-1">
+      <h1>How Vulnder works</h1>
+      <p class="lede">
+        Vulnder has two halves. Every hour it collects what's known about new vulnerabilities. When you ask, it works out what you run,
+        matches it against that data, and ranks the results by what to fix first.
+      </p>
+
+      <section class="block" aria-labelledby="pipeline">
+        <h2 id="pipeline">The pipeline</h2>
+        <figure class="arch-figure">
+          <svg class="arch" viewBox="0 0 420 488" role="img" aria-labelledby="arch-title arch-desc">
+            <title id="arch-title">Vulnder's architecture</title>
+            <desc id="arch-desc">
+              Two lanes meet in the Worker. Every hour, CVE records, GitHub advisories, CISA KEV and EPSS are ingested, similar CVEs are grouped with embeddings,
+              and the result is stored in D1. On request, your words are screened by Jev, component names are extracted by Gemma 4, resolved against the catalog
+              in D1, and judged for fit and exposure by Jev, giving a stack link. A lockfile skips those AI steps and goes straight to the stack link.
+              The Worker matches the stack against D1, with version checks from OSV, ranks the results, and serves the results page, JSON, Atom and badge.
+            </desc>
+            <defs>
+              <marker id="arch-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="head" d="M0 0L8 4L0 8Z" />
+              </marker>
+            </defs>
+
+            <text class="lane-label" x="0" y="10">ON REQUEST</text>
+            <text class="lane-label" x="224" y="10">EVERY HOUR</text>
+
+            <!-- On request -->
+            <rect class="box local" x="0" y="20" width="120" height="36" />
+            <text class="t" x="60" y="38">Your words</text>
+            <rect class="box local" x="126" y="20" width="74" height="36" />
+            <text class="t" x="163" y="38">Lockfile</text>
+
+            <path class="wire" d="M60 56V76" />
+            <rect class="box ai" x="0" y="76" width="120" height="36" />
+            <text class="t" x="60" y="89">Screen</text>
+            <text class="s" x="60" y="103">Jev</text>
+
+            <path class="wire" d="M60 112V132" />
+            <rect class="box ai" x="0" y="132" width="120" height="36" />
+            <text class="t" x="60" y="145">Extract names</text>
+            <text class="s" x="60" y="159">Gemma 4</text>
+
+            <path class="wire" d="M60 168V196" />
+            <rect class="box" x="0" y="196" width="120" height="36" />
+            <text class="t" x="60" y="209">Resolve</text>
+            <text class="s" x="60" y="223">names → products</text>
+
+            <path class="wire" d="M60 232V252" />
+            <rect class="box ai" x="0" y="252" width="120" height="36" />
+            <text class="t" x="60" y="265">Judge fit</text>
+            <text class="s" x="60" y="279">+ exposure · Jev</text>
+
+            <path class="wire" d="M60 288V312" />
+            <!-- The lockfile skips every AI step; the gap is where the catalog wire crosses it. -->
+            <path class="wire plain" d="M163 56V216" />
+            <path class="wire" d="M163 228V312" />
+            <rect class="box local" x="0" y="312" width="200" height="36" />
+            <text class="t" x="100" y="325">Stack link</text>
+            <text class="s" x="100" y="339">?s=… in the URL</text>
+
+            <!-- Every hour -->
+            <rect class="box" x="224" y="20" width="94" height="32" />
+            <text class="t" x="271" y="36">CVE List</text>
+            <rect class="box" x="326" y="20" width="94" height="32" />
+            <text class="t" x="373" y="36">GHSA</text>
+            <rect class="box" x="224" y="60" width="94" height="32" />
+            <text class="t" x="271" y="76">CISA KEV</text>
+            <rect class="box" x="326" y="60" width="94" height="32" />
+            <text class="t" x="373" y="76">FIRST EPSS</text>
+            <path class="wire plain" d="M271 92V100H373V92" />
+            <path class="wire" d="M322 100V112" />
+
+            <rect class="box" x="224" y="112" width="196" height="36" />
+            <text class="t" x="322" y="125">Ingest</text>
+            <text class="s" x="322" y="139">merge · record changes</text>
+
+            <path class="wire" d="M322 148V164" />
+            <rect class="box ai" x="224" y="164" width="196" height="36" />
+            <text class="t" x="322" y="177">Group similar CVEs</text>
+            <text class="s" x="322" y="191">embeddings · CVE text only</text>
+
+            <path class="wire" d="M322 200V213" />
+            <path class="box" d="M224 220V262A98 6 0 0 0 420 262V220" />
+            <ellipse class="box" cx="322" cy="220" rx="98" ry="6" />
+            <text class="t" x="322" y="239">D1</text>
+            <text class="s" x="322" y="253">90 days · catalog</text>
+
+            <path class="wire" d="M224 222H120" />
+            <text class="s" x="196" y="214">catalog</text>
+
+            <!-- The lanes meet -->
+            <path class="wire" d="M100 348V368" />
+            <path class="wire" d="M260 268V368" />
+            <rect class="frame" x="0" y="368" width="300" height="60" />
+            <text class="lane-label" x="8" y="381">WORKER</text>
+            <rect class="box" x="12" y="388" width="126" height="30" />
+            <text class="t" x="75" y="403">Match</text>
+            <path class="wire" d="M138 403H162" />
+            <rect class="box" x="162" y="388" width="126" height="30" />
+            <text class="t" x="225" y="403">Rank</text>
+
+            <path class="wire both" d="M300 403H324" />
+            <rect class="box" x="324" y="388" width="96" height="30" />
+            <text class="t" x="372" y="403">OSV</text>
+            <text class="s" x="372" y="432">version checks</text>
+
+            <path class="wire" d="M150 428V448" />
+            <rect class="box" x="0" y="448" width="300" height="34" />
+            <text class="t" x="150" y="465">Results · JSON · Atom · badge</text>
+          </svg>
+          <figcaption class="small legend">
+            <span><span class="key ai"></span> Calls a model on Workers AI</span>
+            <span><span class="key"></span> Plain code</span>
+            <span><span class="key local"></span> In your browser</span>
+          </figcaption>
+        </figure>
+
+        <div class="lane">
+          <h3>Every hour: collect</h3>
+          <ol class="pipeline">
+            <li>
+              <strong>Fetch</strong>
+              <p>New and changed CVE records, with CISA's Vulnrichment assessments (is it exploited, is it automatable). GitHub's advisories for package names and fixed versions. CISA's Known Exploited Vulnerabilities catalog. FIRST's EPSS scores.</p>
+            </li>
+            <li>
+              <strong>Merge and record what changed</strong>
+              <p>One record per vulnerability, whichever source it came from. New issues, KEV additions, EPSS jumps and fix releases are kept as events, for "What changed this week" and the Atom feed.</p>
+            </li>
+            <li class="ai">
+              <strong>Group similar CVEs</strong> <span class="tag">AI</span>
+              <p>Each new CVE's title is turned into an embedding once, so CVEs in the same product that describe nearly the same flaw can be grouped. The model sees CVE text only, never anything you type. Code decides what counts as similar, at a calibrated threshold.</p>
+            </li>
+            <li>
+              <strong>Keep 90 days</strong>
+              <p>A vulnerability stays while it was published, or had an event, in the last 90 days, so an old CVE that lands on KEV today still shows up.</p>
+            </li>
+          </ol>
+        </div>
+
+        <div class="lane">
+          <h3>When you ask: match and rank</h3>
+          <ol class="pipeline">
+            <li class="ai">
+              <strong>Screen</strong> <span class="tag">AI</span>
+              <p>Text that reads like instructions for an AI, rather than a list of what you run, is refused: first by a phrase check, then by Jev, TypeSafe's decision model.</p>
+            </li>
+            <li class="ai">
+              <strong>Pick out components</strong> <span class="tag">AI</span>
+              <p>A model on Workers AI lists the components your text names, as structured data checked against a schema. Anything whose name isn't in your words is dropped, whether it was made up or planted.</p>
+            </li>
+            <li>
+              <strong>Resolve</strong>
+              <p>Names are matched to the catalog of products and packages that appear in vulnerability data. A vague name like "Cisco switches" becomes several close matches, marked with <code>?</code>. Lockfiles and SBOMs start here: they're read in your browser and skip the AI steps.</p>
+            </li>
+            <li class="ai">
+              <strong>Judge fit and exposure</strong> <span class="tag">AI</span>
+              <p>When your description makes your scale or hosting clear, Jev judges how well each close match fits, so a home lab sees small-business gear before data-centre switches. It also says which components your description puts on the internet. Code acts on its answers at fixed thresholds.</p>
+            </li>
+            <li>
+              <strong>Match</strong>
+              <p>Your stack is matched to the vulnerability data. For packages with a version, OSV checks whether that exact version is affected.</p>
+            </li>
+            <li>
+              <strong>Rank</strong>
+              <p>Each result gets a priority, a score for ordering, the reasons for both and a suggested time to respond. Fix first orders your components by what upgrading each one removes.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="ai">
+        <h2 id="ai">Where AI is used, and where it isn't</h2>
+        <p>
+          AI reads and judges. Code decides. A model that ranked your risk could be wrong without you ever seeing why. A rule can be read, tested and argued with.
+        </p>
+        <ul>
+          <li><strong>Models do:</strong> pick component names out of your description, screen it for prompt injection, judge which close matches fit and which components face the internet, and group similar CVE titles.</li>
+          <li><strong>Models never:</strong> rank CVEs, set a priority, hide a match, or see your lockfile.</li>
+          <li><strong>Their answers are untrusted.</strong> Output is checked against a schema and against your own words, and fixed thresholds in code turn a judgment into an action. Fit only reorders close matches; it never removes one.</li>
+          <li><strong>They fail open.</strong> If a model is unavailable, parsing carries on without it: close matches keep catalog order, and you can always add items by hand or upload a lockfile.</li>
+        </ul>
+      </section>
+
+      <section class="block" aria-labelledby="ranking">
+        <h2 id="ranking">How results are ranked</h2>
+        <p>
+          Priorities are named after the decisions in CISA's SSVC. Evidence of exploitation always outranks a prediction, and a prediction outranks severity.
+          With AI finding more severe bugs and attackers moving faster, that order matters more every month: <a href="/about#priority">why prioritising matters more now</a>.
+        </p>
+        <ul class="levels">
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's Known Exploited Vulnerabilities catalog, or CISA reports active exploitation. Respond within 24 hours on an internet-facing item, 48 hours otherwise.</span></li>
+          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> exploitation is likely, or would be easy. EPSS of 10% or more, NIST's LEV estimate of 20% or more, a similar CVE in the same product being exploited, or a critical bug an attacker can reach without a login. Within 7 days.</span></li>
+          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> serious but less pressing, such as CVSS 8.0 or more, or a proof-of-concept exploit. Within 30 days.</span></li>
+          <li class="grey"><span class="light"></span><span><strong>Track:</strong> it affects your stack, but nothing above applies. Pick it up in your next routine update.</span></li>
+        </ul>
+        <p>
+          Within a priority, a 0–100 score puts results in order. It combines threat, impact, reachability and ransomware use. It's a heuristic, not a probability.
+          Each result names the signal that decided its priority, lists the rest, and says what data wasn't available yet, so a quiet result reads as unknown, not safe.
+          Response times are guidance, not deadlines. The full rules are in the <a href="https://github.com/fullymiddleaged/vulnder#how-it-ranks-things" rel="noreferrer">README</a>.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="agents">
+        <h2 id="agents">Use it with an AI assistant</h2>
+        <ul>
+          <li>
+            <strong>Export Markdown</strong> on the results page is written to hand to an assistant or a coding agent. It starts with instructions for working through the findings
+            (check each one applies, upgrade to a fixed version or apply the mitigation, report one outcome per CVE). It also says that advisory text is quoted data, never instructions,
+            so a planted line in an advisory can't steer your agent. Paste it into a chat, or drop it into the repository your agent is working on.
+          </li>
+          <li><strong>Export JSON</strong>, and the JSON feed at <code>/api/feed?s=…</code>, carry the same priorities, scores, reasons and Fix first list for scripts and tools.</li>
+          <li><strong>The Atom feed</strong> gets one entry per change, and the <strong>badge</strong> counts known-exploited CVEs for a README.</li>
+          <li><strong>For agents</strong>, <a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build a stack from your manifests and fetch the results itself.</li>
+        </ul>
+        <p class="notice">
+          Pasting an export into a hosted AI shares your stack with that provider. A list of what you run is useful to an attacker, so check the provider's data policy first.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="privacy">
+        <h2 id="privacy">Privacy</h2>
+        <ul>
+          <li>Your stack and what you type are never stored or logged. A parse is cached under a hash of the text, never the text itself.</li>
+          <li>Lockfiles and SBOMs are read in your browser. Only package names and versions are sent.</li>
+          <li>Stack links are left out of logs, and pages send no <code>Referer</code>, so clicking through to an advisory doesn't pass your stack on.</li>
+          <li>IP addresses are used only as rate-limit keys, or as a hash salted afresh each day.</li>
+          <li>No analytics or tracking scripts. Cloudflare Turnstile protects the submit form.</li>
+          <li>Vulnder runs on Cloudflare, which processes every request, including the stack in a link. If that's too much exposure, run your own copy.</li>
+        </ul>
+      </section>
+
+      <section class="block" aria-labelledby="limits">
+        <h2 id="limits">What it doesn't do</h2>
+        <ul>
+          <li><strong>It doesn't scan your systems.</strong> It knows what you tell it. A lockfile gives exact versions; a sentence gives product matches to confirm.</li>
+          <li><strong>It covers recent CVEs.</strong> The last 30 days by default, up to 90. It isn't an inventory of every old bug you carry.</li>
+          <li><strong>It knows what the data names.</strong> Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products named in CVE records. Anything else shows as unrecognised.</li>
+          <li><strong>New CVEs are thin.</strong> Many arrive without a CVSS or EPSS score. Results say so rather than guess.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site">
+      <p class="small footer-nav">
+        <a href="/">Check your stack</a>
+        <a href="/about">About</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">Source on GitHub</a>
+      </p>
+      <p class="small muted">
+        Data: <a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records (MITRE)</a>,
+        <a href="https://github.com/advisories" rel="noreferrer">GitHub Advisory Database</a>,
+        <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a>,
+        <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
+        and <a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks.
+        EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.
+        Open source under the Apache License 2.0.
+      </p>
+    </footer>
+  </body>
+</html>

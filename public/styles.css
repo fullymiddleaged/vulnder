@@ -341,6 +341,60 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
   34% { transform: scale(1.16); }
 }
 
+/* About and How it works: static pages of prose. */
+.site-nav { margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap; }
+.site-nav a[aria-current='page'] { color: var(--fg); font-weight: 700; text-decoration: none; }
+.footer-nav { display: flex; gap: 0.4rem 1rem; flex-wrap: wrap; }
+.prose { display: block; }
+.prose h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 1rem; }
+.prose .lede { font-size: 1.15rem; }
+.prose section { margin-top: 2.25rem; }
+.prose li { margin: 0.35rem 0; }
+.prose li::marker { color: var(--muted); }
+.prose .sign { margin-top: 1.5rem; }
+/* Footnote marks shouldn't open up the line they sit on. */
+.prose sup { line-height: 0; font-size: 0.7em; }
+.sources { padding-left: 1.1rem; }
+.sources li { overflow-wrap: anywhere; }
+
+/* The pipeline: steps on a rail. A model-backed step gets an accent dot and an AI tag; the rest are plain code. */
+.lane h3 { margin: 1.5rem 0 0.5rem; }
+.pipeline { list-style: none; margin: 0; padding: 0; }
+.pipeline li { position: relative; margin: 0; padding: 0 0 1rem 1.6rem; }
+.pipeline li::before { content: ''; position: absolute; left: 0.32rem; top: 0.5rem; bottom: -0.5rem; border-left: 2px solid var(--rule); }
+.pipeline li:last-child::before { display: none; }
+.pipeline li::after { content: ''; position: absolute; left: 0; top: 0.35rem; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--bg); border: 2px solid var(--muted); }
+.pipeline li.ai::after { background: var(--accent); border-color: var(--accent); }
+.pipeline strong { display: inline-block; margin-right: 0.4rem; }
+.pipeline p { margin: 0.15rem 0 0; color: var(--muted); }
+.tag { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; border-radius: 3px; padding: 0 0.4rem; border: 1px solid var(--accent); color: var(--accent); vertical-align: 0.1em; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+.legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+/* Architecture figure: a drawing, not a card. Square boxes, hairlines, mono labels; accent only where a model is called. */
+.arch-figure { margin: 1.25rem 0 0.5rem; }
+.arch { display: block; width: 100%; max-width: 34rem; height: auto; margin: 0 auto; font-family: var(--mono); }
+.arch .box { fill: var(--card); stroke: var(--fg); stroke-width: 1; }
+.arch .box.ai { stroke: var(--accent); stroke-width: 1.5; fill: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.arch .box.local { stroke-dasharray: 4 3; }
+.arch .frame { fill: none; stroke: var(--rule); stroke-width: 1; }
+.arch .t, .arch .s { text-anchor: middle; dominant-baseline: central; }
+.arch .t { fill: var(--fg); font-size: 12px; }
+.arch .s { fill: var(--muted); font-size: 10.5px; }
+.arch .lane-label { fill: var(--muted); font-size: 9.5px; letter-spacing: 0.14em; }
+.arch .wire { fill: none; stroke: var(--muted); stroke-width: 1; marker-end: url(#arch-arrow); }
+.arch .wire.plain { marker-end: none; }
+.arch .wire.both { marker-start: url(#arch-arrow); }
+.arch .head { fill: var(--muted); }
+.arch-figure figcaption { justify-content: center; margin-top: 0.75rem; color: var(--muted); }
+.key { width: 1.1rem; height: 0.7rem; border: 1px solid var(--fg); background: var(--card); flex: none; }
+.key.ai { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.key.local { border-style: dashed; }
+.levels { list-style: none; padding: 0; margin: 0.75rem 0; display: grid; gap: 0.6rem; }
+.levels li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
+@media (max-width: 36rem) {
+  .site-nav { margin-left: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .expand::after { transition: none; }
   .risk-strip span { animation: none; }
