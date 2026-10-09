@@ -114,13 +114,30 @@ describe('ghsaSource', () => {
     expect(res).toEqual({ records: [], nextCursor: { ...cursor, next: null }, done: false });
   });
 
+  it('restarts only once a run, then fails with the reason GitHub gave', async () => {
+    const f = new FakeFetch().on(next, () => jsonResponse({ message: '`x` does not appear to be a valid cursor.' }, { status: 400 }));
+    const cursor = { since: '2026-10-01T00:00:00.000Z', next, maxSeen: null };
+    const ctx = sourceContext(f.fetch, NOW);
+    expect((await ghsaSource.fetchChanges(cursor, ctx)).nextCursor.next).toBeNull();
+    await expect(ghsaSource.fetchChanges(cursor, ctx)).rejects.toThrow('GitHub advisories: HTTP 400 (`x` does not appear to be a valid cursor.)');
+    // A new run gets its restart back.
+    expect((await ghsaSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).nextCursor.next).toBeNull();
+  });
+
+  it('fails, rather than restarting, when a page is refused for another reason', async () => {
+    const f = new FakeFetch().on(next, () => jsonResponse({ message: 'Bad credentials' }, { status: 401 }));
+    const cursor = { since: '2026-10-01T00:00:00.000Z', next, maxSeen: null };
+    await expect(ghsaSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).rejects.toThrow(/HTTP 401 \(Bad credentials\)/);
+  });
+
   it('stops on rate limiting without moving the cursor', async () => {
     const f = new FakeFetch().on(ADVISORIES_URL, () => jsonResponse({}, { status: 429 }));
     await expect(ghsaSource.fetchChanges(ghsaSource.initialCursor(NOW), sourceContext(f.fetch, NOW))).rejects.toBeInstanceOf(RateLimited);
   });
 
-  it('fails on server errors', async () => {
+  it('fails on server errors that outlast the retries', async () => {
     const f = new FakeFetch().on(ADVISORIES_URL, () => jsonResponse({}, { status: 502 }));
     await expect(ghsaSource.fetchChanges(ghsaSource.initialCursor(NOW), sourceContext(f.fetch, NOW))).rejects.toThrow(/HTTP 502/);
+    expect(f.calls).toHaveLength(3);
   });
 });

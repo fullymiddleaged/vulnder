@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cveRecordUrl, cveSource, indexZip, RELEASES_URL, type CveCursor } from '../../src/ingest/sources/cve';
+import { cveRecordUrl, cveSource, indexZip, MAX_RELEASE_PAGES, RELEASES_URL, type CveCursor } from '../../src/ingest/sources/cve';
 import { parseCveRecord, productLabel } from '../../src/ingest/sources/cve-record';
 import { parseSeverityLabel } from '../../src/ingest/types';
 import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
@@ -192,6 +192,25 @@ describe('cveSource', () => {
     const f = cvelist({});
     const cursor: CveCursor = { day: '2026-01-01', ts: '2026-01-01T00:00:00.000Z', id: '' };
     await expect(cveSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).rejects.toThrow(/re-run the backfill/);
+  });
+
+  it("stops paging at GitHub's release listing limit", async () => {
+    let page = 0;
+    const f = new FakeFetch().on('https://api.github.com/repos/CVEProject/cvelistV5/releases', () => {
+      page++;
+      // Each page links to the next, and nothing matches the day being looked for.
+      return jsonResponse([{ assets: [] }], { headers: { link: `<${RELEASES_URL}&page=${page + 1}>; rel="next"` } });
+    });
+    const cursor: CveCursor = { day: '2026-01-01', ts: '2026-01-01T00:00:00.000Z', id: '' };
+    await expect(cveSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).rejects.toThrow(/re-run the backfill/);
+    expect(f.calls).toHaveLength(MAX_RELEASE_PAGES);
+  });
+
+  it('treats a 422 past the listing limit as the end of the releases', async () => {
+    const f = new FakeFetch().on(RELEASES_URL, () => jsonResponse({ message: 'Only the first 1000 results are available.' }, { status: 422 }));
+    const cursor: CveCursor = { day: '2026-01-01', ts: '2026-01-01T00:00:00.000Z', id: '' };
+    await expect(cveSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).rejects.toThrow(/re-run the backfill/);
+    expect(f.calls).toHaveLength(1);
   });
 
   it('turns GitHub rate limiting into RateLimited', async () => {

@@ -1,7 +1,7 @@
 import { CVE_ID, ecosystemFromGithub, normalizePackageName } from '../../lib/normalize';
 import { addDays, toIso } from '../../lib/time';
 import { parseSeverityLabel, type AffectedInput, type FetchResult, type Ref, type Source, type SourceContext, type VulnPatch } from '../types';
-import { githubGet, nextLink } from './github';
+import { githubError, githubGet, nextLink } from './github';
 
 /**
  * GitHub Advisory Database, reviewed advisories, via the global advisories
@@ -10,7 +10,8 @@ import { githubGet, nextLink } from './github';
  * Pages through `modified>=since` sorted by `updated` ascending. The cursor
  * keeps the Link-header `after` token while paging, and `since` moves to the
  * latest `updated_at` seen once a pass completes. If an `after` token is
- * rejected, the next page restarts from `since` (re-reading is harmless).
+ * rejected, the next page restarts from `since` (re-reading is harmless), at
+ * most once a run.
  */
 
 export interface GhsaCursor {
@@ -23,6 +24,8 @@ export interface GhsaCursor {
 
 export const ADVISORIES_URL = 'https://api.github.com/advisories';
 const MAX_SUMMARY = 2000;
+/** Runs that have already restarted a pass after a rejected token. */
+const restarted = new WeakSet<SourceContext>();
 
 export function advisoriesUrl(since: string): string {
   // The API rejects timestamps with fractional seconds (HTTP 422).
@@ -49,11 +52,14 @@ export const ghsaSource: Source<GhsaCursor> = {
     const url = cursor.next ?? advisoriesUrl(cursor.since);
     const res = await githubGet(ctx, url, 'ghsa');
     if (!res.ok) {
-      if (cursor.next && res.status >= 400 && res.status < 500) {
-        // Stale pagination token: restart the pass from `since`.
+      if (cursor.next && (res.status === 400 || res.status === 422) && !restarted.has(ctx)) {
+        // Rejected pagination token: restart the pass from `since`, once a
+        // run, so a token that keeps failing can't loop through the budget.
+        restarted.add(ctx);
+        ctx.log(`ghsa: ${(await githubError(res, 'pagination token rejected')).message}; restarting the pass`);
         return { records: [], nextCursor: { ...cursor, next: null }, done: false };
       }
-      throw new Error(`GitHub advisories: HTTP ${res.status}`);
+      throw await githubError(res, 'GitHub advisories');
     }
     const body = (await res.json()) as unknown;
     if (!Array.isArray(body)) throw new Error('GitHub advisories: expected an array');

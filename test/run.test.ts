@@ -57,6 +57,7 @@ async function ingest(f: FakeFetch, budget = unlimitedBudget()) {
     budget,
     runtime: 'worker',
     now: () => NOW,
+    sleep: async () => {},
   });
 }
 

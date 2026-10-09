@@ -40,6 +40,8 @@ export interface RunOptions {
   now?: () => Date;
   log?: (message: string) => void;
   githubToken?: string;
+  /** Waits between paced or retried upstream calls; setTimeout when left out. */
+  sleep?: (ms: number) => Promise<void>;
   sources?: SourceName[];
   /** False during backfill: EPSS values become the baseline without events. */
   epssEvents?: boolean;
@@ -97,6 +99,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     log,
     githubToken: opts.githubToken,
     runtime: opts.runtime,
+    sleep: opts.sleep,
   };
   const reports: SourceReport[] = [];
   let anyWrites = false;

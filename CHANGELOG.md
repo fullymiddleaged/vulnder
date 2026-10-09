@@ -54,4 +54,5 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - A focus outline no longer frames the whole page after loading or changing view.
 - Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in 15.
 - The daily EPSS update writes about a third of the database rows it did.
+- Ingest is gentler with GitHub and recovers from its hiccups. Calls are spaced at least 250 ms apart. A GitHub 5xx, dropped connection or short secondary rate limit is retried up to twice before the source gives up until the next run. A rejected advisory page token restarts the pass once a run instead of looping. Release listing stops at GitHub's 1,000-release limit instead of failing with HTTP 422. Ingest errors now include GitHub's own message.
 - `POST /api/resolve` stops reading a body once it passes 1 MB. Before, a body sent without a `Content-Length` was read in full.

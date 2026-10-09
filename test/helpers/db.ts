@@ -26,6 +26,7 @@ export function sourceContext(fetchImpl: typeof fetch, now: Date, overrides: Par
     now: () => now,
     log: () => {},
     runtime: 'worker',
+    sleep: async () => {},
     ...overrides,
   };
 }

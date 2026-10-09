@@ -3,7 +3,7 @@ import { USER_AGENT } from '../../config';
 import { CVE_ID } from '../../lib/normalize';
 import { utcDay, nextDay } from '../../lib/time';
 import type { FetchResult, Source, SourceContext, VulnPatch } from '../types';
-import { githubGet, nextLink } from './github';
+import { githubError, githubFetch, githubGet, nextLink } from './github';
 import { parseCveRecord } from './cve-record';
 
 /**
@@ -34,8 +34,11 @@ export const RELEASES_URL = 'https://api.github.com/repos/CVEProject/cvelistV5/r
 export const RAW_BASE = 'https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves';
 
 const PAGE_SIZE = 250;
-/** Enough to look back ~90 days at ~22 releases a day. */
-const MAX_RELEASE_PAGES = 25;
+/**
+ * GitHub lists only the first 1000 releases (HTTP 422 after that): about 45
+ * days at ~22 releases a day. A cursor further back needs the backfill.
+ */
+export const MAX_RELEASE_PAGES = 10;
 const ASSET_NAME = /^(\d{4}-\d{2}-\d{2})_delta_CVEs_at_(end_of_day|\d{4}Z)\.zip$/;
 
 interface DayAssets {
@@ -141,7 +144,13 @@ async function findDayAssets(ctx: SourceContext, day: string): Promise<DayAssets
   // zips for `day` (end-of-day and latest hourly) have been seen too.
   while (r.nextUrl && r.pages < MAX_RELEASE_PAGES && (r.oldestDay === null || r.oldestDay > day)) {
     const res = await githubGet(ctx, r.nextUrl, 'cve');
-    if (!res.ok) throw new Error(`cvelistV5 releases: HTTP ${res.status}`);
+    if (res.status === 422) {
+      // Past the 1000-release listing limit: nothing older can be found.
+      ctx.log(`cve: ${(await githubError(res, 'cvelistV5 releases')).message}; stopped paging`);
+      r.nextUrl = null;
+      break;
+    }
+    if (!res.ok) throw await githubError(res, 'cvelistV5 releases');
     const releases = (await res.json()) as { assets?: { name?: string; browser_download_url?: string }[] }[];
     r.pages++;
     r.nextUrl = nextLink(res.headers.get('link'));
@@ -166,7 +175,7 @@ async function loadZip(ctx: SourceContext, url: string): Promise<{ bytes: Uint8A
   const cache = cacheFor(ctx);
   const hit = cache.zips.get(url);
   if (hit) return hit;
-  const res = await ctx.fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  const res = await githubFetch(ctx, url, { headers: { 'User-Agent': USER_AGENT } }, 'cve');
   if (!res.ok) throw new Error(`cvelistV5 zip ${url}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   const entries = indexZip(bytes);
@@ -207,7 +216,7 @@ export function cveRecordUrl(id: string): string {
 /** Fetches and parses one CVE record, e.g. for an old CVE that just landed on KEV. */
 export async function fetchCveRecord(ctx: SourceContext, id: string): Promise<VulnPatch | null> {
   if (!CVE_ID.test(id)) return null;
-  const res = await ctx.fetch(cveRecordUrl(id), { headers: { 'User-Agent': USER_AGENT } });
+  const res = await githubFetch(ctx, cveRecordUrl(id), { headers: { 'User-Agent': USER_AGENT } }, 'cve');
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`cvelistV5 record ${id}: HTTP ${res.status}`);
   return parseCveRecord(await res.json());

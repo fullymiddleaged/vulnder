@@ -101,6 +101,8 @@ export interface SourceContext {
   githubToken?: string;
   /** 'node' allows heavier fallbacks (e.g. the 24 MB deltaLog.json). */
   runtime: 'worker' | 'node';
+  /** Waits between paced or retried calls; setTimeout when left out. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface FetchResult<C> {
