@@ -1,0 +1,9 @@
+# Stack links (/?s=...), feeds and badges describe someone's infrastructure.
+# They are not blocked here on purpose: a blocked URL can still be listed from
+# links elsewhere, because the crawler never sees its noindex. Instead, every
+# Worker response carries X-Robots-Tag: noindex, and the page adds a robots
+# noindex meta whenever a stack is in the URL.
+User-agent: *
+Allow: /
+
+Sitemap: https://vulnder.com/sitemap.xml

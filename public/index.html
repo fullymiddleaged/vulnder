@@ -4,8 +4,37 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="description" content="See the vulnerabilities that matter for your stack, ranked by real-world exploitation. No account needed." />
-    <title>Vulnder</title>
+    <meta name="description" content="Free vulnerability alerts for your stack. Describe what you run or upload a lockfile or SBOM to see the CVEs that affect it, ranked by CISA KEV and EPSS." />
+    <title>Vulnder: CVE alerts for your stack, ranked by exploitation</title>
+    <!-- Self-hosting under another name? Change vulnder.com here and in robots.txt, sitemap.xml and llms.txt. -->
+    <link rel="canonical" href="https://vulnder.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vulnder" />
+    <meta property="og:url" content="https://vulnder.com/" />
+    <meta property="og:title" content="Vulnder: CVE alerts for your stack, ranked by exploitation" />
+    <meta property="og:description" content="Free vulnerability alerts for what you run, ranked by real-world exploitation (CISA KEV, EPSS), not CVSS labels. No account needed." />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Vulnder",
+        "url": "https://vulnder.com/",
+        "description": "Free CVE and vulnerability alerts for your software stack: describe what you run or upload a lockfile or SBOM, and see the recent CVEs that affect it, prioritised by real-world exploitation.",
+        "applicationCategory": "SecurityApplication",
+        "featureList": [
+          "CVE alerts for npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub packages, and for vendor products",
+          "Lockfile and SBOM upload, read in the browser",
+          "Vulnerability prioritisation by CISA KEV, EPSS and CVSS, with the reasons shown",
+          "JSON feed, Atom feed and README badge for any stack"
+        ],
+        "operatingSystem": "Any",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "author": { "@type": "Person", "name": "Pete Salmond", "url": "https://github.com/fullymiddleaged" }
+      }
+    </script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
@@ -25,11 +54,11 @@
         </svg>
         <span data-name>Vulnder</span>
       </a>
-      <p class="tagline">Someone's into your stack. See who, ranked by real-world exploitation.</p>
+      <h1 class="tagline">Someone's into your stack. See who, with free CVE alerts ranked by real-world exploitation.</h1>
     </header>
 
     <main id="app" tabindex="-1">
-      <noscript><p class="block">The stack builder needs JavaScript. The JSON feed, Atom feed and badge work without it: see docs/STACK_FORMAT.md in the repository for the URL format.</p></noscript>
+      <noscript><p class="block">The stack builder needs JavaScript. The JSON feed, Atom feed and badge work without it: see <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md">the stack URL format</a>.</p></noscript>
     </main>
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
@@ -52,6 +81,9 @@
         <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
         and <a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks.
         EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.
+      </p>
+      <p class="small muted">
+        Open source under the Apache License 2.0: <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">source on GitHub</a>.
       </p>
     </footer>
   </body>

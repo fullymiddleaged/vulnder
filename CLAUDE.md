@@ -28,4 +28,5 @@ Runs **at request time, on the user's own text only**, never as a batch job over
 - The user deploys through GitHub; never deploy. Commit only when asked, one commit per feature.
 - `wrangler.jsonc` keeps the placeholder `database_id`; never commit the real one. Local D1 is keyed by the placeholder. Commands that reach Cloudflare use the git-ignored `wrangler.production.jsonc`, stamped from `D1_DATABASE_ID` (in `.env` locally) by `scripts/lib/production-config.ts`.
 - Edit files with the editor tools, not Python/Node scripts that write files: on Windows those can turn LF into CRLF or mangle escapes.
+- Licence, NOTICE and the name in forks: AGENTS.md. Never remove LICENSE, NOTICE or copyright lines.
 - Hostile input is a given: anything reaching `parseStack`, the alias tables or the model must be fuzz-safe (`test/resolve-fuzz.test.ts`). Look up input-keyed tables with `ownValue()`.

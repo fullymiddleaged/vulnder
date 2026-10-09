@@ -1,0 +1,20 @@
+# Vulnder
+
+> A stack-aware CVE feed. Describe what you run (free text, a manifest, or items added by hand) and see the vulnerabilities from the last 30 days that affect it, ranked by real-world exploitation: CISA KEV and CISA's active-exploitation reports first, then EPSS predictions, then CVSS severity. No account; the stack lives in the URL.
+
+Every result has a priority (Act now, Attend, Watch, Track), a 0–100 risk score for ordering within a priority, and the reasons for both. Scores are heuristics, not probabilities. Only CISA KEV and CISA's active-exploitation reports count as evidence of exploitation; EPSS is a predicted probability.
+
+## Use it
+
+- [Stack URL format](https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md): the versioned `s` parameter, e.g. `npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16`
+- `https://vulnder.com/?s=…`: the results page
+- `https://vulnder.com/api/feed?s=…`: JSON feed, with `priority`, `score`, `reasons`, `why` and a `fixFirst` list
+- `https://vulnder.com/feed.xml?s=…`: Atom feed, one entry per change
+- `https://vulnder.com/badge.svg?s=…`: README badge counting known-exploited CVEs
+- `days` (1–90, default 30) sets the window. Stack links describe someone's infrastructure: don't publish one without its owner's say-so.
+
+## Source
+
+- [Repository](https://github.com/fullymiddleaged/vulnder): Apache License 2.0, copyright 2026 Pete Salmond
+- [README](https://github.com/fullymiddleaged/vulnder/blob/main/README.md): how ranking works, data sources, privacy, self-hosting
+- [AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/AGENTS.md): for AI agents working on a clone or fork, including what the licence requires

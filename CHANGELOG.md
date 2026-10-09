@@ -19,6 +19,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - **Feed passes.** After its Turnstile check, a browser gets a pass (an HttpOnly cookie, no account) that loads 2 different stacks an hour, counted from the first; until the second, the first stack and its other time windows load as often as you like. Once both are used, the browser is locked until the hour is over: nothing loads, including stacks already opened, and the server turns it away from a lock cookie without reading the database. The page greys out Start over, Edit stack, the time window and new lookups, shows a red countdown next to them, and points at it when you click one. A browser with a pass is rate-limited by its pass instead of its IP, so people sharing an office IP no longer limit each other; feed readers, badges and scripts without one keep the per-IP limits. Needs migration 0005.
 - A loader, built from the logo, while your stack is read and while matches load. While matches load it ticks off each source it checks (CVE records, GitHub advisories, CISA KEV, EPSS, OSV) and then the exact and close matches. It stays still if your system asks for reduced motion.
 - **Export** the results as Markdown or JSON from the results page: every CVE with its priority, risk score, response window, why, exploitation evidence, fixed versions and what to do, plus the fix-first order and instructions for a person or an AI assistant to work through it. Built in your browser from the page, so it costs no request.
+- `robots.txt`, `sitemap.xml` and `llms.txt`, and search and link-preview tags on the home page. The footer links to the source on GitHub.
 
 ### Security
 
@@ -31,6 +32,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 ### Changed
 
 - Close matches for a misspelt or partial name ("grafanna", "exchange srv") are listed with the most-affected product first, like the close matches for a vendor or a category. Which matches you get is unchanged, and a name now resolves the same whatever else you list alongside it.
+- Search engines are told not to index stack links, feeds or badges, so a shared link doesn't put what you run in search results. Only the home page is indexed.
 - The manifest upload is now one short line under the examples, inside the form, and the page no longer suggests pasting a manifest into the description box, which has a length limit. Uploads were never held to that limit, and now accept files up to 10 MB (was 5 MB) and 300,000 lines. Only manifest names and text extensions (.json, .txt, .toml, .xml, .lock, .mod, .in) are read, and binary files are refused with a reason.
 - The most urgent priority is now labelled **Act now** (was Act). The feed's `priority` value is still `act`.
 - CVSS 9.0 or more now puts a result in **Attend** (was Watch), but only when an attacker can reach it: over the network, with no login and no user action, or judged automatable by CISA. Criticals that need local access, a login or someone's help go to **Watch**.

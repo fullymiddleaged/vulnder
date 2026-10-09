@@ -5,6 +5,7 @@ import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
 import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
+import { indexable } from './url';
 import { exportFileName, exportJson, exportMarkdown } from './export';
 import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
 import {
@@ -1044,7 +1045,26 @@ async function renderFreshness(): Promise<void> {
   }
 }
 
+const canonical = document.querySelector('link[rel="canonical"]');
+const noindex = h('meta', { name: 'robots', content: 'noindex' });
+
+/**
+ * Keeps stack links out of search results; crawlers see this after rendering.
+ * A canonical pointing at the home page would contradict noindex, so it goes
+ * while a stack is shown and comes back with the home page.
+ */
+function markIndexable(): void {
+  if (indexable(location.search)) {
+    noindex.remove();
+    if (canonical && !canonical.isConnected) document.head.append(canonical);
+  } else {
+    canonical?.remove();
+    document.head.append(noindex);
+  }
+}
+
 async function route(): Promise<void> {
+  markIndexable();
   const params = new URLSearchParams(location.search);
   const s = params.get('s');
   if (s) await renderResults(s, Number(params.get('days') ?? 30) || 30);

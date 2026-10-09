@@ -29,6 +29,8 @@ app.use('*', async (c, next) => {
   // Stack URLs are sensitive: never send them on as a Referer.
   c.header('Referrer-Policy', 'no-referrer');
   c.header('X-Content-Type-Options', 'nosniff');
+  // Feeds and badges carry a stack in their URL; keep them out of search results.
+  c.header('X-Robots-Tag', 'noindex');
 });
 
 app.route('/api/health', health);

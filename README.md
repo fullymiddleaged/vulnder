@@ -66,6 +66,7 @@ A list of what you run is useful to an attacker, so Vulnder keeps as little as i
 - **Feed passes hold no stacks.** Passing the Turnstile check gives your browser a pass, a random id in an HttpOnly cookie, that loads 2 different stacks an hour. To tell stacks apart it keeps a keyed hash of each (HMAC with a key only the Worker holds), never the stack, and the pass is deleted after a day. Once both stacks are used, a second cookie holding only the unlock time lets the Worker turn the browser away for the rest of the hour without reading the database.
 - **No tracking.** There are no analytics or third-party scripts, apart from Cloudflare Turnstile on the submit form.
 - **No referrer leaks.** Pages and links send no `Referer`, so clicking an advisory doesn't hand your stack URL to another site.
+- **Not in search results.** Stack pages carry a robots `noindex` and every feed, Atom and badge response sends `X-Robots-Tag: noindex`, so only the home page is indexed.
 - **What Cloudflare can see.** Vulnder runs on Cloudflare, which processes every request, including the stack in the URL. Feed responses are cached in Cloudflare's cache under the canonical stack. If that is too much exposure, self-host.
 
 ## Data sources
@@ -105,7 +106,7 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 ## Deploying
 
 1. `npx wrangler d1 create vulnder`. Keep the ID out of git: put `D1_DATABASE_ID=<the returned database_id>` in a `.env` file (git-ignored), and the same `D1_DATABASE_ID` as a build variable wherever you deploy from. Commands that reach Cloudflare (`npm run db:migrate:remote`, `seed:remote`, `deploy:paid`, `ingest -- --remote`) write `wrangler.production.jsonc`, also git-ignored, with the real ID; `wrangler.jsonc` keeps a placeholder, which local development uses. (Or simply put the ID in `wrangler.jsonc`: it identifies the database but grants no access without your Cloudflare credentials.)
-2. Set `BASE_URL` (and `DISPLAY_NAME` if you like) in `wrangler.jsonc`. Feed links, badge links and Atom IDs are built from it.
+2. Set `BASE_URL` (and `DISPLAY_NAME` if you like) in `wrangler.jsonc`. Feed links, badge links and Atom IDs are built from it. On your own domain, also replace `vulnder.com` in `public/index.html`, `public/robots.txt`, `public/sitemap.xml` and `public/llms.txt`, which search engines read.
 3. Create a [Turnstile widget](https://developers.cloudflare.com/turnstile/) (Managed mode) for your hostname, and put its site key in both `TURNSTILE_SITE_KEY` entries in `wrangler.jsonc`; the site key is public. After the first deploy, add the secret key as a Worker secret named `TURNSTILE_SECRET_KEY` (dashboard: Workers & Pages → your Worker → Settings → Variables and Secrets). Locally, `.dev.vars` uses Cloudflare's always-pass test keys (see `.dev.vars.example`).
 4. `npm run db:migrate:remote`, then seed it from your local database: `npm run backfill` (if you haven't), then `npm run seed:remote` to see the plan, and `npm run seed:remote -- --yes` to copy it up. The seed writes each row once, about 700,000 rows written with indexes: roughly 1% of Workers Paid's monthly D1 allowance, but more than the Free plan's 100,000 a day, so on Free add `--max-rows 90000` and repeat it daily until it reports done. Ingest waits until the seed has finished, then carries on from the snapshot. (`npm run backfill -- --remote` still works, but it writes rows several times over.) Optionally, buy AI Gateway credits so Jev can screen free text and order close matches (about $0.0001 a parse, at $0.042 per million input tokens).
 5. Deploy, choosing how ingest runs:
@@ -136,10 +137,10 @@ Other commands: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run re
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contributions are new data sources and new manifest parsers.
+See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contributions are new data sources and new manifest parsers. If Vulnder is useful to you, a star on GitHub helps other people find it.
 
 ## Licence
 
 [Apache License 2.0](LICENSE). Copyright 2026 Pete Salmond ([@fullymiddleaged](https://github.com/fullymiddleaged)). If you redistribute Vulnder or a derivative, keep the [NOTICE](NOTICE) file with it.
 
-The licence covers the code, not the name: "Vulnder" and its logo identify this project, so please give a fork or public deployment its own name.
+The licence covers the code, not the name: "Vulnder" and its logo identify this project, so please give a fork or public deployment its own name. [AGENTS.md](AGENTS.md) spells out what a fork needs, for people and their AI coding agents.
