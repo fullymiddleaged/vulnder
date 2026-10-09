@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RateLimited } from '../../src/ingest/budget';
 import { ADVISORIES_URL, advisoriesUrl, ghsaSource, parseAdvisory } from '../../src/ingest/sources/ghsa';
+import { parseSeverityLabel } from '../../src/ingest/types';
 import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
 import { ghsaPage } from '../helpers/fixtures';
 import { sourceContext } from '../helpers/db';
@@ -29,6 +30,14 @@ describe('parseAdvisory', () => {
   it('maps GitHub ecosystem names to OSV names', () => {
     const p = parseAdvisory(byId('GHSA-9272-wg2r-7xmx'))!;
     expect(p.affected?.map((a) => a.ecosystem)).toEqual(['Maven', 'Maven']);
+  });
+
+  it("keeps GitHub's severity word, scored or not", () => {
+    const a = byId('GHSA-456v-xq2p-r4cj');
+    expect(parseAdvisory(a)!.fields.severityLabel).toBe(parseSeverityLabel(a.severity));
+    const unscored = { ...a, severity: 'critical', cvss: null, cvss_severities: null };
+    expect(parseAdvisory(unscored)!.fields).toMatchObject({ cvssScore: null, severityLabel: 'critical' });
+    expect(parseAdvisory({ ...a, severity: 'unknown' })!.fields.severityLabel).toBeNull();
   });
 
   it('keys by GHSA when there is no CVE', () => {

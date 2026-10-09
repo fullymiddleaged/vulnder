@@ -1,5 +1,5 @@
 import { EPSS_HIGH, LEV_HIGH } from '../config';
-import type { Ssvc } from '../ingest/types';
+import type { SeverityLabel, Ssvc } from '../ingest/types';
 
 /**
  * What to fix first. Two layers, both explained on every result:
@@ -55,7 +55,7 @@ export interface Why {
   missing: string[];
 }
 
-type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'automatable' | 'total' | 'exposed' | 'access' | 'cvss';
+type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'automatable' | 'total' | 'exposed' | 'access' | 'cvss' | 'label';
 
 /**
  * How soon to fix or mitigate, as guidance rather than an SLA. In 2026, working
@@ -87,6 +87,8 @@ export interface Signals {
   exploitedSibling: string | null;
   cvss: number | null;
   cvssVector: string | null;
+  /** The CNA's or GitHub's severity word; counts only when there is no CVSS score. */
+  severityLabel?: SeverityLabel | null;
   ssvc: Ssvc | null;
   /** A stack item it matched is marked internet-facing. */
   exposed: boolean;
@@ -104,6 +106,11 @@ const POC_THREAT = 0.2;
 const SIBLING_THREAT = 0.3;
 /** Impact when no CVSS score exists: the middle of the scale. */
 const UNKNOWN_IMPACT = 0.5;
+/**
+ * Impact from a severity word when there's no score: the low end of each band
+ * (critical is CVSS 9.0+, high 7.0+). The others stay at UNKNOWN_IMPACT.
+ */
+const LABEL_IMPACT: Partial<Record<SeverityLabel, number>> = { critical: 0.9, high: 0.7 };
 const TOTAL_IMPACT = 0.9;
 const AUTOMATABLE_BOOST = 1.25;
 /** An internet-facing item with a bug open to attack: the same weight as automatable. */
@@ -131,17 +138,21 @@ export function assess(s: Signals): Assessment {
   // to attack counts: no benefit of the doubt for a missing vector.
   const exposedOpen = s.exposed && (automatable || (access !== null && access.barriers.length === 0));
   const high = s.cvss !== null && s.cvss >= HIGH_CVSS;
+  // With no score, a source calling it critical or high still earns a look. It
+  // stops at Watch: a word carries no vector, so there's nothing to say an attacker can reach it.
+  const labelled = s.cvss === null && (s.severityLabel === 'critical' || s.severityLabel === 'high') ? s.severityLabel : null;
 
   const priority: Priority = active
     ? 'act'
     : sibling || likely || likelyBefore || (critical && reachable) || (poc && (automatable || totalImpact))
       ? 'attend'
-      : severe || (high && exposedOpen) || poc || (automatable && totalImpact)
+      : severe || labelled || (high && exposedOpen) || poc || (automatable && totalImpact)
         ? 'watch'
         : 'track';
 
   const threat = active ? 1 : Math.max(s.epss ?? UNSCORED_THREAT, s.lev ?? 0, poc ? POC_THREAT : 0, sibling ? SIBLING_THREAT : 0);
-  const impact = Math.max(s.cvss !== null ? s.cvss / 10 : UNKNOWN_IMPACT, totalImpact ? TOTAL_IMPACT : 0);
+  const unscoredImpact = (s.severityLabel && LABEL_IMPACT[s.severityLabel]) ?? UNKNOWN_IMPACT;
+  const impact = Math.max(s.cvss !== null ? s.cvss / 10 : unscoredImpact, totalImpact ? TOTAL_IMPACT : 0);
   const raw =
     threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (exposedOpen ? EXPOSED_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
@@ -160,6 +171,7 @@ export function assess(s: Signals): Assessment {
   if (exposedOpen) add('exposed', 'context', 'Internet-facing');
   if (access && high) add('access', 'context', describeAccess(access.barriers));
   if (s.cvss !== null) add('cvss', 'severity', `CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
+  if (labelled) add('label', 'severity', `Rated ${labelled} by its advisory (no CVSS score yet)`);
 
   // The first rule that put it in its band, in the order the band checks them.
   const decidedBy: ReasonKey | null =
@@ -168,7 +180,7 @@ export function assess(s: Signals): Assessment {
       : priority === 'attend'
         ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical && reachable ? 'cvss' : 'poc'
         : priority === 'watch'
-          ? severe ? 'cvss' : high && exposedOpen ? 'exposed' : poc ? 'poc' : 'total'
+          ? severe ? 'cvss' : labelled ? 'label' : high && exposedOpen ? 'exposed' : poc ? 'poc' : 'total'
           : null;
   const decisive = all.find((r) => r.key === decidedBy) ?? null;
   const strip = ({ text, kind }: Reason): Reason => ({ text, kind });

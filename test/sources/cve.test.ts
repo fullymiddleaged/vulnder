@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cveRecordUrl, cveSource, indexZip, RELEASES_URL, type CveCursor } from '../../src/ingest/sources/cve';
 import { parseCveRecord, productLabel } from '../../src/ingest/sources/cve-record';
+import { parseSeverityLabel } from '../../src/ingest/types';
 import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
 import { cveRecords, deltaZip, releases, withMeta, type CveRecordJson } from '../helpers/fixtures';
 import { sourceContext } from '../helpers/db';
@@ -55,6 +56,21 @@ describe('parseCveRecord', () => {
     expect(p.fields.ssvc?.exploitation).toBe('none');
     expect(p.affected!.every((a) => a.fixedVersion === null)).toBe(true);
     expect(p.affected![0]).toMatchObject({ vendor: 'linux', product: 'linux', label: 'Linux' });
+  });
+
+  it("reads a CNA's textual severity, which some give instead of a CVSS score", () => {
+    const base = cveRecords['CVE-2024-34393']! as CveRecordJson & { containers: { cna: Record<string, unknown> } };
+    const textual = { other: { type: 'Textual description of severity', content: { text: 'Important', namespace: 'https://access.redhat.com/security/updates/classification/' } } };
+    // The CNA's metrics replaced by the word alone, and no CISA ADP container to fall back to.
+    const p = parseCveRecord({ ...base, containers: { cna: { ...base.containers.cna, metrics: [textual] } } })!;
+    expect(p.fields).toMatchObject({ cvssScore: null, severityLabel: 'high' });
+    expect(parseCveRecord(base)!.fields.severityLabel).toBeNull();
+  });
+
+  it('maps every source severity word onto one scale', () => {
+    expect(['Critical', 'important', 'HIGH', 'moderate', 'medium', 'low', 'none', '', 7].map(parseSeverityLabel)).toEqual([
+      'critical', 'high', 'high', 'medium', 'medium', 'low', null, null, null,
+    ]);
   });
 
   it('marks rejected records as withdrawn', () => {

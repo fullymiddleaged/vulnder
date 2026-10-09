@@ -1,6 +1,6 @@
 import { CVE_ID, ecosystemFromGithub, normalizePackageName } from '../../lib/normalize';
 import { addDays, toIso } from '../../lib/time';
-import type { AffectedInput, FetchResult, Ref, Source, SourceContext, VulnPatch } from '../types';
+import { parseSeverityLabel, type AffectedInput, type FetchResult, type Ref, type Source, type SourceContext, type VulnPatch } from '../types';
 import { githubGet, nextLink } from './github';
 
 /**
@@ -131,6 +131,8 @@ export function parseAdvisory(adv: unknown): VulnPatch | null {
       modifiedAt: toIso(adv.updated_at),
       cvssScore: cvss?.score ?? null,
       cvssVector: cvss?.vector ?? null,
+      // GitHub rates every reviewed advisory, scored or not.
+      severityLabel: parseSeverityLabel(adv.severity),
       cwe: Array.isArray(adv.cwes)
         ? adv.cwes.map((c) => (isObj(c) ? str(c.cwe_id) : null)).filter((c): c is string => c !== null)
         : [],

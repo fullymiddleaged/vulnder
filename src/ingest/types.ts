@@ -17,6 +17,30 @@ export interface Ssvc {
   technicalImpact: string | null;
 }
 
+export type SeverityLabel = 'critical' | 'high' | 'medium' | 'low';
+
+/**
+ * A source's word for severity, on one scale. CNAs following Red Hat say
+ * important and moderate; GitHub says moderate in older advisories.
+ */
+export function parseSeverityLabel(text: unknown): SeverityLabel | null {
+  if (typeof text !== 'string') return null;
+  switch (text.trim().toLowerCase()) {
+    case 'critical':
+      return 'critical';
+    case 'high':
+    case 'important':
+      return 'high';
+    case 'medium':
+    case 'moderate':
+      return 'medium';
+    case 'low':
+      return 'low';
+    default:
+      return null;
+  }
+}
+
 /** Vulnerability fields a source can set. Absent means "this source says nothing". */
 export interface VulnFields {
   title: string | null;
@@ -25,6 +49,8 @@ export interface VulnFields {
   modifiedAt: string | null;
   cvssScore: number | null;
   cvssVector: string | null;
+  /** The source's severity word, kept for when no source gives a CVSS score. */
+  severityLabel: SeverityLabel | null;
   cwe: string[];
   refs: Ref[];
   ssvc: Ssvc | null;

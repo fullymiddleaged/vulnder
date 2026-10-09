@@ -85,6 +85,28 @@ describe('assess: priority bands', () => {
     expect(assess({ ...exposed, cvss: 7.0, cvssVector: null, ssvc: ssvc('none', 'yes') }).priority).toBe('watch');
   });
 
+  it("watches an unscored CVE its advisory calls critical or high, and says that's why", () => {
+    const critical = assess({ ...base, severityLabel: 'critical' });
+    expect(critical.priority).toBe('watch');
+    expect(critical.why.decisive).toEqual({ kind: 'severity', text: 'Rated critical by its advisory (no CVSS score yet)' });
+    expect(critical.why.missing).toContain('No CVSS score yet: NVD now scores only a fraction of new CVEs');
+    // Impact 0.9 instead of the unknown 0.5, at the unscored threat of 0.01.
+    expect(critical.score).toBe(0.9);
+    expect(assess({ ...base, severityLabel: 'high' }).priority).toBe('watch');
+    expect(assess({ ...base, severityLabel: 'medium' }).priority).toBe('track');
+    expect(assess({ ...base, severityLabel: 'low' }).priority).toBe('track');
+  });
+
+  it('lets a CVSS score, or evidence, outrank a severity word', () => {
+    // A score always wins over the word, both ways.
+    expect(assess({ ...base, cvss: 5, severityLabel: 'critical' }).priority).toBe('track');
+    expect(assess({ ...base, cvss: 5, severityLabel: 'critical' }).reasons).not.toContainEqual(expect.stringContaining('Rated'));
+    // A word alone never reaches Attend; evidence still puts it in Act now.
+    expect(assess({ ...base, severityLabel: 'critical', ssvc: ssvc('none', 'yes') }).priority).toBe('watch');
+    expect(assess({ ...base, severityLabel: 'critical', kevAddedAt: '2026-10-01' }).priority).toBe('act');
+    expect(assess({ ...base, severityLabel: 'high', epss: 0.2 }).priority).toBe('attend');
+  });
+
   it('watches CVSS 8.0 to 8.9, a bare PoC, or automatable with total impact', () => {
     expect(assess({ ...base, cvss: 8.0, epss: 0.001 }).priority).toBe('watch');
     expect(assess({ ...base, cvss: 8.9, epss: 0.09 }).priority).toBe('watch');

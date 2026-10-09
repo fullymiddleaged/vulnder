@@ -1,6 +1,6 @@
 import { EPSS_HIGH, EPSS_RISE } from '../config';
 import { daysBetween, levTerm } from '../lib/lev';
-import type { Ref, SourceName, Ssvc, VulnPatch } from './types';
+import type { Ref, SeverityLabel, SourceName, Ssvc, VulnPatch } from './types';
 
 /** A stored vulnerability, with JSON columns parsed. */
 export interface VulnRecord {
@@ -12,6 +12,7 @@ export interface VulnRecord {
   modifiedAt: string | null;
   cvssScore: number | null;
   cvssVector: string | null;
+  severityLabel: SeverityLabel | null;
   cwe: string[];
   refs: Ref[];
   ssvc: Ssvc | null;
@@ -60,7 +61,7 @@ export const SOURCE_FLAGS: Record<SourceName, number> = { cve: 1, ghsa: 2, kev: 
 /** Higher-ranked sources win for the descriptive fields. */
 const RANK: Record<SourceName, number> = { cve: 3, ghsa: 2, kev: 1, epss: 0 };
 
-type RankedField = 'title' | 'summary' | 'publishedAt' | 'cvss' | 'ssvc';
+type RankedField = 'title' | 'summary' | 'publishedAt' | 'cvss' | 'severity' | 'ssvc';
 
 const MAX_REFS = 40;
 const FLOAT_EPSILON = 1e-9;
@@ -75,6 +76,7 @@ export function emptyRecord(id: string): VulnRecord {
     modifiedAt: null,
     cvssScore: null,
     cvssVector: null,
+    severityLabel: null,
     cwe: [],
     refs: [],
     ssvc: null,
@@ -130,6 +132,9 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
   setRanked(rec, src, 'cvss', 'cvssScore' in f, f.cvssScore, () => {
     rec.cvssScore = f.cvssScore ?? null;
     rec.cvssVector = f.cvssVector ?? null;
+  });
+  setRanked(rec, src, 'severity', 'severityLabel' in f, f.severityLabel, () => {
+    rec.severityLabel = f.severityLabel ?? null;
   });
   setRanked(rec, src, 'ssvc', 'ssvc' in f, f.ssvc, () => {
     rec.ssvc = f.ssvc ?? null;

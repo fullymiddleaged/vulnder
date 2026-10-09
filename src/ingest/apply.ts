@@ -8,7 +8,7 @@ import {
   type VulnRecord,
 } from './merge';
 import { allForKeys, chunkByJsonSize, stmt, type Statement, type Store } from './store';
-import type { AffectedInput, AffectedSource, Ref, SourceName, Ssvc, VulnPatch } from './types';
+import { parseSeverityLabel, type AffectedInput, type AffectedSource, type Ref, type SourceName, type Ssvc, type VulnPatch } from './types';
 
 export interface ApplyOptions extends MergeOptions {
   now: Date;
@@ -35,6 +35,7 @@ interface VulnRow {
   modified_at: string | null;
   cvss_score: number | null;
   cvss_vector: string | null;
+  severity_label: string | null;
   cwe: string;
   epss: number | null;
   epss_percentile: number | null;
@@ -74,6 +75,7 @@ const VULN_COLUMNS = [
   'modified_at',
   'cvss_score',
   'cvss_vector',
+  'severity_label',
   'cwe',
   'epss',
   'epss_percentile',
@@ -391,6 +393,7 @@ function rowToRecord(r: VulnRow): VulnRecord {
     modifiedAt: r.modified_at,
     cvssScore: r.cvss_score,
     cvssVector: r.cvss_vector,
+    severityLabel: parseSeverityLabel(r.severity_label),
     cwe: parseJson<string[]>(r.cwe, []),
     refs: parseJson<Ref[]>(r.refs, []),
     ssvc: r.ssvc ? parseJson<Ssvc | null>(r.ssvc, null) : null,
@@ -419,6 +422,7 @@ function recordToRow(rec: VulnRecord, nowIso: string): Record<(typeof VULN_COLUM
     modified_at: rec.modifiedAt,
     cvss_score: rec.cvssScore,
     cvss_vector: rec.cvssVector,
+    severity_label: rec.severityLabel,
     cwe: JSON.stringify(rec.cwe),
     epss: rec.epss,
     epss_percentile: rec.epssPercentile,

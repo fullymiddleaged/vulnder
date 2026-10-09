@@ -90,6 +90,12 @@ describe('source ranking', () => {
     expect(merged.cvssScore).toBe(5);
   });
 
+  it("ranks severity words like scores: the CNA's over GitHub's, and GitHub's when the CNA gives none", () => {
+    const fromGhsa = mergePatch(null, ghsaPatch({ severityLabel: 'critical' }), opts).record!;
+    expect(mergePatch(fromGhsa, cvePatch({ severityLabel: 'high' }), opts).record!).toMatchObject({ severityLabel: 'high', provenance: { severity: 'cve' } });
+    expect(mergePatch(fromGhsa, cvePatch({ severityLabel: null }), opts).record!).toMatchObject({ severityLabel: 'critical', provenance: { severity: 'ghsa' } });
+  });
+
   it('clears a field when the source that set it drops it', () => {
     const first = mergePatch(null, cvePatch(), opts).record!;
     const second = mergePatch(first, cvePatch({ title: null }), opts).record!;

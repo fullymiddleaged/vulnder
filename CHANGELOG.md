@@ -6,6 +6,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- A CVE with no CVSS score whose CNA or GitHub advisory rates it **critical or high** now goes to **Watch** (it was Track), with the reason "Rated critical by its advisory (no CVSS score yet)", and ranks higher within it. A score, when one exists, always decides instead, and a rating alone never reaches Attend. Records pick up the rating as their sources next update them. Needs migration 0007.
 - Mark stack items as **internet-facing**, with a toggle on the Edit page or `!` in front of an item in the link (`!p:f5/nginx`). On those items, a bug an attacker can reach with no login or user action ranks higher: CVSS 7.0 or more goes to Watch and its score is raised. Older deployments reject links that use `!`.
 - When you describe your stack in words, Jev marks the components your description says face the internet (for example "nginx in front"). The results page lists what it marked; untick any of them under Edit stack. Manifests are never marked automatically.
 - Products that face the internet by what they are (VPN and remote-access gateways, edge firewalls, ADCs and mail gateways, such as FortiGate, Cisco ASA, PAN-OS and NetScaler) are marked internet-facing from a description even when Jev doesn't mark them or isn't available.

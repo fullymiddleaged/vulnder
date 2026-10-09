@@ -42,6 +42,7 @@ export interface VulnRow {
   modified_at: string | null;
   cvss_score: number | null;
   cvss_vector: string | null;
+  severity_label: string | null;
   cwe: string;
   epss: number | null;
   epss_percentile: number | null;
@@ -70,7 +71,7 @@ export const AFFECTED_PACKAGES_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHER
   AND (ecosystem, package_name) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
 export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'product'
   AND (vendor, product) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
-export const VULNS_BY_ID_SQL = `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, cwe, epss,
+export const VULNS_BY_ID_SQL = `SELECT id, aliases, title, summary, published_at, modified_at, cvss_score, cvss_vector, severity_label, cwe, epss,
     epss_percentile, epss_date, lev_log, kev_added_at, kev_ransomware, kev_due_date, kev_required_action, ssvc, refs, family_id,
     last_event_at
   FROM vulns WHERE id IN (SELECT value FROM json_each(?))`;

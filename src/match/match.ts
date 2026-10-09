@@ -2,7 +2,7 @@ import { EPSS_HIGH } from '../config';
 import { lev } from '../lib/lev';
 import { addDays } from '../lib/time';
 import { allForKeys, type Store } from '../ingest/store';
-import type { Ref, Ssvc } from '../ingest/types';
+import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
 import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
@@ -266,6 +266,7 @@ function toResult(
     exploitedSibling,
     cvss: v.cvss_score,
     cvssVector: v.cvss_vector,
+    severityLabel: parseSeverityLabel(v.severity_label),
     exposed,
     ssvc,
   });
