@@ -166,11 +166,10 @@ button.link { border: none; background: none; padding: 0; min-height: auto; font
 .chip.close { border-style: dashed; border-color: var(--likely); }
 .close-mark { color: var(--likely); font-weight: 700; }
 .chips.compact .chip { padding: 0.1rem 0.65rem; }
-/* Internet-facing: a toggle on the Edit page, a quiet label elsewhere. */
-button.expose { min-height: 1.75rem; padding: 0 0.55rem; border-radius: 999px; font-size: 0.8rem; color: var(--muted); background: transparent; border-style: dashed; }
-button.expose[aria-pressed='true'] { color: var(--accent-fg); background: var(--accent); border: 1px solid var(--accent); font-weight: 700; }
-.exposed-mark { color: var(--accent); font-weight: 700; }
-.badge.exposed { color: var(--accent); }
+/* An item's team, on enterprise stacks: a compact picker on Edit, a quiet label on results. */
+select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999px; font-size: 0.8rem; }
+/* A VPN, firewall or gateway: in violet, beside the other match badges. */
+.badge.edge { color: var(--accent); }
 .add { margin-top: 0.5rem; }
 .add input { flex: 1; }
 .copy { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -209,6 +208,7 @@ button.expose[aria-pressed='true'] { color: var(--accent-fg); background: var(--
 /* The match: a big headline, a strip in proportion to each priority, then a ledger of the four. */
 .headline h2 { font-size: clamp(2.1rem, 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 0.6rem; }
 .headline p { margin: 0; font-size: 1.1rem; }
+.share-bar { margin-top: 1rem; gap: 0.4rem; }
 .risk { display: grid; gap: 1rem; margin-top: -1rem; }
 .risk-strip { display: flex; gap: 3px; height: 0.9rem; }
 .risk-strip span { flex-basis: 0; min-width: 0.6rem; background: var(--light); border-radius: 2px; transform-origin: left; animation: grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
@@ -264,6 +264,10 @@ details[open] > summary .when-open { display: inline; }
 .tier .window { color: var(--fg); }
 .tier .count { font-size: 0.85rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .tier > p { margin-top: 0; }
+/* A team's heading carries its priority pills; the components under it carry their own lights. */
+.team h2 { flex-wrap: wrap; }
+.team h2 .tally { display: flex; gap: 0.3rem; flex-wrap: wrap; font-weight: 400; }
+.summary .expand { font-weight: 600; white-space: nowrap; }
 .results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
 .result { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--light); border-radius: var(--radius); padding: 0.75rem 1rem; }
 .result h3 a, .brief strong a, .change h3 a { font-family: var(--mono); }

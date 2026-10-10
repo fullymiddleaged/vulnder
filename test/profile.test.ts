@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isEdgeProduct, type Chip } from '../src/resolve/catalog';
-import { canRank, EXPOSED_AT, markExposed, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
-import { parseStack } from '../src/stack/format';
+import type { Chip } from '../src/resolve/catalog';
+import { canRank, isEnterprise, markTeams, MIN_RANK_CONFIDENCE, NO_PROFILE, orderByFit, parseProfile, rankableChips, type StackProfile } from '../src/resolve/profile';
 
 const close = (item: string) => ({ item, label: item, close: true, known: true });
 const exact = (item: string) => ({ item, label: item, close: false, known: true });
@@ -60,86 +59,43 @@ describe('parseProfile', () => {
   });
 });
 
-describe('markExposed', () => {
-  const items = (chips: Chip[]) => chips.map((c) => c.items.map((i) => [i.item, i.exposed ?? false]));
+describe('isEnterprise', () => {
+  it('needs enterprise scale with enough confidence', () => {
+    const at = (value: StackProfile['scale']['value'], confidence: number) => isEnterprise({ ...NO_PROFILE, scale: { value, confidence } });
+    expect(at('enterprise', MIN_RANK_CONFIDENCE)).toBe(true);
+    expect(at('enterprise', MIN_RANK_CONFIDENCE - 0.01)).toBe(false);
+    expect(at('smb', 0.99)).toBe(false);
+    expect(at('home', 0.99)).toBe(false);
+    expect(isEnterprise(NO_PROFILE)).toBe(false);
+  });
+});
 
-  it('marks every item of a chip Jev judged internet-facing, from the threshold up', () => {
-    const marked = markExposed([NGINX, POSTGRES], new Map([['nginx', EXPOSED_AT], ['Postgres', EXPOSED_AT - 0.01]]));
+describe('markTeams', () => {
+  const items = (chips: Chip[]) => chips.map((c) => c.items.map((i) => [i.item, i.team ?? null]));
+  const OBSCURE: Chip = { input: 'Frobnicator', status: 'resolved', items: [exact('p:someone/frobnicator')] };
+
+  it("gives every item of a chip Jev's team, ahead of the table's guess", () => {
+    const marked = markTeams([NGINX, POSTGRES], new Map([['nginx', 'network']]));
     expect(items(marked)).toEqual([
       [
-        ['!?p:f5/nginx', true],
-        ['!?p:nginx/nginx', true],
+        ['?p:f5/nginx;network', 'network'],
+        ['?p:nginx/nginx;network', 'network'],
       ],
-      [['p:postgresql/postgresql', false]],
+      [['p:postgresql/postgresql;database', 'database']],
     ]);
   });
 
-  it('leaves chips alone without an answer, and never adds, drops or reorders items', () => {
-    expect(markExposed([SWITCHES, POSTGRES], new Map())).toEqual([SWITCHES, POSTGRES]);
-    const marked = markExposed([SWITCHES], new Map([['Cisco switches', 0.99]]));
+  it("fills what Jev left out from the table, and leaves an item it doesn't know without a team", () => {
+    const marked = markTeams([SWITCHES, OBSCURE], new Map());
+    expect(marked[0]!.items.every((i) => i.team === 'network')).toBe(true);
+    expect(marked[1]).toBe(OBSCURE);
+    const judged = markTeams([OBSCURE], new Map([['Frobnicator', 'business']]));
+    expect(items(judged)).toEqual([[['p:someone/frobnicator;business', 'business']]]);
+  });
+
+  it('keeps other marks and never adds, drops or reorders items', () => {
+    const marked = markTeams([SWITCHES, { input: 'edge', status: 'resolved', items: [close('?p:f5/nginx@1.27')] }], new Map([['edge', 'platform']]));
     expect(marked[0]!.items.map((i) => i.label)).toEqual(SWITCHES.items.map((i) => i.label));
-  });
-
-  it('keeps a mark already on an item', () => {
-    const already: Chip = { input: 'edge', status: 'resolved', items: [{ ...exact('!p:f5/nginx'), exposed: true }] };
-    expect(items(markExposed([already], new Map([['edge', 0.9]])))).toEqual([[['!p:f5/nginx', true]]]);
-  });
-});
-
-describe('isEdgeProduct', () => {
-  const edge = (item: string) => isEdgeProduct(parseStack(item)[0]!);
-
-  it('knows gateways, edge firewalls and ADCs by their catalog keys', () => {
-    for (const item of [
-      'p:fortinet/fortios@7.4',
-      'p:fortinet/fortiproxy',
-      'p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software',
-      'p:cisco/cisco_secure_firewall_threat_defense_ftd_software',
-      'p:palo_alto_networks/pan_os',
-      'p:ivanti/connect_secure',
-      'p:citrix/netscaler_adc_and_netscaler_gateway',
-      'p:f5/big_ip',
-      'p:sonicwall/sma1000',
-      'p:watchguard/fireware_os',
-      'p:zyxel/usg_flex_series_firmware',
-      'p:openvpn/access_server',
-      // A repeated vendor prefix is stripped before anchored patterns are tested.
-      'p:fortinet/fortinet_fortios',
-    ]) {
-      expect(edge(item), item).toBe(true);
-    }
-  });
-
-  it('leaves out their consoles and clients, inside gear, packages and unknown vendors', () => {
-    for (const item of [
-      'p:cisco/cisco_secure_firewall_management_center_fmc',
-      'p:checkpoint/quantum_security_management',
-      'p:palo_alto_networks/globalprotect_app',
-      'p:palo_alto_networks/prisma_access_agent',
-      'p:f5/big_ip_next_central_manager',
-      'p:ivanti/connect_secure_client',
-      'p:cisco/ios_xe',
-      'p:f5/nginx',
-      'p:postgresql/postgresql',
-      'npm:fortios',
-      'p:__proto__/fortios',
-      'p:constructor/pan_os',
-    ]) {
-      expect(edge(item), item).toBe(false);
-    }
-  });
-});
-
-describe('markExposed: edge products', () => {
-  it('marks edge products without Jev, and only those among close matches', () => {
-    const cisco: Chip = { input: 'Cisco gear', status: 'resolved', items: ['?p:cisco/ios_xe', '?p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software'].map(close) };
-    const marked = markExposed([cisco, POSTGRES], new Map());
-    expect(marked[0]!.items.map((i) => i.item)).toEqual(['?p:cisco/ios_xe', '!?p:cisco/cisco_secure_firewall_adaptive_security_appliance_asa_software']);
-    expect(marked[1]).toBe(POSTGRES);
-  });
-
-  it('marks an edge product even when Jev says the text does not', () => {
-    const forti: Chip = { input: 'FortiGate VPN', status: 'resolved', items: [exact('p:fortinet/fortios')] };
-    expect(markExposed([forti], new Map([['FortiGate VPN', 0.1]]))[0]!.items[0]!.item).toBe('!p:fortinet/fortios');
+    expect(marked[1]!.items[0]!.item).toBe('?p:f5/nginx@1.27;platform');
   });
 });

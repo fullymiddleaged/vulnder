@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mitigationFor } from '../src/match/match';
 import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
-const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, exploitedSibling: null, cvss: null, cvssVector: null, ssvc: null, exposed: false };
+const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, exploitedSibling: null, cvss: null, cvssVector: null, ssvc: null };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
   exploitation,
   automatable,
@@ -74,15 +74,9 @@ describe('assess: priority bands', () => {
     expect(assess({ ...critical, cvssVector: 'AV:N/AC:L/Au:N/C:C/I:C/A:C' }).priority).toBe('attend');
   });
 
-  it('watches CVSS 7.0 or more on an internet-facing item when the bug is open to attack', () => {
-    const exposed = { ...base, exposed: true, cvssVector: OPEN };
-    expect(assess({ ...exposed, cvss: 7.0 }).priority).toBe('watch');
-    expect(assess({ ...exposed, cvss: 6.9 }).priority).toBe('track');
-    expect(assess({ ...exposed, exposed: false, cvss: 7.0 }).priority).toBe('track');
-    expect(assess({ ...exposed, cvss: 7.0, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H' }).priority).toBe('track');
-    // Exposure needs positive evidence: a missing vector gets no benefit of the doubt here.
-    expect(assess({ ...exposed, cvss: 7.0, cvssVector: null }).priority).toBe('track');
-    expect(assess({ ...exposed, cvss: 7.0, cvssVector: null, ssvc: ssvc('none', 'yes') }).priority).toBe('watch');
+  it('leaves CVSS 7.x with nothing else in Track, however reachable', () => {
+    expect(assess({ ...base, cvss: 7.9, cvssVector: OPEN }).priority).toBe('track');
+    expect(assess({ ...base, cvss: 8.0, cvssVector: OPEN }).priority).toBe('watch');
   });
 
   it("watches an unscored CVE its advisory calls critical or high, and says that's why", () => {
@@ -140,13 +134,38 @@ describe('assess: score and reasons', () => {
     expect(assess({ ...base, kevAddedAt: 'x', knownRansomware: true, cvss: 10, ssvc: ssvc('active', 'yes') }).score).toBe(100);
   });
 
-  it('boosts a bug open to attack on an internet-facing item, and says so', () => {
-    const open = { ...base, epss: 0.4, cvss: 5, cvssVector: OPEN };
-    expect(assess({ ...open, exposed: true }).score).toBe(25);
+  it('lifts an edge device’s score, capped at 100, and says why without deciding anything', () => {
+    const open = { ...base, epss: 0.4, cvss: 5 };
     expect(assess(open).score).toBe(20);
-    expect(assess({ ...open, exposed: true, cvssVector: 'CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' }).score).toBe(20);
-    expect(assess({ ...open, exposed: true, cvss: 7.5 }).reasons).toEqual(['EPSS 40%', 'Internet-facing', 'Reachable over the network without a login', 'CVSS 7.5 (high)']);
-    expect(assess({ ...open, cvss: 7.5 }).reasons).not.toContain('Internet-facing');
+    expect(assess({ ...open, edge: true }).score).toBe(25);
+    expect(assess({ ...base, kevAddedAt: 'x', knownRansomware: true, cvss: 10, ssvc: ssvc('active', 'yes'), edge: true }).score).toBe(100);
+    const lifted = assess({ ...base, kevAddedAt: 'x', cvss: 9.8, edge: true });
+    expect(lifted.reasons).toContain('Edge device: VPNs, firewalls and gateways are a top target');
+    expect(lifted.why.decisive!.text).toBe('On CISA KEV');
+  });
+
+  it('never moves a result to another priority for being an edge device', () => {
+    const cases: Signals[] = [
+      { ...base, kevAddedAt: 'x' },
+      { ...base, epss: 0.2 },
+      { ...base, cvss: 8.5, cvssVector: OPEN },
+      { ...base, cvss: 7.5, cvssVector: OPEN },
+      { ...base, cvss: 5 },
+      base,
+    ];
+    for (const s of cases) {
+      const plain = assess(s);
+      const edge = assess({ ...s, edge: true });
+      expect(edge.priority).toBe(plain.priority);
+      expect(edge.score).toBeGreaterThanOrEqual(plain.score);
+      expect(edge.respondWithinHours).toBe(plain.respondWithinHours);
+    }
+  });
+
+  it('says whether an attacker can reach a high-severity bug, without changing its score', () => {
+    const open = { ...base, epss: 0.4, cvss: 5, cvssVector: OPEN };
+    expect(assess(open).score).toBe(20);
+    expect(assess({ ...open, cvss: 7.5 }).reasons).toEqual(['EPSS 40%', 'Reachable over the network without a login', 'CVSS 7.5 (high)']);
   });
 
   it('explains itself, most important first', () => {
@@ -205,7 +224,6 @@ describe('assess: why and when', () => {
     expect(assess({ ...base, exploitedSibling: 'CVE-1', epss: 0.3 }).why.decisive!.text).toBe('Similar to exploited CVE-1 in the same product');
     expect(assess({ ...base, lev: 0.4 }).why.decisive!.kind).toBe('prediction');
     expect(assess({ ...base, ssvc: ssvc('poc', 'yes') }).why.decisive!.text).toBe('Proof-of-concept exploit');
-    expect(assess({ ...base, exposed: true, cvss: 7.2, cvssVector: OPEN }).why.decisive!.text).toBe('Internet-facing');
     expect(assess({ ...base, ssvc: ssvc('none', 'yes', 'total') }).why.decisive!.text).toBe('Total technical impact');
     expect(assess({ ...base, cvss: 5 }).why.decisive).toBeNull();
   });
@@ -221,9 +239,8 @@ describe('assess: why and when', () => {
     expect(assess({ ...base, kevAddedAt: 'x', cvss: 5, cvssVector: OPEN }).why.missing).toEqual([]);
   });
 
-  it('suggests a response window by band, a day for exploited internet-facing items', () => {
-    expect(assess({ ...base, kevAddedAt: 'x', exposed: true }).respondWithinHours).toBe(24);
-    expect(assess({ ...base, kevAddedAt: 'x' }).respondWithinHours).toBe(48);
+  it('suggests a response window by band, a day for anything exploited', () => {
+    expect(assess({ ...base, kevAddedAt: 'x' }).respondWithinHours).toBe(24);
     expect(assess({ ...base, epss: 0.2 }).respondWithinHours).toBe(168);
     expect(assess({ ...base, cvss: 8.5 }).respondWithinHours).toBe(720);
     expect(assess(base).respondWithinHours).toBeNull();

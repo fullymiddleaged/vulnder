@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { isEdgeChip, type Chip } from './catalog';
+import { TEAMS, type Team } from '../stack/format';
+import type { Chip } from './catalog';
 import { MAX_TEXT_CHARS } from './extract';
 import { HOSTINGS, rankableChips, SCALES, type AxisGuess, type StackProfile } from './profile';
 
@@ -11,11 +12,11 @@ import { HOSTINGS, rankableChips, SCALES, type AxisGuess, type StackProfile } fr
  * - screen: before extraction, is the text aimed at an AI rather than
  *   describing a stack, and what scale and hosting does it describe?
  * - judge: after resolving, how well does each close match suit that stack,
- *   and does the text say each named component faces the internet?
+ *   and, for an enterprise stack, which team looks after each named component?
  *
  * Both fail open: if Jev is unavailable, extraction still runs (the <stack>
  * fence and keepMentioned grounding still apply), close matches keep catalog
- * order and nothing is marked internet-facing. Jev's output is
+ * order and teams come from the fixed table alone. Jev's output is
  * schema-checked like any model output.
  */
 
@@ -27,8 +28,20 @@ export const INJECTION_BLOCK = 0.85;
 /** Close matches asked about in one call; any beyond count as neutral. */
 export const MAX_FIT_QUESTIONS = 30;
 
-/** Components asked about exposure in one call; any beyond stay unmarked. */
-export const MAX_EXPOSURE_QUESTIONS = 30;
+/** Components asked about their team in one call; any beyond get the fixed table's guess. */
+export const MAX_TEAM_QUESTIONS = 30;
+
+/** What each team looks after, as Jev is asked it. */
+const TEAM_CRITERIA: Record<Team | 'unclear', string> = {
+  network: 'Network: routers, switches, firewalls, VPNs, load balancers, wireless',
+  database: 'Database: database servers and data stores',
+  frontend: 'Front-end: browser frameworks, UI libraries, front-end build tools',
+  backend: 'Back-end: application code and the libraries services are built from',
+  platform: 'Platform: servers and their operating systems, web servers, containers, virtualisation, CI/CD',
+  endpoints: 'Endpoints: desktops, laptops and phones, their operating systems, browsers, office apps and clients',
+  business: 'Business apps: mail, collaboration, CMS, ERP, CRM',
+  unclear: 'None of these, or the description does not make it clear',
+};
 
 const MAX_LABEL_CHARS = 120;
 
@@ -75,8 +88,8 @@ function cleanLabel(label: string): string {
 
 /**
  * One call after resolving, with two kinds of question: `p0…` asks how well
- * each close match (a catalog label) fits the stack, and `e0…` asks whether
- * each component the person named faces the internet, in their own words.
+ * each close match (a catalog label) fits the stack, and `t0…` asks which
+ * team looks after each component the person named, in their own words.
  */
 export function judgeRequest(text: string, profile: StackProfile, labels: string[], components: string[]) {
   return {
@@ -95,14 +108,11 @@ export function judgeRequest(text: string, profile: StackProfile, labels: string
         },
       ]),
       ...components.map((name, i) => [
-        `e${i}`,
+        `t${i}`,
         {
-          type: 'noul',
-          instructions: `Does the description say or clearly imply that "${cleanLabel(name)}" can be reached from the internet?`,
-          criteria: {
-            true: 'Yes: it serves the public or outside users, such as a website, public API, VPN gateway, mail server or edge firewall',
-            false: 'No, or the description does not say: internal systems, databases, or things reachable only from inside',
-          },
+          type: 'choice',
+          instructions: `In a large organisation, which team usually looks after "${cleanLabel(name)}", as this description uses it?`,
+          criteria: TEAM_CRITERIA,
         },
       ]),
     ]),
@@ -158,13 +168,13 @@ export function blocks(screen: Screen | null): boolean {
   return screen?.injection != null && screen.injection >= INJECTION_BLOCK;
 }
 
-/** Answers per question kind, in the order asked; null where Jev didn't answer one. */
-export function parseJudgement(raw: unknown, fitCount: number, exposureCount: number): { fit: (number | null)[]; exposure: (number | null)[] } | null {
+/** Answers per question kind, in the order asked; null where Jev didn't answer one or found no team clear. */
+export function parseJudgement(raw: unknown, fitCount: number, teamCount: number): { fit: (number | null)[]; team: (Team | null)[] } | null {
   const answers = answersOf(raw);
   if (!answers) return null;
   return {
     fit: Array.from({ length: fitCount }, (_, i) => noul(answers, `p${i}`)),
-    exposure: Array.from({ length: exposureCount }, (_, i) => noul(answers, `e${i}`)),
+    team: Array.from({ length: teamCount }, (_, i) => axis(answers, `t${i}`, TEAMS).value),
   };
 }
 
@@ -189,36 +199,26 @@ export function fitTargets(chips: Chip[]): { item: string; label: string }[] {
   return [...seen].slice(0, MAX_FIT_QUESTIONS).map(([item, label]) => ({ item, label }));
 }
 
-/**
- * The components worth asking about exposure: each resolved chip's input,
- * once, up to the cap. Edge products are left out: they're marked by what
- * they are (isEdgeChip), so asking would only cost a question.
- */
-export function exposureTargets(chips: Chip[]): string[] {
-  const inputs = chips.filter((c) => c.status === 'resolved' && c.items.length > 0 && !isEdgeChip(c)).map((c) => c.input);
-  return [...new Set(inputs)].slice(0, MAX_EXPOSURE_QUESTIONS);
+/** The components worth asking a team for: each resolved chip's input, once, up to the cap. */
+export function teamTargets(chips: Chip[]): string[] {
+  const inputs = chips.filter((c) => c.status === 'resolved' && c.items.length > 0).map((c) => c.input);
+  return [...new Set(inputs)].slice(0, MAX_TEAM_QUESTIONS);
 }
 
 export interface Judgement {
   /** Fit per close-match item. */
   fit: Map<string, number>;
-  /** Probability per chip input that it faces the internet. */
-  exposure: Map<string, number>;
+  /** Team per chip input, where Jev named one. */
+  team: Map<string, Team>;
 }
 
-/** Jev's fit for each close match and exposure for each component; empty maps if Jev is unavailable. */
-export async function judgeStack(
-  ai: Ai,
-  text: string,
-  profile: StackProfile,
-  fitAsk: { item: string; label: string }[],
-  exposureAsk: string[],
-): Promise<Judgement> {
-  const out: Judgement = { fit: new Map(), exposure: new Map() };
-  if (fitAsk.length + exposureAsk.length === 0) return out;
-  const raw = await runJev(ai, judgeRequest(text, profile, fitAsk.map((t) => t.label), exposureAsk));
-  const parsed = parseJudgement(raw, fitAsk.length, exposureAsk.length);
+/** Jev's fit for each close match and team for each component; empty maps if Jev is unavailable. */
+export async function judgeStack(ai: Ai, text: string, profile: StackProfile, fitAsk: { item: string; label: string }[], teamAsk: string[]): Promise<Judgement> {
+  const out: Judgement = { fit: new Map(), team: new Map() };
+  if (fitAsk.length + teamAsk.length === 0) return out;
+  const raw = await runJev(ai, judgeRequest(text, profile, fitAsk.map((t) => t.label), teamAsk));
+  const parsed = parseJudgement(raw, fitAsk.length, teamAsk.length);
   parsed?.fit.forEach((p, i) => p !== null && out.fit.set(fitAsk[i]!.item, p));
-  parsed?.exposure.forEach((p, i) => p !== null && out.exposure.set(exposureAsk[i]!, p));
+  parsed?.team.forEach((t, i) => t !== null && out.team.set(teamAsk[i]!, t));
   return out;
 }

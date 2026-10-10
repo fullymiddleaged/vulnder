@@ -14,15 +14,14 @@ import type { SeverityLabel, Ssvc } from '../ingest/types';
  *             it has already been exploited, CVSS 9.0 or more that an attacker can
  *             reach (see reach()), or a proof-of-concept exploit that is
  *             automatable or gives total control
- *     watch   CVSS 8.0 or more, CVSS 7.0 or more open to attack on an
- *             internet-facing item, a proof-of-concept exploit, or automatable
+ *     watch   CVSS 8.0 or more, a proof-of-concept exploit, or automatable
  *             with total control
  *     track   everything else: affected, but nothing above applies
  *   A critical score alone says how bad a bug is, not whether anyone can get
  *   at it: one that needs local access, a login or a user's help waits in
  *   Watch unless something else lifts it.
  * - A 0–100 score that orders results within a band and ranks components:
- *   threat × impact × ease × exposure × ransomware, in the shape Grype uses (threat from
+ *   threat × impact × ease × edge × ransomware, in the shape Grype uses (threat from
  *   KEV or EPSS, 1% while EPSS hasn't scored it; impact from CVSS). It is a heuristic for ordering, not a
  *   calibrated probability.
  */
@@ -55,19 +54,20 @@ export interface Why {
   missing: string[];
 }
 
-type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'automatable' | 'total' | 'exposed' | 'access' | 'cvss' | 'label';
+type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'automatable' | 'total' | 'edge' | 'access' | 'cvss' | 'label';
 
 /**
  * How soon to fix or mitigate, as guidance rather than an SLA. In 2026, working
  * exploits often appear within hours of disclosure and a third arrive on or
- * before it, so exploited bugs get a day or two, and a day on internet-facing
- * items, where the 24–48 hour "tier zero" guidance applies. The rest follow the
- * common 7- and 30-day remediation windows.
+ * before it, so exploited bugs get a day: the short end of the 24–48 hour
+ * "tier zero" guidance, since Vulnder doesn't know which systems face the
+ * internet. Someone with an air-gapped system can decide to wait. The rest
+ * follow the common 7- and 30-day remediation windows.
  */
-export function respondWithin(priority: Priority, exposed: boolean): number | null {
+export function respondWithin(priority: Priority): number | null {
   switch (priority) {
     case 'act':
-      return exposed ? 24 : 48;
+      return 24;
     case 'attend':
       return 7 * 24;
     case 'watch':
@@ -90,8 +90,12 @@ export interface Signals {
   /** The CNA's or GitHub's severity word; counts only when there is no CVSS score. */
   severityLabel?: SeverityLabel | null;
   ssvc: Ssvc | null;
-  /** A stack item it matched is marked internet-facing. */
-  exposed: boolean;
+  /**
+   * A stack item it matched is an edge device (src/stack/teams.ts isEdgeDevice).
+   * It lifts the score only: the priority never depends on it, so a wrong
+   * guess can't push anything down.
+   */
+  edge?: boolean;
 }
 
 const CRITICAL_CVSS = 9;
@@ -113,8 +117,8 @@ const UNKNOWN_IMPACT = 0.5;
 const LABEL_IMPACT: Partial<Record<SeverityLabel, number>> = { critical: 0.9, high: 0.7 };
 const TOTAL_IMPACT = 0.9;
 const AUTOMATABLE_BOOST = 1.25;
-/** An internet-facing item with a bug open to attack: the same weight as automatable. */
-const EXPOSED_BOOST = 1.25;
+/** VPNs, edge firewalls and gateways face the internet and fill much of KEV: the same weight as automatable. */
+const EDGE_BOOST = 1.25;
 const RANSOMWARE_BOOST = 1.2;
 
 export function assess(s: Signals): Assessment {
@@ -134,9 +138,6 @@ export function assess(s: Signals): Assessment {
   // CISA judging it automatable means an attacker gets there unaided, whatever
   // the vector says. With no vector to read, a critical keeps the benefit of the doubt.
   const reachable = automatable || access === null || access.barriers.length === 0;
-  // On an item facing the internet, only positive evidence that the bug is open
-  // to attack counts: no benefit of the doubt for a missing vector.
-  const exposedOpen = s.exposed && (automatable || (access !== null && access.barriers.length === 0));
   const high = s.cvss !== null && s.cvss >= HIGH_CVSS;
   // With no score, a source calling it critical or high still earns a look. It
   // stops at Watch: a word carries no vector, so there's nothing to say an attacker can reach it.
@@ -146,15 +147,14 @@ export function assess(s: Signals): Assessment {
     ? 'act'
     : sibling || likely || likelyBefore || (critical && reachable) || (poc && (automatable || totalImpact))
       ? 'attend'
-      : severe || labelled || (high && exposedOpen) || poc || (automatable && totalImpact)
+      : severe || labelled || poc || (automatable && totalImpact)
         ? 'watch'
         : 'track';
 
   const threat = active ? 1 : Math.max(s.epss ?? UNSCORED_THREAT, s.lev ?? 0, poc ? POC_THREAT : 0, sibling ? SIBLING_THREAT : 0);
   const unscoredImpact = (s.severityLabel && LABEL_IMPACT[s.severityLabel]) ?? UNKNOWN_IMPACT;
   const impact = Math.max(s.cvss !== null ? s.cvss / 10 : unscoredImpact, totalImpact ? TOTAL_IMPACT : 0);
-  const raw =
-    threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (exposedOpen ? EXPOSED_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
+  const raw = threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (s.edge ? EDGE_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
 
   const all: (Reason & { key: ReasonKey })[] = [];
@@ -168,7 +168,7 @@ export function assess(s: Signals): Assessment {
   if (poc) add('poc', 'evidence', 'Proof-of-concept exploit');
   if (automatable) add('automatable', 'context', 'Automatable');
   if (totalImpact) add('total', 'severity', 'Total technical impact');
-  if (exposedOpen) add('exposed', 'context', 'Internet-facing');
+  if (s.edge) add('edge', 'context', 'Edge device: VPNs, firewalls and gateways are a top target');
   if (access && high) add('access', 'context', describeAccess(access.barriers));
   if (s.cvss !== null) add('cvss', 'severity', `CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
   if (labelled) add('label', 'severity', `Rated ${labelled} by its advisory (no CVSS score yet)`);
@@ -180,7 +180,7 @@ export function assess(s: Signals): Assessment {
       : priority === 'attend'
         ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical && reachable ? 'cvss' : 'poc'
         : priority === 'watch'
-          ? severe ? 'cvss' : labelled ? 'label' : high && exposedOpen ? 'exposed' : poc ? 'poc' : 'total'
+          ? severe ? 'cvss' : labelled ? 'label' : poc ? 'poc' : 'total'
           : null;
   const decisive = all.find((r) => r.key === decidedBy) ?? null;
   const strip = ({ text, kind }: Reason): Reason => ({ text, kind });
@@ -196,7 +196,7 @@ export function assess(s: Signals): Assessment {
     score,
     reasons: all.map((r) => r.text),
     why: { decisive: decisive && strip(decisive), others: all.filter((r) => r !== decisive).map(strip), missing },
-    respondWithinHours: respondWithin(priority, s.exposed),
+    respondWithinHours: respondWithin(priority),
   };
 }
 

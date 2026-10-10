@@ -2,17 +2,19 @@ import { describeHours } from '../src/lib/time';
 import type { Feed, Priority, Reason, Result } from './api';
 import { safeHref } from './url';
 import { componentGroups, cvssSeverity, formatScore, itemMarks, ordinal, pct, RISK } from './format';
+import { TEAM } from './teams';
 
 /**
- * The results as a file to hand to a person or an AI assistant: Markdown to
- * read, JSON to process. Built in the browser from the feed already loaded,
- * so exporting costs no request. Titles, summaries and CISA's action text are
- * quoted from public records, so both formats say to treat them as data.
+ * The results as a Markdown file to hand to an AI agent (or a person) to work
+ * through. Built in the browser from the feed already loaded, so exporting
+ * costs no request. Titles, summaries and CISA's action text are quoted from
+ * public records, so the file says to treat them as data. Scripts that want
+ * JSON use the live feed at /api/feed instead.
  */
 
 const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
-/** How to work through an export; first in both formats, so an assistant reads it before the findings. */
+/** How to work through an export; first in the file, so an assistant reads it before the findings. */
 export const EXPORT_INSTRUCTIONS = [
   'Work through "Fix first" from the top: it orders the components by what fixing each one removes, most urgent first.',
   'Before changing anything, confirm each finding applies. "Version not confirmed" means only the product matched: compare the installed version with "Fixed in". "Close match" means the component was inferred from a vague name: confirm it is actually in use.',
@@ -69,8 +71,8 @@ function mdLink(url: string | null): string | null {
 }
 
 function stackLine(item: string): string {
-  const { name, exposed, close } = itemMarks(item);
-  const notes = [exposed ? 'internet-facing' : '', close ? 'close match' : ''].filter(Boolean);
+  const { name, close, team } = itemMarks(item);
+  const notes = [close ? 'close match' : '', team ? `team: ${TEAM[team].label}` : ''].filter(Boolean);
   return `${code(name)}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
 }
 
@@ -143,70 +145,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 
-// ---------- JSON ----------
-
-export function exportJson(feed: Feed, name = 'Vulnder'): string {
-  const doc = {
-    format: 'vulnder-export/1',
-    source: { name, page: feed.links.page, json: feed.links.json },
-    generatedAt: feed.generatedAt,
-    windowDays: feed.days,
-    versionCheckUnavailable: feed.versionCheckUnavailable,
-    instructions: EXPORT_INSTRUCTIONS,
-    priorityLevels: Object.fromEntries(PRIORITIES.map((p) => [p, { label: RISK[p].label, meaning: RISK[p].note }])),
-    stack: feed.stack
-      .split(',')
-      .filter(Boolean)
-      .map((item) => {
-        const { name: component, exposed, close } = itemMarks(item);
-        return { component, internetFacing: exposed, closeMatch: close };
-      }),
-    counts: feed.priorities,
-    fixFirst: componentGroups(feed.fixFirst, feed.results).map((g) => ({
-      rank: g.rank,
-      component: g.component,
-      internetFacing: g.exposed,
-      closeMatch: g.close,
-      totalRisk: g.score,
-      counts: g.counts,
-      withFix: g.fixable,
-      cves: g.vulns,
-    })),
-    vulnerabilities: feed.results.map((r) => ({
-      id: r.id,
-      title: r.title,
-      priority: r.priority,
-      priorityLabel: RISK[r.priority].label,
-      riskScore: r.score,
-      respondWithinHours: r.respondWithinHours,
-      affects: r.matched.map((m) => itemMarks(m).name),
-      match: r.match,
-      versionConfirmed: r.confidence === 'version_confirmed',
-      decidedBy: r.why.decisive,
-      otherReasons: r.why.others,
-      notAvailable: r.why.missing,
-      exploitation: {
-        knownExploited: r.evidence.kevAddedAt ? { since: r.evidence.kevAddedAt, federalDueDate: r.evidence.kevDueDate } : null,
-        ransomware: r.evidence.knownRansomware,
-        epss: r.evidence.epss,
-        epssPercentile: r.evidence.epssPercentile,
-        lev: r.evidence.lev,
-      },
-      cvss: r.cvss,
-      fixedVersions: r.fixedVersions,
-      action: remediation(r),
-      mitigation: r.mitigation,
-      similar: r.related,
-      links: { advisory: safeHref(r.links.advisory), patch: safeHref(r.links.patch) },
-      publishedAt: r.publishedAt,
-      summary: r.summary,
-    })),
-    watchingWithNoCves: feed.watching.map((w) => itemMarks(w).name),
-  };
-  return `${JSON.stringify(doc, null, 2)}\n`;
-}
-
 /** "vulnder-2026-10-08.md" */
-export function exportFileName(feed: Feed, ext: 'md' | 'json'): string {
-  return `vulnder-${feed.generatedAt.slice(0, 10)}.${ext}`;
+export function exportFileName(feed: Feed): string {
+  return `vulnder-${feed.generatedAt.slice(0, 10)}.md`;
 }

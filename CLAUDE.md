@@ -4,7 +4,7 @@ A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (f
 
 ## Principles (don't undo these)
 
-- **Privacy:** user text and stacks are never stored or logged. Parses are cached under a hash of the normalised text; IPs are only rate-limit keys or a daily-salted hash. Feed passes (`src/lib/pass.ts`) hold a random id and keyed hashes of stacks, never stacks, and are deleted after a day. Manifests are parsed in the browser.
+- **Privacy:** our code never stores or logs user text or stacks (Cloudflare AI Gateway can log model requests; the privacy copy says so). Parses are cached under a hash of the normalised text; IPs are only rate-limit keys or a daily-salted hash. Feed passes (`src/lib/pass.ts`) hold a random id and keyed hashes of stacks, never stacks, and are deleted after a day. Manifests are parsed in the browser.
 - **Evidence beats severity:** exploitation evidence (CISA KEV, SSVC "active") always outranks prediction (EPSS) and severity (CVSS). Every priority shows its reasons; scores are heuristics for ordering, not probabilities.
 - **AI only extracts and judges; code decides.** Models never rank CVEs or hide matches. Their output is schema-validated, grounded against the user's text, and treated as untrusted.
 - **Never hide a match.** Vague names expand to close matches (marked `?` in the stack); ranking only reorders them.
@@ -20,7 +20,7 @@ A stack-aware CVE feed on Cloudflare Workers. Someone describes what they run (f
 
 ## Jev (TypeSafe's decision model on Workers AI, `typesafe/jev`)
 
-Runs **at request time, on the user's own text only**, never as a batch job over the catalog. Two calls per uncached parse: a screen before extraction (injection noul, blocked at `INJECTION_BLOCK`; scale and hosting choices), then one judge call after resolving, with a fit noul per close match (only when the profile is clear) and an exposure noul per named component. Fixed logic acts on the answers: fit reorders close matches, and exposure at `EXPOSED_AT` or above adds the `!` internet-facing mark. Edge products by role (`EDGE_PRODUCTS` in aliases.ts) get the mark without Jev and are left out of its questions; with nothing left to ask, the judge call is skipped. Both calls fail open. Jev is billed in AI Gateway credits, not neurons: without credits every call fails with "2021: Insufficient AI Gateway credits", and parsing carries on without it.
+Runs **at request time, on the user's own text only**, never as a batch job over the catalog. Two calls per uncached parse: a screen before extraction (injection noul, blocked at `INJECTION_BLOCK`; scale and hosting choices), then one judge call after resolving, with a fit noul per close match (only when the profile is clear) and, for enterprise stacks only (`isEnterprise`), a team choice per named component. Fixed logic acts on the answers: fit reorders close matches, and `markTeams` writes each item's team (`;team` suffix in the stack), Jev's answer first, then the fixed table in `src/stack/teams.ts`. With nothing to ask (no clear profile, not enterprise), the judge call is skipped. There is no internet-facing mark: ranking treats every item as reachable. Both calls fail open. Jev is billed in AI Gateway credits, not neurons: without credits every call fails with "2021: Insufficient AI Gateway credits", and parsing carries on without it.
 
 ## Working here
 

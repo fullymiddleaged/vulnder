@@ -15,6 +15,7 @@ npm run dev                           # http://localhost:8787
 - `npm run ingest` runs one incremental pass against local D1, the same pass production runs every hour.
 - Free-text parsing calls Workers AI, which needs a Cloudflare login even during `wrangler dev`. Without one, manifests and manually added items still work.
 - Jev is billed in [AI Gateway credits](https://developers.cloudflare.com/ai-gateway/), not neurons. Without credits its calls fail with "Insufficient AI Gateway credits" and parsing carries on without it.
+- AI Gateway can log model requests, including the text people type, in your Cloudflare account. The privacy notes say so. For a stricter setup, turn off log collection in the gateway's settings in the Cloudflare dashboard.
 - `npm run update-injection-corpus` refreshes the prompt-injection test corpus (`test/fixtures/injection/corpus.json`) from [garak](https://github.com/NVIDIA/garak) (Apache-2.0) and [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings) (MIT), at the commits pinned in the script.
 - Checks: `npm test`, `npm run typecheck`, `npm run lint`. `npm run record-fixtures` refreshes the recorded upstream samples the tests use. Tests never touch the network.
 

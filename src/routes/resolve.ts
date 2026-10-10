@@ -11,12 +11,12 @@ import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resol
 import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { looksLikeInjection } from '../resolve/injection';
 import { MAX_MANIFEST_ENTRIES } from '../resolve/limits';
-import { blocks, exposureTargets, fitTargets, judgeStack, screenText, type Judgement } from '../resolve/jev';
+import { blocks, fitTargets, judgeStack, screenText, teamTargets, type Judgement } from '../resolve/jev';
 import { parseManifest } from '../resolve/manifests';
-import { canRank, markExposed, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
+import { canRank, isEnterprise, markTeams, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
-import { MAX_ITEMS, PREFIXES } from '../stack/format';
+import { isTeam, MAX_ITEMS, PREFIXES, type Team } from '../stack/format';
 import type { AppEnv } from '../types';
 
 /**
@@ -28,8 +28,9 @@ import type { AppEnv } from '../types';
  * - Text that parses as a manifest is handled without the model.
  * - Free text aimed at an AI is refused: first by a phrase screen, then by Jev
  *   (jev.ts), which also reads the stack's scale and hosting so close matches
- *   can be ordered by fit, and which components face the internet so they
- *   can be marked (the person can untick them on the Edit page).
+ *   can be ordered by fit. An enterprise stack also gets a team per item:
+ *   Jev's answer, else the fixed table's (the person can change it on the
+ *   Edit page).
  * - Neither the text nor the stack is stored or logged. The parse cache is
  *   keyed by a hash of the normalised text and holds only the parsed items
  *   and the profile.
@@ -178,14 +179,16 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     throw err;
   }
   let chips = result.chips;
-  // Only free text gets judged: manifests aren't sent to Jev.
+  // Only free text gets judged: manifests aren't sent to Jev. Only enterprise stacks get teams.
   if (text !== null) {
+    const enterprise = isEnterprise(profile);
     const fitAsk = canRank(profile) ? fitTargets(chips) : [];
-    const exposureAsk = exposureTargets(chips);
-    const { fit, exposure } =
-      fitAsk.length + exposureAsk.length > 0 ? await cachedJudgement(c.env, text, profile, fitAsk, exposureAsk) : { fit: new Map(), exposure: new Map() };
-    // Edge products are marked even when Jev doesn't answer.
-    chips = markExposed(orderByFit(chips, fit), exposure);
+    const teamAsk = enterprise ? teamTargets(chips) : [];
+    const { fit, team } =
+      fitAsk.length + teamAsk.length > 0 ? await cachedJudgement(c.env, text, profile, fitAsk, teamAsk) : { fit: new Map<string, number>(), team: new Map<string, Team>() };
+    chips = orderByFit(chips, fit);
+    // The fixed table fills what Jev left out, so teams appear even when Jev doesn't answer.
+    if (enterprise) chips = markTeams(chips, team);
   }
   return c.json({ source, format, ...result, chips, profile }, 200, { 'Cache-Control': 'no-store' });
 });
@@ -258,36 +261,30 @@ async function cachedParse(env: Env, text: string, quota: () => Promise<QuotaRes
 }
 
 /**
- * Jev's fit for each close match and exposure for each component, cached by
+ * Jev's fit for each close match and team for each component, cached by
  * text and what was asked. It follows a parse of the same text, so the
  * parse's quota covers it; a repeat costs nothing unless the catalog has
  * changed the matches.
  */
-async function cachedJudgement(
-  env: Env,
-  text: string,
-  profile: StackProfile,
-  fitAsk: { item: string; label: string }[],
-  exposureAsk: string[],
-): Promise<Judgement> {
-  const asked = await sha256Hex(JSON.stringify([fitAsk.map((t) => t.item), exposureAsk]));
-  const key = new Request(`https://parse-cache.vulnder.invalid/judge/v1/${await sha256Hex(normalizeInput(text))}/${asked}`);
+async function cachedJudgement(env: Env, text: string, profile: StackProfile, fitAsk: { item: string; label: string }[], teamAsk: string[]): Promise<Judgement> {
+  const asked = await sha256Hex(JSON.stringify([fitAsk.map((t) => t.item), teamAsk]));
+  const key = new Request(`https://parse-cache.vulnder.invalid/judge/v2/${await sha256Hex(normalizeInput(text))}/${asked}`);
   const cache = await openParseCache();
   const hit = cache ? await cache.match(key) : undefined;
   if (hit) {
-    const stored = (await hit.json()) as { fit?: unknown; exposure?: unknown } | null;
-    return { fit: entries(stored?.fit), exposure: entries(stored?.exposure) };
+    const stored = (await hit.json()) as { fit?: unknown; team?: unknown } | null;
+    return { fit: entries(stored?.fit, (v): v is number => typeof v === 'number'), team: entries(stored?.team, (v): v is Team => typeof v === 'string' && isTeam(v)) };
   }
-  const judged = await judgeStack(env.AI, text, profile, fitAsk, exposureAsk);
+  const judged = await judgeStack(env.AI, text, profile, fitAsk, teamAsk);
   // Nothing is cached when Jev didn't answer, so the next request asks again.
-  if (cache && judged.fit.size + judged.exposure.size > 0) {
-    await cache.put(key, Response.json({ fit: [...judged.fit], exposure: [...judged.exposure] }, { headers: cacheHeaders }));
+  if (cache && judged.fit.size + judged.team.size > 0) {
+    await cache.put(key, Response.json({ fit: [...judged.fit], team: [...judged.team] }, { headers: cacheHeaders }));
   }
   return judged;
 }
 
-/** A cached [key, probability] list read back as a map, dropping anything malformed. */
-function entries(stored: unknown): Map<string, number> {
+/** A cached [key, value] list read back as a map, dropping anything malformed. */
+function entries<T>(stored: unknown, valid: (v: unknown) => v is T): Map<string, T> {
   if (!Array.isArray(stored)) return new Map();
-  return new Map(stored.filter((e): e is [string, number] => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'number'));
+  return new Map(stored.filter((e): e is [string, T] => Array.isArray(e) && typeof e[0] === 'string' && valid(e[1])));
 }

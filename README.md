@@ -14,7 +14,7 @@ Evidence of exploitation beats prediction, and prediction beats severity.
 
 | Priority | Means | Respond |
 |---|---|---|
-| **Act now** | On CISA KEV, or CISA reports active exploitation | 24–48 hours |
+| **Act now** | On CISA KEV, or CISA reports active exploitation | 24 hours |
 | **Attend** | Likely to be exploited: high EPSS or LEV, a similar CVE exploited, or a critical bug reachable without a login | 7 days |
 | **Watch** | Serious but less pressing: CVSS 8+, or a public proof of concept | 30 days |
 | **Track** | Affects you, nothing urgent | Next routine update |
@@ -36,7 +36,7 @@ https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 
 A list of what you run is useful to an attacker, so Vulnder keeps as little as it can.
 
-- **Nothing you enter is stored.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text.
+- **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. Cloudflare's AI Gateway can log those model requests, text included, in the account running the site; operators can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
 - **Lockfiles stay in your browser.** Only package names and versions are sent.
 - **Stack URLs aren't logged.** IPs are used only as rate-limit keys or a daily-salted hash, and there's no analytics.
 - **Feed passes hold no stacks**, only keyed hashes, and are deleted after a day.

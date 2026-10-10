@@ -562,6 +562,7 @@ describe('POST /api/resolve', () => {
 describe('Jev at request time', () => {
   const SWITCHES_REPLY = { response: { items: [{ name: 'switches', version: null, type: 'product', ecosystem: null, vendor: 'Cisco' }] } };
   const HOME_SCREEN = jevReply({ injection: noul(0.02), scale: choice('home', 0.9), hosting: choice('on_prem', 0.8) });
+  const ENTERPRISE_SCREEN = jevReply({ injection: noul(0.02), scale: choice('enterprise', 0.9), hosting: choice('unclear', 0.8) });
   const isScreen = (input: { questions: Record<string, unknown> }) => 'injection' in input.questions;
   type Body = { error?: string; reason?: string; fallback?: string; profile: unknown; chips: { items: { item: string }[] }[] };
 
@@ -610,8 +611,9 @@ describe('Jev at request time', () => {
     const body = (await res.json()) as Body;
     expect(body.profile).toEqual({ scale: { value: null, confidence: 0 }, hosting: { value: null, confidence: 0 } });
     expect(body.chips[0]!.items.map((i) => i.item)).toEqual(['?p:cisco/ios_xe', '?p:cisco/nx_os', '?p:cisco/industrial_ethernet_switches', '?p:cisco/small_business_switches']);
-    // A failed screen, then a failed exposure question (no fit without a profile); nothing marked.
-    expect(aiCalls(e, JEV_MODEL)).toHaveLength(2);
+    // A failed screen only: with no profile there's no fit to judge and no enterprise stack to give teams.
+    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
+    expect(body.chips[0]!.items.some((i) => i.item.includes(';') || i.item.startsWith('!'))).toBe(false);
   });
 
   it('orders close matches by Jev’s fit, without hiding any, and caches both calls', async () => {
@@ -629,43 +631,48 @@ describe('Jev at request time', () => {
     expect(aiCalls(e, env.AI_MODEL)).toHaveLength(1);
   });
 
-  it('asks about fit only when the profile is clear', async () => {
+  it('makes no judge call when there is nothing to judge: no clear profile and not enterprise', async () => {
     stubTurnstile();
     const e = testEnv(async () => SWITCHES_REPLY, true, async (input) => (isScreen(input) ? CLEAN_SCREEN : jevReply({})));
     const body = (await (await post({ text: `Cisco switches ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
     expect(body.chips[0]!.items[0]!.item).toBe('?p:cisco/ios_xe');
-    // The second call asks only about exposure.
-    const judge = aiCalls(e, JEV_MODEL)[1]![1] as { questions: Record<string, unknown> };
-    expect(Object.keys(judge.questions)).toEqual(['e0']);
+    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
   });
 
-  it('marks what Jev judges internet-facing, in one call, and caches it', async () => {
+  it('gives a home lab no teams, and asks it about fit only', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => SWITCHES_REPLY, true, homeJev);
+    const body = (await (await post({ text: `Cisco switches in my home lab ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
+    expect(body.chips[0]!.items.some((i) => i.item.includes(';'))).toBe(false);
+    const judge = aiCalls(e, JEV_MODEL)[1]![1] as { questions: Record<string, unknown> };
+    expect(Object.keys(judge.questions).every((id) => id.startsWith('p'))).toBe(true);
+  });
+
+  it('gives an enterprise stack a team per item: Jev first, the table for the rest, in one cached call', async () => {
     stubTurnstile();
     const e = testEnv(async () => MODEL_REPLY, true, async (input) => {
-      if (isScreen(input)) return CLEAN_SCREEN;
+      if (isScreen(input)) return ENTERPRISE_SCREEN;
       const questions = input.questions as Record<string, { instructions: string }>;
-      return jevReply(Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, noul(q.instructions.includes('"nginx"') ? 0.9 : 0.1)])));
+      return jevReply(Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, choice(q.instructions.includes('"nginx"') ? 'network' : 'unclear', 0.8)])));
     });
     const text = `${BRIEF_EXAMPLE} ${++textSalt}`;
     for (let i = 0; i < 2; i++) {
       const body = (await (await post({ text, turnstileToken: 't' }, e)).json()) as Body;
       const items = body.chips.flatMap((c) => c.items.map((it) => it.item));
-      expect(items.filter((it) => it.startsWith('!'))).toEqual(['!?p:f5/nginx', '!?p:nginx/nginx']);
-      expect(items).toContain('p:postgresql/postgresql@16');
+      // Jev's answer wins over the table's (which would say platform for nginx).
+      expect(items).toEqual(expect.arrayContaining(['?p:f5/nginx;network', '?p:nginx/nginx;network', 'p:postgresql/postgresql@16;database']));
     }
     // One screen and one judgement, the second request served from the cache.
     expect(aiCalls(e, JEV_MODEL)).toHaveLength(2);
   });
 
-  it('marks edge products from text even when Jev is down, but never from a manifest', async () => {
+  it('falls back to the table when the judgement fails, and never gives a manifest teams', async () => {
     stubTurnstile();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const FORTI_REPLY = { response: { items: [{ name: 'FortiGate', version: null, type: 'product', ecosystem: null, vendor: 'Fortinet' }] } };
-    const e = testEnv(async () => FORTI_REPLY, true, async () => Promise.reject(new Error('2021: Insufficient AI Gateway credits')));
-    const text = (await (await post({ text: `A FortiGate for the office ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
-    expect(text.chips.map((c) => c.items.map((i) => i.item))).toEqual([['!p:fortinet/fortios']]);
-    // The screen only: with nothing left to judge, there's no second Jev call.
-    expect(aiCalls(e, JEV_MODEL)).toHaveLength(1);
+    const e = testEnv(async () => FORTI_REPLY, true, async (input) => (isScreen(input) ? ENTERPRISE_SCREEN : Promise.reject(new Error('2021: Insufficient AI Gateway credits'))));
+    const text = (await (await post({ text: `Our data centre's FortiGate firewalls ${++textSalt}`, turnstileToken: 't' }, e)).json()) as Body;
+    expect(text.chips.map((c) => c.items.map((i) => i.item))).toEqual([['p:fortinet/fortios;network']]);
     const listed = (await (
       await post({ turnstileToken: 't', candidates: [{ kind: 'product', name: 'fortigate', vendor: 'fortinet', version: null, direct: true }] }, e)
     ).json()) as Body;

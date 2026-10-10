@@ -1,12 +1,14 @@
 import { parseManifest } from '../src/resolve/manifests';
-import { identity, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
+import { identity, isTeam, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
+import { guessTeam, isEdgeDevice } from '../src/stack/teams';
 import { MAX_MANIFEST_BYTES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
 import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
-import { exportFileName, exportJson, exportMarkdown, remediationSteps } from './export';
+import { exportFileName, exportMarkdown, remediationSteps } from './export';
+import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
 import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
 import {
   ago,
@@ -18,6 +20,7 @@ import {
   cvssSeverity,
   eventDetail,
   formatScore,
+  fullSummary,
   itemMarks,
   describeLength,
   examplePlaceholder,
@@ -258,7 +261,7 @@ function renderInput(prefill = ''): void {
     // The countdown goes first, so it's seen before anything is typed.
     lockControls([submitButton, drop], updateCounter),
     textarea,
-    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe it in your own words, with versions where you know them.'), counter),
+    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe your entire stack in your own words, include versions if you know them.'), counter),
     h(
       'div',
       { class: 'examples' },
@@ -416,11 +419,11 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
     void done();
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
     const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
-    const exposed = res.chips.filter((c) => c.items.some((i) => i.exposed)).map((c) => c.input);
+    const teamed = res.chips.some((c) => c.items.some((i) => i.team));
     const notes = [
       note,
       unrecognised.length > 0 ? `Couldn't match: ${unrecognised.join(', ')}. These weren't checked; use Edit stack to add them by hand.` : '',
-      exposed.length > 0 ? `Marked as internet-facing from your description: ${exposed.join(', ')}. Use Edit stack to change that.` : '',
+      teamed ? 'Your description reads as an enterprise stack, so each item has a team and results can be grouped by team. Use Edit stack to change a team.' : '',
       res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
     ].filter(Boolean);
     if (items.length === 0) {
@@ -454,30 +457,34 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
 function renderEdit(initial: string[]): void {
   clear(app);
   const items = [...new Set(initial)];
+  // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
+  const teamed = items.some((i) => itemMarks(i).team !== null);
   const list = h('ul', { class: 'chips', 'aria-label': 'Stack items' });
+
+  const teamPicker = (i: number) => {
+    const { name, team, ...marks } = itemMarks(items[i]!);
+    const select = h(
+      'select',
+      { class: 'team-select', 'aria-label': `Team for ${name}` },
+      TEAM_GROUPS.map((t) => h('option', { value: t === 'unassigned' ? '' : t, selected: (team ?? 'unassigned') === t }, TEAM[t].label)),
+    );
+    select.addEventListener('change', () => {
+      items[i] = withItemMarks(name, { ...marks, team: isTeam(select.value) ? select.value : null });
+    });
+    return select;
+  };
 
   const draw = () => {
     clear(list);
     items.forEach((item, i) => {
-      const { name, close, exposed } = itemMarks(item);
+      const { name, close } = itemMarks(item);
       list.append(
         h(
           'li',
           { class: `chip ${close ? 'close' : 'resolved'}` },
           h('code', {}, name),
           close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
-          h(
-            'button',
-            {
-              type: 'button',
-              class: 'expose',
-              'aria-pressed': String(exposed),
-              'aria-label': `${name} is internet-facing`,
-              title: 'Reachable from the internet. Bugs an attacker could reach on it rank higher.',
-              onclick: () => ((items[i] = withItemMarks(name, { close, exposed: !exposed })), draw()),
-            },
-            'Internet-facing',
-          ),
+          teamed ? teamPicker(i) : null,
           h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
         ),
       );
@@ -494,7 +501,11 @@ function renderEdit(initial: string[]): void {
       onsubmit: (e: Event) => {
         e.preventDefault();
         try {
-          for (const item of parseStack(addInput.value)) items.push(serializeStack([withMarks(item, { exposed: item.exposed })]));
+          for (const item of parseStack(addInput.value)) {
+            // In a stack with teams, an item added by hand starts with the fixed table's guess.
+            const team = item.team ?? (teamed ? (guessTeam(item) ?? undefined) : undefined);
+            items.push(serializeStack([withMarks(item, { team })]));
+          }
           addInput.value = '';
           report('');
           draw();
@@ -593,23 +604,35 @@ async function renderResults(stack: string, days: number): Promise<void> {
   say(`${feed.results.length} vulnerabilities found.`);
   document.title = `${config?.displayName ?? 'Vulnder'}: ${feed.summary.exploited} exploited`;
 
-  // The answer first: the headline, the stack it answers for, priorities at a glance, what to fix first,
-  // the week's changes, every result, then ways to share and follow it.
+  // The answer first: the headline with ways to share and follow it, the stack it answers for, priorities
+  // at a glance, what to fix first, the week's changes, every result, then share and follow again in full.
   const headline = matchHeadline(feed.results.length, feed.days, unmatched);
   app.append(
-    h('section', { class: 'headline', 'aria-labelledby': 'match-title' }, h('h2', { id: 'match-title' }, headline.title), h('p', { class: 'muted' }, headline.subtitle)),
+    h(
+      'section',
+      { class: 'headline', 'aria-labelledby': 'match-title' },
+      h('h2', { id: 'match-title' }, headline.title),
+      h('p', { class: 'muted' }, headline.subtitle),
+      h('div', { class: 'share-bar row wrap', role: 'group', 'aria-label': 'Share and follow' }, copyButtons(feed), exportButtons(feed)),
+    ),
     renderStack(feed, notes),
   );
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
     const view = h('div', { class: 'results-view', id: 'results', tabindex: -1 });
+    const groups = componentGroups(feed.fixFirst, feed.results);
+    // Only an enterprise stack carries teams; without them, "By team" isn't offered.
+    const teamed = groups.some((g) => g.team !== null);
     const draw = (grouping: Grouping) => {
       clear(view);
-      view.append(...(grouping === 'component' ? renderByComponent(componentGroups(feed.fixFirst, feed.results)) : renderByPriority(feed.results)));
+      if (grouping === 'risk') view.append(...renderByPriority(feed.results));
+      else if (grouping === 'component') view.append(...renderByComponent(groups));
+      else view.append(...renderByTeam(groups));
     };
-    app.append(h('div', { class: 'results-head' }, groupingToggle(draw), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
-    draw(savedGrouping());
+    const initial = savedGrouping(teamed);
+    app.append(h('div', { class: 'results-head' }, groupingToggle(draw, initial, teamed), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
+    draw(initial);
   }
   if (feed.watching.length > 0) {
     app.append(
@@ -668,7 +691,8 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
             { class: `chip ${i.close ? 'close' : 'resolved'}` },
             h('code', {}, identity(i)),
             i.close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
-            i.exposed ? h('span', { class: 'exposed-mark small' }, 'Internet-facing') : null,
+            isEdgeDevice(i) ? edgeBadge() : null,
+            i.team ? h('span', { class: 'team-mark small muted' }, TEAM[i.team].label) : null,
           ),
         ),
       ),
@@ -685,7 +709,11 @@ function renderShare(feed: Feed): HTMLElement {
     'section',
     { class: 'block share', 'aria-labelledby': 'share-title' },
     h('h2', { id: 'share-title' }, 'Share and follow'),
-    h('p', { class: 'muted small' }, 'The page link, Atom feed and JSON feed always show the latest results for this stack, so you can come back or subscribe. Exports save the results as they are now.'),
+    h(
+      'p',
+      { class: 'muted small' },
+      'The page link and Atom feed always show the latest results for this stack, so you can come back or subscribe. Export for AI saves the results as they are now, as a Markdown file an AI agent can work through to apply the fixes.',
+    ),
     h('div', { class: 'row wrap' }, copyButtons(feed), exportButtons(feed)),
   );
 }
@@ -797,7 +825,7 @@ function renderFixItem(g: ComponentGroup): HTMLElement {
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
         h('code', {}, g.component),
         g.close ? [pause(), h('span', { class: 'badge match-close' }, 'Close match')] : null,
-        g.exposed ? [pause(), h('span', { class: 'badge exposed' }, 'Internet-facing')] : null,
+        isEdgeItem(g.item) ? [pause(), edgeBadge()] : null,
         pause(),
         tally(g.counts),
         pause(),
@@ -832,6 +860,24 @@ function renderBrief(r: Result): HTMLElement {
   );
 }
 
+/** A VPN, edge firewall, gateway or ADC: the same test the server ranks with (src/stack/teams.ts). */
+function isEdgeItem(item: string): boolean {
+  try {
+    const parsed = parseStack(item)[0];
+    return !!parsed && isEdgeDevice(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function edgeBadge(): HTMLElement {
+  return h(
+    'span',
+    { class: 'badge edge', title: 'VPNs, firewalls and gateways face the internet and are a top target, so their CVEs rank ahead of similar ones in the same priority' },
+    'Edge device',
+  );
+}
+
 /** A comma only screen readers hear, so a row of badges reads as a list rather than one run-on phrase. */
 function pause(): HTMLElement {
   return h('span', { class: 'visually-hidden' }, ', ');
@@ -845,19 +891,21 @@ function tally(counts: Record<Priority, number>): HTMLElement {
   );
 }
 
-type Grouping = 'risk' | 'component';
+const GROUPINGS = ['risk', 'component', 'team'] as const;
+type Grouping = (typeof GROUPINGS)[number];
 const GROUPING_KEY = 'vulnder:grouping';
 
-function savedGrouping(): Grouping {
+/** The grouping chosen last time, if this stack can show it. */
+function savedGrouping(teamed: boolean): Grouping {
   try {
-    return localStorage.getItem(GROUPING_KEY) === 'component' ? 'component' : 'risk';
+    const saved = GROUPINGS.find((g) => g === localStorage.getItem(GROUPING_KEY)) ?? 'risk';
+    return saved === 'team' && !teamed ? 'risk' : saved;
   } catch {
     return 'risk';
   }
 }
 
-function groupingToggle(draw: (g: Grouping) => void): HTMLElement {
-  const current = savedGrouping();
+function groupingToggle(draw: (g: Grouping) => void, current: Grouping, teamed: boolean): HTMLElement {
   const option = (value: Grouping, label: string) =>
     h(
       'label',
@@ -878,7 +926,14 @@ function groupingToggle(draw: (g: Grouping) => void): HTMLElement {
       }),
       h('span', {}, label),
     );
-  return h('fieldset', { class: 'grouping' }, h('legend', { class: 'small muted' }, 'Group results'), option('risk', 'By priority'), option('component', 'By component'));
+  return h(
+    'fieldset',
+    { class: 'grouping' },
+    h('legend', { class: 'small muted' }, 'Group results'),
+    option('risk', 'By priority'),
+    option('component', 'By component'),
+    teamed ? option('team', 'By team') : null,
+  );
 }
 
 /** One section per priority that has results; the ledger above already shows the empty ones as 0. */
@@ -897,22 +952,50 @@ function renderByPriority(results: Result[]): HTMLElement[] {
 
 /** One collapsible group per stack item, in fix-first order; urgent groups start open. */
 function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
-  return groups.map((g) => {
-    const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  return groups.map(renderComponent);
+}
+
+function renderComponent(g: ComponentGroup): HTMLElement {
+  const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  return h(
+    'details',
+    { class: `component ${RISK[worst].light}`, open: g.counts.act + g.counts.attend > 0 },
+    h(
+      'summary',
+      {},
+      h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
+      h('code', {}, g.component),
+      g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+      isEdgeItem(g.item) ? edgeBadge() : null,
+      h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
+      tally(g.counts),
+    ),
+    renderList(g.results),
+  );
+}
+
+/**
+ * The fix-first list split by the team that looks after each item, so work can be handed out.
+ * Teams come in the order of their most urgent item; inside a team, fix-first order holds.
+ * Unassigned, items with no team, always comes last.
+ */
+function renderByTeam(groups: ComponentGroup[]): HTMLElement[] {
+  const byTeam = new Map<TeamGroup, ComponentGroup[]>();
+  for (const g of groups) {
+    const team = teamOf(g.item);
+    byTeam.set(team, [...(byTeam.get(team) ?? []), g]);
+  }
+  const teams = TEAM_GROUPS.filter((t) => byTeam.has(t)).sort((a, b) => (a === 'unassigned' ? 1 : b === 'unassigned' ? -1 : byTeam.get(a)![0]!.rank - byTeam.get(b)![0]!.rank));
+  return teams.map((t) => {
+    const members = byTeam.get(t)!;
+    const counts = Object.fromEntries(PRIORITIES.map((p) => [p, members.reduce((n, g) => n + g.counts[p], 0)])) as Record<Priority, number>;
+    const total = PRIORITIES.reduce((n, p) => n + counts[p], 0);
     return h(
-      'details',
-      { class: `component ${RISK[worst].light}`, open: g.counts.act + g.counts.attend > 0 },
-      h(
-        'summary',
-        {},
-        h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
-        h('code', {}, g.component),
-        g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
-        g.exposed ? h('span', { class: 'badge exposed' }, 'Internet-facing') : null,
-        h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
-        tally(g.counts),
-      ),
-      renderList(g.results),
+      'section',
+      { class: 'tier team', 'aria-labelledby': `team-${t}` },
+      h('h2', { id: `team-${t}` }, `${TEAM[t].label} `, h('span', { class: 'count' }, `${total} ${total === 1 ? 'CVE' : 'CVEs'}`), tally(counts)),
+      h('p', { class: 'muted small' }, TEAM[t].note),
+      members.map(renderComponent),
     );
   });
 }
@@ -977,7 +1060,6 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
   const r = g.result;
   const advisory = safeHref(r?.links.advisory);
   const patch = safeHref(r?.links.patch);
-  const summary = shortSummary(r?.summary ?? null);
   return h(
     'li',
     { class: `change ${RISK[r?.priority ?? 'track'].light}` },
@@ -1001,7 +1083,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
           h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
         )
       : null,
-    summary ? h('p', { class: 'small' }, summary) : null,
+    renderSummary(r?.summary ?? null),
     r && (r.fixedVersions.length > 0 || advisory || patch)
       ? h(
           'p',
@@ -1012,6 +1094,25 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
         )
       : null,
   );
+}
+
+let summaryCount = 0;
+
+/** A CVE's summary, cut short with an Expand button when it's long. Always set as text, never HTML. */
+function renderSummary(text: string | null): HTMLElement | null {
+  const short = shortSummary(text);
+  const full = fullSummary(text);
+  if (!short || !full) return null;
+  if (short === full) return h('p', { class: 'small summary' }, full);
+  const body = h('span', { id: `summary-${++summaryCount}` }, short);
+  const toggle = h('button', { type: 'button', class: 'link expand', 'aria-expanded': 'false', 'aria-controls': body.id }, 'Expand');
+  toggle.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    body.textContent = open ? full : short;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? 'Collapse' : 'Expand';
+  });
+  return h('p', { class: 'small summary' }, body, ' ', toggle);
 }
 
 function renderResult(r: Result): HTMLElement {
@@ -1038,6 +1139,7 @@ function renderResult(r: Result): HTMLElement {
       h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
     ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
+    renderSummary(r.summary),
     renderWhy(r),
     // The same steps as the export, so the page and a file handed to an assistant say the same thing.
     h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), remediationSteps(r).join(' ')),
@@ -1109,7 +1211,6 @@ function copyButtons(feed: Feed): HTMLElement {
   const items: [string, string][] = [
     ['Copy page link', feed.links.page],
     ['Copy Atom link', feed.links.atom],
-    ['Copy JSON link', feed.links.json],
     ['Copy badge Markdown', badgeMd],
   ];
   return h(
@@ -1131,26 +1232,21 @@ function copyButtons(feed: Feed): HTMLElement {
   );
 }
 
-/** Saves the results as Markdown or JSON, built here from the feed already loaded. */
+/** Saves the results as Markdown for an AI agent, built here from the feed already loaded. */
 function exportButtons(feed: Feed): HTMLElement {
-  const name = config?.displayName ?? 'Vulnder';
-  const save = (ext: 'md' | 'json') => {
-    const text = ext === 'md' ? exportMarkdown(feed, name) : exportJson(feed, name);
-    const url = URL.createObjectURL(new Blob([text], { type: ext === 'md' ? 'text/markdown;charset=utf-8' : 'application/json' }));
-    const a = h('a', { href: url, download: exportFileName(feed, ext) });
+  const save = () => {
+    const file = exportFileName(feed);
+    const url = URL.createObjectURL(new Blob([exportMarkdown(feed, config?.displayName ?? 'Vulnder')], { type: 'text/markdown;charset=utf-8' }));
+    const a = h('a', { href: url, download: file });
     document.body.append(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    say(`Saved ${exportFileName(feed, ext)}.`);
+    say(`Saved ${file}.`);
   };
-  const title = 'Every CVE here with its priority, why, and how to fix it, with instructions for a person or an AI assistant to work through';
-  return h(
-    'div',
-    { class: 'copy' },
-    h('button', { type: 'button', title, onclick: () => save('md') }, 'Export Markdown'),
-    h('button', { type: 'button', title, onclick: () => save('json') }, 'Export JSON'),
-  );
+  const title =
+    'Downloads a Markdown file listing every CVE here with its priority, why and how to fix it, written for an AI coding agent (or a person) to work through and apply the fixes';
+  return h('div', { class: 'copy' }, h('button', { type: 'button', title, onclick: save }, 'Export for AI'));
 }
 
 // ---------- Footer ----------

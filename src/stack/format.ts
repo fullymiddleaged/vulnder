@@ -33,21 +33,30 @@ const PREFIX_FOR: Record<string, string> = Object.fromEntries(Object.entries(PRE
 /**
  * `close` marks a close match: something the user's words loosely fit (e.g. one
  * of several Cisco switch products for "Cisco switches"), shown but labelled.
- * `exposed` marks an item reachable from the internet, which raises the
- * priority of bugs an attacker could reach on it.
+ * `team` is who usually looks after it, set for enterprise stacks; none means
+ * Unassigned.
  */
 export interface Marks {
   close?: boolean;
-  exposed?: boolean;
+  team?: Team;
 }
+
+/** The teams an item can belong to, written after the item: `p:cisco/ios_xe@17.9;network`. Never rename one. */
+export const TEAMS = ['network', 'database', 'frontend', 'backend', 'platform', 'endpoints', 'business'] as const;
+export type Team = (typeof TEAMS)[number];
+
+export function isTeam(s: string): s is Team {
+  return (TEAMS as readonly string[]).includes(s);
+}
+
+/** Separates an item from its team. Names, product keys and versions can't contain it. */
+const TEAM_MARK = ';';
 export type StackItem =
   | ({ kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null } & Marks)
   | ({ kind: 'product'; vendor: string; product: string; version: string | null } & Marks);
 
 /** Marks a close match in the URL: `?p:nginx/nginx`. */
 const CLOSE_MARK = '?';
-/** Marks an internet-facing item: `!p:f5/nginx`. Written before the close mark: `!?p:f5/nginx`. */
-const EXPOSED_MARK = '!';
 
 export class StackFormatError extends Error {
   constructor(
@@ -99,7 +108,7 @@ export function serializeStack(items: StackItem[]): string {
 }
 
 export function formatItem(item: StackItem): string {
-  return `${item.exposed ? EXPOSED_MARK : ''}${item.close ? CLOSE_MARK : ''}${identity(item)}`;
+  return `${item.close ? CLOSE_MARK : ''}${identity(item)}${item.team ? `${TEAM_MARK}${item.team}` : ''}`;
 }
 
 /** The item without its marks. */
@@ -110,33 +119,39 @@ export function identity(item: StackItem): string {
 
 /**
  * Deduplicates and sorts, so equivalent stacks share one URL and one cache
- * entry. When the same item appears more than once, exact beats close and
- * internet-facing beats not.
+ * entry. When the same item appears more than once, exact beats close,
+ * and the first team given is kept.
  */
 export function canonicalize(items: StackItem[]): StackItem[] {
   const byKey = new Map<string, StackItem>();
   for (const item of items) {
     const key = identity(item);
     const prev = byKey.get(key);
-    byKey.set(key, withMarks(item, { close: !!item.close && (!prev || !!prev.close), exposed: !!item.exposed || !!prev?.exposed }));
+    byKey.set(key, withMarks(item, { close: !!item.close && (!prev || !!prev.close), team: prev?.team ?? item.team }));
   }
   return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, item]) => item);
 }
 
 /** The item with exactly these marks; a false mark is left out, not stored as false. */
 export function withMarks(item: StackItem, marks: Marks): StackItem {
-  const { close: _close, exposed: _exposed, ...rest } = item;
-  return { ...rest, ...(marks.close && { close: true }), ...(marks.exposed && { exposed: true }) } as StackItem;
+  const { close: _close, team: _team, ...rest } = item;
+  return { ...rest, ...(marks.close && { close: true }), ...(marks.team && { team: marks.team }) } as StackItem;
 }
 
 function parseItem(raw: string): StackItem | null {
-  let rest = raw;
   const marks: Marks = {};
-  // Each mark at most once, in either order.
-  for (let i = 0; i < 2; i++) {
-    if (!marks.exposed && rest.startsWith(EXPOSED_MARK)) marks.exposed = true;
-    else if (!marks.close && rest.startsWith(CLOSE_MARK)) marks.close = true;
-    else break;
+  let rest = raw;
+  // A team comes last. ';' is reserved for it, so anything else after one makes the item invalid.
+  const semi = rest.lastIndexOf(TEAM_MARK);
+  if (semi >= 0) {
+    const team = rest.slice(semi + 1);
+    if (!isTeam(team)) return null;
+    marks.team = team;
+    rest = rest.slice(0, semi);
+    if (rest.includes(TEAM_MARK)) return null;
+  }
+  if (rest.startsWith(CLOSE_MARK)) {
+    marks.close = true;
     rest = rest.slice(1);
   }
   const item = parseExactItem(rest);

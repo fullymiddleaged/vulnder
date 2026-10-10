@@ -1,8 +1,8 @@
 import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '../lib/normalize';
 import type { Store } from '../ingest/store';
-import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem } from '../stack/format';
+import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem, type Team } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
-import { ALIASES, CATEGORIES, EDGE_EXCLUDE, EDGE_PRODUCTS } from './aliases';
+import { ALIASES, CATEGORIES } from './aliases';
 import type { Candidate } from './types';
 
 /**
@@ -18,14 +18,14 @@ import type { Candidate } from './types';
  */
 
 export interface ChipItem {
-  /** Canonical stack item (with a leading '?' when close, and '!' when internet-facing). */
+  /** Canonical stack item (with a leading '?' when close, and a trailing ';team' for enterprise stacks). */
   item: string;
   label: string;
   close: boolean;
   /** True when the catalog has vulnerabilities for it in the retention window. */
   known: boolean;
-  /** Set when Jev judged the component internet-facing; the item carries the '!' mark. */
-  exposed?: true;
+  /** Set for an enterprise stack when Jev or the fixed table named a team; the item carries it too. */
+  team?: Team;
 }
 
 export interface Chip {
@@ -306,19 +306,6 @@ function vendorGuesses(c: ProductCandidate): string[] {
 }
 
 /** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
-/** True for a product that faces the internet by what it is (EDGE_PRODUCTS). */
-export function isEdgeProduct(item: StackItem): boolean {
-  if (item.kind !== 'product') return false;
-  const pattern = ownValue(EDGE_PRODUCTS, item.vendor);
-  const product = stripVendor(item.product, item.vendor);
-  return !!pattern && pattern.test(product) && !EDGE_EXCLUDE.test(product);
-}
-
-/** True when every item of a chip is an edge product, so marking it needs no judgement. */
-export function isEdgeChip(chip: Chip): boolean {
-  return chip.items.length > 0 && chip.items.every((i) => isEdgeProduct(parseStack(i.item)[0]!));
-}
-
 function stripVendor(product: string, vendor: string): string {
   return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
 }

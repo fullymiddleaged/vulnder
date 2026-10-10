@@ -1,3 +1,4 @@
+import { isTeam, type Team } from '../src/stack/format';
 import type { Change, FixItem, PassStatus, Priority, Result } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
@@ -173,10 +174,15 @@ export function eventDetail(e: Change): string {
   }
 }
 
+/** A summary on one line, without a leading Markdown heading mark. */
+export function fullSummary(text: string | null): string | null {
+  return text ? text.replace(/\s+/g, ' ').replace(/^#+\s*/, '').trim() || null : null;
+}
+
 /** First sentence-ish of a summary, for compact cards. */
 export function shortSummary(text: string | null, max = 220): string | null {
-  if (!text) return null;
-  const clean = text.replace(/\s+/g, ' ').replace(/^#+\s*/, '').trim();
+  const clean = fullSummary(text);
+  if (!clean) return null;
   return clean.length <= max ? clean : `${clean.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
@@ -189,7 +195,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     label: 'Act now',
     light: 'red',
     brief: 'Being exploited now.',
-    window: 'Within 24 hours if internet-facing, 48 hours otherwise',
+    window: 'Within 24 hours',
     note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation.',
   },
   attend: {
@@ -204,7 +210,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'yellow',
     brief: 'Serious, but less pressing.',
     window: 'Within 30 days',
-    note: 'High severity or a public exploit: CVSS 8.0 or more, 7.0 or more within reach on an internet-facing item, or a proof-of-concept exploit.',
+    note: 'High severity or a public exploit: CVSS 8.0 or more, or a proof-of-concept exploit.',
   },
   track: {
     label: 'Track',
@@ -215,16 +221,11 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
   },
 };
 
-/** "14 items: 12 exact, 2 close matches, 3 internet-facing", for the folded stack on the results page. */
-export function stackSummary(items: readonly { close?: boolean; exposed?: boolean }[]): string {
+/** "14 items: 12 exact, 2 close matches", for the folded stack on the results page. */
+export function stackSummary(items: readonly { close?: boolean }[]): string {
   const n = items.length;
   const close = items.filter((i) => i.close).length;
-  const exposed = items.filter((i) => i.exposed).length;
-  const parts = [
-    close > 0 && n > close ? `${n - close} exact` : '',
-    close > 0 ? `${close} close ${close === 1 ? 'match' : 'matches'}` : '',
-    exposed > 0 ? `${exposed} internet-facing` : '',
-  ].filter(Boolean);
+  const parts = [close > 0 && n > close ? `${n - close} exact` : '', close > 0 ? `${close} close ${close === 1 ? 'match' : 'matches'}` : ''].filter(Boolean);
   return `${n} ${n === 1 ? 'item' : 'items'}${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`;
 }
 
@@ -275,22 +276,34 @@ export function formatScore(score: number): string {
   return score >= 10 ? String(Math.round(score)) : score.toFixed(1);
 }
 
-/** A stack item as the feed writes it, split into its name and its marks (`!` internet-facing, `?` close match). */
-export function itemMarks(item: string): { name: string; exposed: boolean; close: boolean } {
-  const m = /^(!?)(\??)(.*)$/s.exec(item)!;
-  return { name: m[3]!, exposed: m[1] === '!', close: m[2] === '?' };
+export interface ItemMarks {
+  close: boolean;
+  team: Team | null;
+}
+
+/** A stack item as the feed writes it, split into its name and its marks (`?` close match, `;team` its team). */
+export function itemMarks(item: string): { name: string } & ItemMarks {
+  const close = item.startsWith('?');
+  let name = close ? item.slice(1) : item;
+  let team: Team | null = null;
+  const semi = name.lastIndexOf(';');
+  if (semi >= 0 && isTeam(name.slice(semi + 1))) {
+    team = name.slice(semi + 1) as Team;
+    name = name.slice(0, semi);
+  }
+  return { name, close, team };
 }
 
 /** The item written back with the given marks, in canonical order. */
-export function withItemMarks(name: string, marks: { exposed: boolean; close: boolean }): string {
-  return `${marks.exposed ? '!' : ''}${marks.close ? '?' : ''}${name}`;
+export function withItemMarks(name: string, marks: ItemMarks): string {
+  return `${marks.close ? '?' : ''}${name}${marks.team ? `;${marks.team}` : ''}`;
 }
 
 export interface ComponentGroup extends FixItem {
   /** The stack item, without its marks. */
   component: string;
   close: boolean;
-  exposed: boolean;
+  team: Team | null;
   /** 1-based position in the fix-first order. */
   rank: number;
   results: Result[];
@@ -300,12 +313,12 @@ export interface ComponentGroup extends FixItem {
 export function componentGroups(fixFirst: FixItem[], results: Result[]): ComponentGroup[] {
   const byId = new Map(results.map((r) => [r.id, r]));
   return fixFirst.map((f, i) => {
-    const { name, close, exposed } = itemMarks(f.item);
+    const { name, close, team } = itemMarks(f.item);
     return {
       ...f,
       component: name,
       close,
-      exposed,
+      team,
       rank: i + 1,
       results: f.vulns.flatMap((id) => byId.get(id) ?? []),
     };

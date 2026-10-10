@@ -129,7 +129,7 @@ Atkinson Hyperlegible was chosen because it tells 0/O and 1/l/I apart on pages f
 Lavender-tinted neutrals with one violet accent and a four-step traffic-light scale that means risk and nothing else.
 
 ### Primary
-- **Match Violet** (light #5e2ca5, dark #b897ee): links, the primary button, the logo, focus rings, the internet-facing `!` mark and the AI tag on How it works. In dark mode, text on violet switches to Night Paper.
+- **Match Violet** (light #5e2ca5, dark #b897ee): links, the primary button, the logo, focus rings and the AI tag on How it works. In dark mode, text on violet switches to Night Paper.
 
 ### Tertiary
 The priority scale. Each tier sets a `--light` (fills, left borders, strip segments) and an `--ink` (text in that colour).
@@ -193,7 +193,7 @@ Flat. There are no shadows anywhere. Depth comes from three things only: a secti
 
 ## Shapes
 
-Small, square-shouldered corners: 4px for controls and containers, 3px for pills, badges and rank squares, 2px for traffic-light swatches and strip segments. Fully rounded (999px) is kept for stack chips, segmented toggles and the internet-facing toggle, the things a user picks or removes. Dashed borders always mean "less certain": a close match, a local-only box in the architecture diagram, a muted badge, the drop zone.
+Small, square-shouldered corners: 4px for controls and containers, 3px for pills, badges and rank squares, 2px for traffic-light swatches and strip segments. Fully rounded (999px) is kept for stack chips, segmented toggles and the team picker, the things a user picks or removes. Dashed borders always mean "less certain": a close match, a local-only box in the architecture diagram, a muted badge, the drop zone.
 
 ## Components
 
@@ -208,7 +208,7 @@ Quiet and exact: hairline borders, a small radius, one solid primary action per 
 
 ### Chips
 - **Stack item:** fully rounded, Card White, Hairline border, a remove button on the right. Close matches get a dashed Attend Amber border; unrecognised items drop to 75% opacity.
-- **Internet-facing toggle:** a small dashed pill; pressed, it fills Match Violet.
+- **Team picker:** on stacks with teams, a small rounded select on each chip.
 - **Segmented control:** fully rounded options with a Rule border; the selected option inverts to ink on paper.
 
 ### Cards / Containers
@@ -224,11 +224,11 @@ Quiet and exact: hairline borders, a small radius, one solid primary action per 
 - **Error:** a bold Act Red line just above the button it blocks (`role="alert"`), offering a way out when there is one ("Add items by hand instead"). The character counter turns Act Red and bold when over the limit.
 
 ### Notices
-- **Lookup notes** (couldn't match, marked internet-facing, entries left out): a 1px Attend Amber box with a 7% amber tint, in the stack section, staying on the page rather than passing through the status line.
+- **Lookup notes** (couldn't match, given teams, entries left out): a 1px Attend Amber box with a 7% amber tint, in the stack section, staying on the page rather than passing through the status line.
 - **Spent pass:** the same box in Act Red with a 4px left edge and a live countdown.
 
 ### Results stack line
-One line under the headline: "Your stack", a summary ("5 items: 4 exact, 1 close match, 1 internet-facing"), the time window and Edit stack. The items fold away behind it when there are more than 12. A close match says "Close match" in amber words beside a dashed amber chip, never by the dash alone.
+One line under the headline: "Your stack", a summary ("5 items: 4 exact, 1 close match"), the time window and Edit stack. The items fold away behind it when there are more than 12. A close match says "Close match" in amber words beside a dashed amber chip, never by the dash alone.
 
 ### Navigation
 Plain Match Violet links aligned right in the header, wrapping under the brand on narrow screens. The current page is ink-coloured, bold and not underlined.

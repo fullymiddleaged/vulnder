@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { isEdgeProduct, type Chip } from './catalog';
-import { formatItem, parseStack, withMarks } from '../stack/format';
+import type { Chip } from './catalog';
+import { formatItem, parseStack, withMarks, type Team } from '../stack/format';
+import { guessTeam } from '../stack/teams';
 
 /**
  * What kind of stack a description is about, on two axes: scale (enterprise,
@@ -77,26 +78,27 @@ export function orderByFit(chips: Chip[], fit: ReadonlyMap<string, number>): Chi
 }
 
 /**
- * Jev's answer at or above which a component is marked internet-facing. Its
- * answers are calibrated, so this means fairly sure; a mark raises rankings
- * and goes into the shareable link, so a guess shouldn't set one.
+ * True when the description is about a large organisation, the only kind of
+ * stack that gets teams: home labs, small businesses and lockfiles don't hand
+ * work between teams.
  */
-export const EXPOSED_AT = 0.7;
+export function isEnterprise(profile: StackProfile): boolean {
+  return profile.scale.value === 'enterprise' && profile.scale.confidence >= MIN_RANK_CONFIDENCE;
+}
 
 /**
- * Marks items internet-facing: every item of a chip whose input Jev judged
- * internet-facing, and any item that faces the internet by what it is (a VPN
- * gateway, an edge firewall), whatever Jev said or if it didn't answer.
- * Nothing is added, removed or reordered; the person can untick a mark on the
- * Edit page.
+ * Gives every item a team: Jev's answer for its chip's input first, then the
+ * fixed table's guess, so Unassigned is only what neither knows. Nothing is
+ * added, removed or reordered; the person can change a team on the Edit page.
  */
-export function markExposed(chips: Chip[], exposure: ReadonlyMap<string, number>): Chip[] {
+export function markTeams(chips: Chip[], teams: ReadonlyMap<string, Team>): Chip[] {
   return chips.map((chip) => {
-    const judged = (exposure.get(chip.input) ?? 0) >= EXPOSED_AT;
+    const judged = teams.get(chip.input);
     const items = chip.items.map((i) => {
       const parsed = parseStack(i.item)[0]!;
-      if (!judged && !isEdgeProduct(parsed)) return i;
-      return { ...i, item: formatItem(withMarks(parsed, { close: parsed.close, exposed: true })), exposed: true as const };
+      const team = judged ?? guessTeam(parsed);
+      if (!team) return i;
+      return { ...i, item: formatItem(withMarks(parsed, { close: parsed.close, team })), team };
     });
     return items.some((item, n) => item !== chip.items[n]) ? { ...chip, items } : chip;
   });

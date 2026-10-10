@@ -4,6 +4,7 @@ import { addDays } from '../lib/time';
 import { allForKeys, type Store } from '../ingest/store';
 import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
+import { isEdgeDevice } from '../stack/teams';
 import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
@@ -184,7 +185,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     let unverified = false;
     const matched = new Set<string>();
     let exact = false;
-    let exposed = false;
+    let edge = false;
     const fixes = new Set<string>();
 
     for (const r of rows) {
@@ -195,7 +196,6 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
             confirmed = true;
             matched.add(formatItem(item));
             if (!item.close) exact = true;
-            if (item.exposed) exposed = true;
             if (r.fixed_version) fixes.add(r.fixed_version);
           }
           // Checked and not affected: this row does not count as a match.
@@ -204,14 +204,14 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
         unverified = true;
         matched.add(formatItem(item));
         if (!item.close) exact = true;
-        if (item.exposed) exposed = true;
+        if (isEdgeDevice(item)) edge = true;
         if (r.fixed_version) fixes.add(r.fixed_version);
       }
     }
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
     results.push(
-      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), exposed, opts.now, exploitedSibling(v)),
+      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), edge, opts.now, exploitedSibling(v)),
     );
   }
 
@@ -250,7 +250,7 @@ function toResult(
   match: 'exact' | 'close',
   matched: string[],
   fixedVersions: string[],
-  exposed: boolean,
+  edge: boolean,
   now: Date,
   exploitedSibling: string | null,
 ): MatchedVuln {
@@ -267,8 +267,8 @@ function toResult(
     cvss: v.cvss_score,
     cvssVector: v.cvss_vector,
     severityLabel: parseSeverityLabel(v.severity_label),
-    exposed,
     ssvc,
+    edge,
   });
   return {
     id: v.id,

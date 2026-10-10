@@ -46,26 +46,29 @@ describe('parseStack', () => {
     expect(serializeStack(parseStack('p:cisco/ios_xe,?p:cisco/ios_xe'))).toBe('p:cisco/ios_xe');
   });
 
-  it('marks internet-facing items with a leading !, written before the close mark', () => {
-    expect(parseStack('!p:f5/nginx@1.25,npm:next')).toEqual([
-      { kind: 'package', ecosystem: 'npm', name: 'next', version: null },
-      { kind: 'product', vendor: 'f5', product: 'nginx', version: '1.25', exposed: true },
-    ]);
-    expect(parseStack('?!p:f5/nginx')).toEqual([{ kind: 'product', vendor: 'f5', product: 'nginx', version: null, close: true, exposed: true }]);
-    expect(serializeStack(parseStack('?!p:f5/nginx'))).toBe('!?p:f5/nginx');
-    expect(serializeStack(parseStack('!?p:f5/nginx'))).toBe('!?p:f5/nginx');
-  });
-
-  it('keeps the internet-facing mark when the same item appears with and without it', () => {
-    expect(serializeStack(parseStack('p:f5/nginx,!p:f5/nginx'))).toBe('!p:f5/nginx');
-    expect(serializeStack(parseStack('!p:f5/nginx,p:f5/nginx'))).toBe('!p:f5/nginx');
-    // Exact and internet-facing combine from separate copies.
-    expect(serializeStack(parseStack('!?p:f5/nginx,p:f5/nginx'))).toBe('!p:f5/nginx');
-    expect(serializeStack(parseStack('?p:f5/nginx,!?p:f5/nginx'))).toBe('!?p:f5/nginx');
+  it('has no internet-facing mark: a leading ! is invalid', () => {
+    for (const bad of ['!p:f5/nginx', '!?p:f5/nginx', '?!p:f5/nginx']) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
   });
 
   it('rejects a mark given twice or on its own', () => {
-    for (const bad of ['!!p:f5/nginx', '??p:f5/nginx', '!?!p:f5/nginx', '!', '?!', '! p:f5/nginx']) {
+    for (const bad of ['??p:f5/nginx', '?', '? p:f5/nginx', ';network']) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
+  });
+
+  it('writes a team after the item, with or without the other marks', () => {
+    expect(parseStack('p:cisco/ios_xe@17.9;network')).toEqual([{ kind: 'product', vendor: 'cisco', product: 'ios_xe', version: '17.9', team: 'network' }]);
+    for (const s of ['p:cisco/ios_xe@17.9;network', 'p:f5/nginx;platform', '?npm:@angular/core@17.0.0;frontend', '?pypi:django;backend']) {
+      expect(serializeStack(parseStack(s)), s).toBe(s);
+    }
+    expect(serializeStack(parseStack('p:f5/nginx;platform,p:f5/nginx;network'))).toBe('p:f5/nginx;platform');
+    expect(serializeStack(parseStack('p:f5/nginx,?p:f5/nginx;platform'))).toBe('p:f5/nginx;platform');
+  });
+
+  it("reserves ';' for a known team", () => {
+    for (const bad of ['p:cisco/ios_xe;marketing', 'p:cisco/ios_xe;', 'npm:a;b;network', 'p:x/y;__proto__', 'p:x/y;constructor', ';network', 'p:cisco/ios_xe;Network']) {
       expect(() => parseStack(bad), bad).toThrow(StackFormatError);
     }
   });

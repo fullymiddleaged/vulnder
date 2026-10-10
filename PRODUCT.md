@@ -26,7 +26,7 @@ Ranks by evidence of exploitation (CISA KEV, SSVC "active") ahead of prediction 
 
 - Entry points: the home page stack builder, a shared stack link, a README badge click, or a feed reader following the Atom feed.
 - Inputs: free text (parsed by Workers AI behind Turnstile), manifests and lockfiles/SBOMs read in the browser, and manual items.
-- Output: priority tiers Act / Attend / Watch / Track, a 0–100 ordering score, reasons, a per-component "Fix first" list, close-match (`?`) and internet-facing (`!`) marks in the stack.
+- Output: priority tiers Act / Attend / Watch / Track, a 0–100 ordering score, reasons, a per-component "Fix first" list, close-match (`?`) marks in the stack, and a `;team` per item for enterprise stacks.
 - Secondary pages: About, How it works (including use with AI agents).
 - The same stack URL is consumed by coding agents through the JSON feed and llms.txt, so the visible results and the feed must say the same thing.
 
@@ -36,7 +36,7 @@ Ranks by evidence of exploitation (CISA KEV, SSVC "active") ahead of prediction 
 - Served from a Cloudflare Worker; must still work on Workers Free limits.
 - Never hide a match: vague names expand to close matches and ranking only reorders them.
 - Scores are heuristics for ordering, not probabilities, and must not be presented as such.
-- Privacy: user text and stacks are never stored or logged; manifests never leave the browser. No analytics or tracking scripts.
+- Privacy: Vulnder never stores or logs user text or stacks (Cloudflare AI Gateway can log the model requests, and the privacy copy says so); manifests never leave the browser. No analytics or tracking scripts.
 - The feeds, badge and stack format (docs/STACK_FORMAT.md) are public contracts; UI changes must not change what they encode.
 - Display name and base URL are configurable for self-hosters.
 

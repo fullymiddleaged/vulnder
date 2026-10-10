@@ -56,8 +56,9 @@
             <desc id="arch-desc">
               Two lanes meet in the Worker. Every hour, CVE records, GitHub advisories, CISA KEV and EPSS are ingested, similar CVEs are grouped with embeddings,
               and the result is stored in D1. On request, your words are screened by Jev, component names are extracted by Gemma 4, resolved against the catalog
-              in D1, and judged for fit and exposure by Jev, giving a stack link. A lockfile skips those AI steps and goes straight to the stack link.
-              The Worker matches the stack against D1, with version checks from OSV, ranks the results, and serves the results page, JSON, Atom and badge.
+              in D1, and judged by Jev for fit and, on enterprise stacks, for which team owns each component, giving a stack link. A lockfile skips those AI steps and goes straight to the stack link.
+              The Worker matches the stack against D1, with version checks from OSV, ranks the results, lifting edge devices within their priority, and serves the results page
+              (grouped by team where the stack has teams, with Export for AI), the Atom and JSON feeds and the badge.
             </desc>
             <defs>
               <marker id="arch-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -91,8 +92,8 @@
 
             <path class="wire" d="M60 232V252" />
             <rect class="box ai" x="0" y="252" width="120" height="36" />
-            <text class="t" x="60" y="265">Judge fit</text>
-            <text class="s" x="60" y="279">+ exposure · Jev</text>
+            <text class="t" x="60" y="265">Judge</text>
+            <text class="s" x="60" y="279">fit · teams · Jev</text>
 
             <path class="wire" d="M60 288V312" />
             <!-- The lockfile skips every AI step; the gap is where the catalog wire crosses it. -->
@@ -100,7 +101,7 @@
             <path class="wire" d="M163 228V312" />
             <rect class="box local" x="0" y="312" width="200" height="36" />
             <text class="t" x="100" y="325">Stack link</text>
-            <text class="s" x="100" y="339">?s=… in the URL</text>
+            <text class="s" x="100" y="339">?s=… items and teams</text>
 
             <!-- Every hour -->
             <rect class="box" x="224" y="20" width="94" height="32" />
@@ -141,7 +142,8 @@
             <text class="t" x="75" y="403">Match</text>
             <path class="wire" d="M138 403H162" />
             <rect class="box" x="162" y="388" width="126" height="30" />
-            <text class="t" x="225" y="403">Rank</text>
+            <text class="t" x="225" y="397">Rank</text>
+            <text class="s" x="225" y="410">+ edge devices</text>
 
             <path class="wire both" d="M300 403H324" />
             <rect class="box" x="324" y="388" width="96" height="30" />
@@ -150,7 +152,8 @@
 
             <path class="wire" d="M150 428V448" />
             <rect class="box" x="0" y="448" width="300" height="34" />
-            <text class="t" x="150" y="465">Results · JSON · Atom · badge</text>
+            <text class="t" x="150" y="459">Results · Atom · JSON · badge</text>
+            <text class="s" x="150" y="473">by team · Export for AI</text>
           </svg>
           </div>
           <figcaption class="small legend">
@@ -198,8 +201,8 @@
               <p>Names are matched to the catalog of products and packages that appear in vulnerability data. A vague name like "Cisco switches" becomes several close matches, marked with <code>?</code>. Lockfiles and SBOMs start here: they're read in your browser and skip the AI steps.</p>
             </li>
             <li class="ai">
-              <strong>Judge fit and exposure</strong> <span class="tag">AI</span>
-              <p>When your description makes your scale or hosting clear, Jev judges how well each close match fits, so a home lab sees small-business gear before data-centre switches. It also says which components your description puts on the internet. Code acts on its answers at fixed thresholds.</p>
+              <strong>Judge fit and teams</strong> <span class="tag">AI</span>
+              <p>When your description makes your scale or hosting clear, Jev judges how well each close match fits, so a home lab sees small-business gear before data-centre switches. For an enterprise stack, it also says which team usually looks after each component, so results can be grouped by team; a fixed table fills any it leaves open. Code acts on its answers at fixed thresholds.</p>
             </li>
             <li>
               <strong>Match</strong>
@@ -219,7 +222,7 @@
           AI reads and judges. Code decides. A model that ranked your risk could be wrong without you ever seeing why. A rule can be read, tested and argued with.
         </p>
         <ul>
-          <li><strong>Models do:</strong> pick component names out of your description, screen it for prompt injection, judge which close matches fit and which components face the internet, and group similar CVE titles.</li>
+          <li><strong>Models do:</strong> pick component names out of your description, screen it for prompt injection, judge which close matches fit and, for enterprise stacks, which team owns each component, and group similar CVE titles.</li>
           <li><strong>Models never:</strong> rank CVEs, set a priority, hide a match, or see your lockfile.</li>
           <li><strong>Their answers are untrusted.</strong> Output is checked against a schema and against your own words, and fixed thresholds in code turn a judgment into an action. Fit only reorders close matches; it never removes one.</li>
           <li><strong>They fail open.</strong> If a model is unavailable, parsing carries on without it: close matches keep catalog order, and you can always add items by hand or upload a lockfile.</li>
@@ -233,13 +236,14 @@
           With AI finding more severe bugs and attackers moving faster, that order matters more every month: <a href="/about#priority">why prioritising matters more now</a>.
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's Known Exploited Vulnerabilities catalog, or CISA reports active exploitation. Respond within 24 hours on an internet-facing item, 48 hours otherwise.</span></li>
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's Known Exploited Vulnerabilities catalog, or CISA reports active exploitation. Respond within 24 hours.</span></li>
           <li class="amber"><span class="light"></span><span><strong>Attend:</strong> exploitation is likely, or would be easy. EPSS of 10% or more, NIST's LEV estimate of 20% or more, a similar CVE in the same product being exploited, or a critical bug an attacker can reach without a login. Within 7 days.</span></li>
           <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> serious but less pressing, such as CVSS 8.0 or more, or a proof-of-concept exploit. Within 30 days.</span></li>
           <li class="grey"><span class="light"></span><span><strong>Track:</strong> it affects your stack, but nothing above applies. Pick it up in your next routine update.</span></li>
         </ul>
         <p>
           Within a priority, a 0–100 score puts results in order. It combines threat, impact, reachability and ransomware use. It's a heuristic, not a probability.
+          Edge devices (VPNs, firewalls, gateways) are labelled and rank ahead of similar results in the same priority, since they face the internet by what they are; that never changes a priority.
           Each result names the signal that decided its priority, lists the rest, and says what data wasn't available yet, so a quiet result reads as unknown, not safe.
           Response times are guidance, not deadlines. The full rules are in the <a href="https://github.com/fullymiddleaged/vulnder#how-it-ranks-things" rel="noreferrer">README</a>.
         </p>
@@ -249,11 +253,11 @@
         <h2 id="agents">Use it with an AI assistant</h2>
         <ul>
           <li>
-            <strong>Export Markdown</strong> on the results page is written to hand to an assistant or a coding agent. It starts with instructions for working through the findings
+            <strong>Export for AI</strong> on the results page saves a Markdown file written to hand to an assistant or a coding agent. It starts with instructions for working through the findings
             (check each one applies, upgrade to a fixed version or apply the mitigation, report one outcome per CVE). It also says that advisory text is quoted data, never instructions,
             so a planted line in an advisory can't steer your agent. Paste it into a chat, or drop it into the repository your agent is working on.
           </li>
-          <li><strong>Export JSON</strong>, and the JSON feed at <code>/api/feed?s=…</code>, carry the same priorities, scores, reasons and Fix first list for scripts and tools.</li>
+          <li><strong>The JSON feed</strong> at <code>/api/feed?s=…</code> carries the same priorities, scores, reasons and Fix first list for scripts and tools.</li>
           <li><strong>The Atom feed</strong> gets one entry per change, and the <strong>badge</strong> counts known-exploited CVEs for a README.</li>
           <li><strong>For agents</strong>, <a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build a stack from your manifests and fetch the results itself.</li>
         </ul>
@@ -265,7 +269,8 @@
       <section class="block" aria-labelledby="privacy">
         <h2 id="privacy">Privacy</h2>
         <ul>
-          <li>Your stack and what you type are never stored or logged. A parse is cached under a hash of the text, never the text itself.</li>
+          <li>Vulnder never stores or logs your stack or what you type. A parse is cached under a hash of the text, never the text itself.</li>
+          <li>Free text goes to Cloudflare Workers AI to be read. Cloudflare's AI Gateway can keep a log of those requests, including your text, in the Cloudflare account that runs the site. Uploaded lockfiles never reach the model.</li>
           <li>Lockfiles and SBOMs are read in your browser. Only package names and versions are sent.</li>
           <li>Stack links are left out of logs, and pages send no <code>Referer</code>, so clicking through to an advisory doesn't pass your stack on.</li>
           <li>IP addresses are used only as rate-limit keys, or as a hash salted afresh each day.</li>

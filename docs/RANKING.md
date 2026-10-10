@@ -10,7 +10,7 @@ Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stak
 |---|---|
 | **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. |
 | **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more that an attacker can reach, or a proof-of-concept exploit that is automatable or gives total control. |
-| **Watch** (yellow) | CVSS 8.0 or more, CVSS 7.0 or more within reach on an internet-facing item, a proof-of-concept exploit, or automatable with total technical impact. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it critical or high (Red Hat's "important" counts as high). |
+| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, or automatable with total technical impact. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it critical or high (Red Hat's "important" counts as high). |
 | **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
 
 EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that it has happened. LEV (NIST CSWP 41) adds up a CVE's daily EPSS scores into the chance it has *already* been exploited, so a CVE that was hot for weeks and has since cooled stays visible. It's an estimate, and a lower bound, because Vulnder counts only the EPSS history it has seen since it first ingested the CVE.
@@ -19,16 +19,19 @@ EPSS is a *predicted* probability of exploitation in the next 30 days, not evide
 
 A CVSS score says how bad a bug is, not whether anyone can get at it. A critical goes to Attend only when its CVSS vector says it's reachable over the network with no login and no user action, or CISA judges it automatable. Criticals that need local access, a login or someone's help go to Watch. A critical with no CVSS 3 or 4 vector stays in Attend. From CVSS 7.0 up, each result says which applies ("Reachable over the network without a login", "Needs a login and user action").
 
-## Internet-facing items
+Vulnder doesn't know which of your systems face the internet, and doesn't guess: a guess would sometimes miss one and quietly rank real risk lower. Every result is ranked as if it could be reached, so every Act now result asks for a response within 24 hours. If something is air-gapped or internal only, that's your call to make when you plan the fix.
 
-Mark items as internet-facing on the Edit page, or with `!` in the link (see [STACK_FORMAT.md](STACK_FORMAT.md)). On those items, a bug reachable with no login and no user action, or that CISA judges automatable, counts for more: CVSS 7.0 or more goes to Watch, its score gets × 1.25, and its reasons say "Internet-facing". A missing vector gets no benefit of the doubt. The mark only reorders results; it never hides one.
+## Edge devices
 
-From a description, two things mark components for you:
+Some products face the internet by what they are: VPN and remote-access gateways, edge firewalls, ADCs and load balancers, web application firewalls and mail gateways (FortiGate, PAN-OS, Cisco ASA, NetScaler, BIG-IP, Ivanti Connect Secure and the like). They make up much of CISA KEV. Fixed code recognises them by product name, leaving out their management consoles and client apps, and labels them "Edge device".
 
-- Products that face the internet by what they are (VPN and remote-access gateways, edge firewalls, ADCs, mail gateways such as FortiGate, Cisco ASA, PAN-OS or NetScaler) are always marked.
-- Jev marks what your description says or clearly implies faces the internet ("nginx in front", "our public API"), when it is fairly sure (0.7 or more).
+Their CVEs get × 1.25 on the risk score, so they rank ahead of similar results **within the same priority**, and their item rises in Fix first. Nothing else changes: an edge device never changes a priority or a response window, and no other result's score goes down. A wrong guess can only lift a result slightly inside its own priority.
 
-The results page lists what was marked; untick any under Edit stack. Manifests are never marked automatically. The mark goes into the link, so a shared link says which of your systems face the internet.
+## Teams
+
+When a description reads as an enterprise stack (Jev's screen says enterprise with 0.5 confidence or more), each item gets the team that usually looks after it: Network, Database, Front-end, Back-end, Platform, Endpoints or Business apps. Jev answers for each component you named, reading your own description; a fixed table of ecosystems, vendors and product names fills whatever Jev leaves open or can't answer. Items neither knows are Unassigned. The team goes into the link (see [STACK_FORMAT.md](STACK_FORMAT.md)), and you can change it under Edit stack. Home, small-business and lockfile stacks get no teams.
+
+Teams only group results ("By team") and label the export. They never change a priority, a score or the order within a group.
 
 ## Risk score
 
@@ -36,7 +39,7 @@ Within a priority, results are ordered by a 0–100 score:
 
 - **threat**: 1 for KEV, otherwise the higher of EPSS and LEV; at least 0.2 with a proof-of-concept exploit, at least 0.3 when a similar CVE is exploited, 0.01 before EPSS has scored it
 - × **impact**: CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS
-- × 1.25 if automatable, × 1.25 if internet-facing and within reach, × 1.2 if used in ransomware
+- × 1.25 if automatable, × 1.25 on an edge device, × 1.2 if used in ransomware
 - capped at 100
 
 It's a heuristic for ordering, not a probability. Exploitation status, automatability and technical impact come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment) data in CVE records.
@@ -51,7 +54,7 @@ The results page folds each family under its highest-ranked member ("+3 similar 
 
 ## Why, when, and what to do
 
-Each result names the signal that decided its priority, lists the rest, and says what data wasn't available ("No CVSS score yet"), so a quiet result reads as unknown, not safe. It suggests a time to respond: 24 hours for Act now on an internet-facing item, 48 hours otherwise, 7 days for Attend, 30 days for Watch. These are guidance, not deadlines. It also says what to do: confirm a close match or an unconfirmed version, then upgrade to a fixed version or, with none known, apply CISA's required action or a mitigation.
+Each result names the signal that decided its priority, lists the rest, and says what data wasn't available ("No CVSS score yet"), so a quiet result reads as unknown, not safe. It suggests a time to respond: 24 hours for Act now, 7 days for Attend, 30 days for Watch. These are guidance, not deadlines. It also says what to do: confirm a close match or an unconfirmed version, then upgrade to a fixed version or, with none known, apply CISA's required action or a mitigation.
 
 ## Match confidence
 

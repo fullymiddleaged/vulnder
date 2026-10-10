@@ -67,12 +67,11 @@ describe('UI formatting', () => {
     expect(matchHeadline(2, 30, 3).title).toBe("It's a match. Unfortunately.");
   });
 
-  it('sums up a stack by how sure each match is and what faces the internet', () => {
+  it('sums up a stack by how sure each match is', () => {
     expect(stackSummary([])).toBe('0 items');
-    expect(stackSummary([{ close: false, exposed: false }])).toBe('1 item');
-    expect(stackSummary([{}, { close: true }, { close: true, exposed: true }, { exposed: true }])).toBe('4 items: 2 exact, 2 close matches, 2 internet-facing');
+    expect(stackSummary([{ close: false }])).toBe('1 item');
+    expect(stackSummary([{}, { close: true }, { close: true }, {}])).toBe('4 items: 2 exact, 2 close matches');
     expect(stackSummary([{ close: true }])).toBe('1 item: 1 close match');
-    expect(stackSummary([{ exposed: true }, {}])).toBe('2 items: 1 internet-facing');
   });
 
   it('writes percentages with sensible precision', () => {
@@ -169,7 +168,7 @@ describe('priority display', () => {
 
   it('gives each priority a response window matching the server and How it works', () => {
     expect(Object.values(RISK).map((r) => r.window)).toEqual([
-      'Within 24 hours if internet-facing, 48 hours otherwise',
+      'Within 24 hours',
       'Within 7 days',
       'Within 30 days',
       'In your next routine update',
@@ -206,13 +205,13 @@ describe('componentGroups', () => {
     const groups = componentGroups(
       [
         { item: 'p:cisco/ios_xe', score: 91, counts: { ...counts, act: 1 }, vulns: ['CVE-1'], fixable: 0 },
-        { item: '!?p:f5/nginx', score: 2, counts: { ...counts, track: 2 }, vulns: ['CVE-3', 'CVE-2', 'CVE-missing'], fixable: 1 },
+        { item: '?p:f5/nginx;platform', score: 2, counts: { ...counts, track: 2 }, vulns: ['CVE-3', 'CVE-2', 'CVE-missing'], fixable: 1 },
       ],
       results,
     );
-    expect(groups.map((g) => [g.rank, g.component, g.close, g.exposed, g.results.map((r) => r.id)])).toEqual([
-      [1, 'p:cisco/ios_xe', false, false, ['CVE-1']],
-      [2, 'p:f5/nginx', true, true, ['CVE-3', 'CVE-2']],
+    expect(groups.map((g) => [g.rank, g.component, g.close, g.team, g.results.map((r) => r.id)])).toEqual([
+      [1, 'p:cisco/ios_xe', false, null, ['CVE-1']],
+      [2, 'p:f5/nginx', true, 'platform', ['CVE-3', 'CVE-2']],
     ]);
     expect(componentGroups([], results)).toEqual([]);
   });
@@ -220,16 +219,16 @@ describe('componentGroups', () => {
 
 describe('item marks', () => {
   it('splits a stack item into its name and marks', () => {
-    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: false, close: false });
-    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: false, close: true });
-    expect(itemMarks('!p:f5/nginx')).toEqual({ name: 'p:f5/nginx', exposed: true, close: false });
-    expect(itemMarks('!?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', exposed: true, close: true });
+    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: false, team: null });
+    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: true, team: null });
+    expect(itemMarks('?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', close: true, team: null });
+    expect(itemMarks('?p:f5/nginx@1.27;platform')).toEqual({ name: 'p:f5/nginx@1.27', close: true, team: 'platform' });
   });
 
   it('writes the marks back in canonical order, matching the stack format', () => {
-    expect(withItemMarks('p:f5/nginx', { exposed: true, close: true })).toBe('!?p:f5/nginx');
-    expect(withItemMarks('p:f5/nginx', { exposed: false, close: false })).toBe('p:f5/nginx');
-    for (const s of ['!?p:f5/nginx', '?p:f5/nginx', '!p:f5/nginx', 'p:f5/nginx']) {
+    expect(withItemMarks('p:f5/nginx', { close: true, team: null })).toBe('?p:f5/nginx');
+    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network' })).toBe('p:f5/nginx;network');
+    for (const s of ['?p:f5/nginx', 'p:f5/nginx', '?p:f5/nginx@1.27;platform', 'npm:react;frontend']) {
       const m = itemMarks(s);
       expect(withItemMarks(m.name, m)).toBe(serializeStack(parseStack(s)));
     }
