@@ -42,82 +42,63 @@
     <main id="main" class="prose" tabindex="-1">
       <h1>Why I built Vulnder</h1>
       <p class="lede">
-        2025 set a record with 48,185 CVEs, a fifth more than the year before.<a href="#s1"><sup>1</sup></a> Then 2026 doubled the monthly rate:
-        Google's threat intelligence team counted 5,045 new vulnerabilities in January and 10,740 in August.<a href="#s2"><sup>2</sup></a>
-        Nobody reads that many. You shouldn't have to. Most of them don't touch what you run, and of the ones that do, only a few are being used by attackers.
+        2025 set a record with 48,185 CVEs.<a href="#s1"><sup>1</sup></a> Then 2026 doubled the monthly rate, from 5,045 in January to 10,740 in August.<a href="#s2"><sup>2</sup></a>
+        Most of them don't touch what you run, and only a few of those are being exploited.
       </p>
       <p>
         Vulnder answers two questions about your stack: <strong>which new CVEs affect it</strong>, and <strong>which of those is anyone exploiting</strong>.
-        Describe what you run in a sentence or drop in a lockfile, and you get the answer in seconds, in the order to fix things.
+        Describe what you run or drop in a lockfile, and get the answer in seconds, in the order to fix things.
       </p>
 
       <section class="block" aria-labelledby="signals">
         <h2 id="signals">The usual way to triage is running out</h2>
         <p>
-          For years, the answer to "which ones matter?" was the CVSS score that NIST added to each CVE in the National Vulnerability Database.
-          In April 2026 NIST said it can't keep up. It now enriches CVEs on CISA's Known Exploited Vulnerabilities list, software the US government uses
-          and critical software first. Everything else is listed without being scored straight away.<a href="#s3"><sup>3</sup></a>
-          The supply chain behind CVEs is fragile too: in April 2025 the CVE programme came within a day of losing its funding.<a href="#s4"><sup>4</sup></a>
+          For years, "which ones matter?" meant the CVSS score NIST added to each CVE. In April 2026 NIST said it can't keep up,
+          and now scores known-exploited, government and critical software first.<a href="#s3"><sup>3</sup></a>
+          A year earlier, the CVE programme came within a day of losing its funding.<a href="#s4"><sup>4</sup></a>
         </p>
         <p>
-          A severity score was never a full answer anyway. It says how bad a bug would be, not whether anyone can reach it or is trying to.
-          A missing score shouldn't read as "safe" either, so Vulnder says what it doesn't know.
+          A severity score says how bad a bug could be, not whether anyone is exploiting it. And a missing score isn't "safe", so Vulnder says what it doesn't know.
         </p>
       </section>
 
       <section class="block" aria-labelledby="ai">
         <h2 id="ai">AI cuts both ways</h2>
         <p>
-          AI is now finding real bugs, and serious ones. Half the vulnerabilities AI found in Google's 2026 study lead to remote code execution,
-          against about a quarter of CVEs overall.<a href="#s2"><sup>2</sup></a> That's good news for defenders, and part of why the volume doubled.
+          AI is finding serious bugs: half of those in Google's 2026 study lead to remote code execution, against about a quarter of CVEs overall.<a href="#s2"><sup>2</sup></a>
         </p>
         <p>
-          The same tools help attackers. Google found that most of 2026's growth in exploitation came from known, already-disclosed bugs
-          weaponised quickly, likely helped by AI reading patches and proof-of-concept code.<a href="#s2"><sup>2</sup></a>
-          VulnCheck found that 23% of the newly exploited bugs it tracked in the first half of 2026 were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a>
+          It helps attackers too. Most of 2026's growth in exploitation came from disclosed bugs weaponised quickly, likely with AI reading the patches.<a href="#s2"><sup>2</sup></a>
+          In the first half of 2026, 23% of newly exploited bugs were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a>
         </p>
       </section>
 
       <section class="block" aria-labelledby="priority">
         <h2 id="priority">Why prioritising matters more now</h2>
-        <p>AI makes the order you fix things in matter more than it used to, for four reasons.</p>
         <ul>
-          <li>
-            <strong>Volume has outrun patching.</strong> Twice as many CVEs a month doesn't come with twice the people, change windows or downtime to patch them.
-            Something has to come first, and something has to wait.
-          </li>
-          <li>
-            <strong>Severity is stopping being a tiebreaker.</strong> When half of AI-found bugs lead to remote code execution, sorting by CVSS puts more and more of
-            the list at the top. "Critical" stops telling you where to start. Whether anyone is exploiting a bug still does.
-          </li>
-          <li>
-            <strong>The window has shrunk.</strong> Bugs are weaponised days after disclosure, sometimes before.<sup><a href="#s2">2</a>, <a href="#s5">5</a></sup>
-            A monthly patch review can't keep up with that. You need to know the day a bug in your stack starts being exploited, not at the end of the month.
-          </li>
-          <li>
-            <strong>Your fixers are getting faster too.</strong> Coding agents can now upgrade a dependency and open the pull request themselves. Point one at a raw CVE feed
-            and it spends its effort in the wrong order. Give it a ranked list with the reasons and it starts where an attacker would.
-          </li>
+          <li><strong>Volume has outrun patching.</strong> Twice the CVEs doesn't bring twice the people or change windows.</li>
+          <li><strong>Severity no longer sorts.</strong> When half of AI-found bugs are remote code execution, "critical" stops telling you where to start.</li>
+          <li><strong>The window has shrunk.</strong> Bugs are weaponised within days, sometimes before disclosure.<sup><a href="#s2">2</a>, <a href="#s5">5</a></sup> A monthly review is too slow.</li>
+          <li><strong>Your fixers are faster too.</strong> A coding agent given a ranked list starts where an attacker would, not wherever a raw feed begins.</li>
         </ul>
       </section>
 
       <section class="block" aria-labelledby="evidence">
         <h2 id="evidence">Evidence beats severity</h2>
         <p>
-          So Vulnder ranks by what's actually happening. Evidence of exploitation (CISA's catalog, or CISA reporting active exploitation) always comes first.
-          Predictions of exploitation (EPSS, and NIST's LEV estimate) come next, then severity (CVSS). Every result says which signal decided its place,
-          what else counted, and what data was missing. The scores only put results in order. They aren't probabilities.
+          Evidence of exploitation (CISA's catalog or reports) comes first, then prediction (EPSS, NIST's LEV), then severity (CVSS).
+          Every result says which signal decided its place and what data was missing. Scores only set the order; they aren't probabilities.
         </p>
       </section>
 
       <section class="block" aria-labelledby="principles">
         <h2 id="principles">What I wanted it to be</h2>
         <ul>
-          <li><strong>Fast.</strong> A sentence, a lockfile or an SBOM in, a ranked answer out, in seconds.</li>
-          <li><strong>No account, nothing to install.</strong> Your stack lives in the link. The same link gives you a JSON feed, an Atom feed and a README badge.</li>
-          <li><strong>Keeps nothing itself.</strong> Vulnder doesn't store or log what you type or your stack, and lockfiles are read in your browser. Free text goes to Cloudflare's AI, whose gateway can log the request. <a href="/how-it-works#privacy">Details</a>.</li>
-          <li><strong>Honest.</strong> It never hides a match. It says how sure each match is and suggests a time to respond, not a deadline.</li>
-          <li><strong>AI where it helps, and nowhere else.</strong> A model reads your description. Code does the ranking, and every rule can be read. <a href="/how-it-works#ai">Where AI is used</a>.</li>
+          <li><strong>Fast.</strong> A sentence, lockfile or SBOM in, a ranked answer out.</li>
+          <li><strong>No account.</strong> Your stack lives in the link, which also gives you a JSON feed, an Atom feed and a badge.</li>
+          <li><strong>Keeps nothing.</strong> Your text and stack are never stored or logged, and lockfiles stay in your browser. Cloudflare's AI gateway can log free-text requests. <a href="/how-it-works#privacy">Details</a></li>
+          <li><strong>Honest.</strong> It never hides a match, says how sure each one is, and suggests response times, not deadlines.</li>
+          <li><strong>AI only where it helps.</strong> A model reads your description; code does the ranking. <a href="/how-it-works#ai">Where AI is used</a></li>
           <li><strong>Free and open.</strong> Apache 2.0, so you can run your own copy.</li>
         </ul>
         <p class="sign">

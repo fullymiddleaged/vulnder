@@ -42,8 +42,7 @@
     <main id="main" class="prose" tabindex="-1">
       <h1>How Vulnder works</h1>
       <p class="lede">
-        Vulnder has two halves. Every hour it collects what's known about new vulnerabilities. When you ask, it works out what you run,
-        matches it against that data, and ranks the results by what to fix first.
+        Every hour, Vulnder collects what's known about new vulnerabilities. When you ask, it works out what you run and ranks the matches by what to fix first.
       </p>
 
       <section class="block" aria-labelledby="pipeline">
@@ -168,19 +167,19 @@
           <ol class="pipeline">
             <li>
               <strong>Fetch</strong>
-              <p>New and changed CVE records, with CISA's Vulnrichment assessments (is it exploited, is it automatable). GitHub's advisories for package names and fixed versions. CISA's Known Exploited Vulnerabilities catalog. FIRST's EPSS scores.</p>
+              <p>CVE records with CISA's exploitation assessments, GitHub advisories for packages and fixed versions, CISA's KEV catalog and FIRST's EPSS scores.</p>
             </li>
             <li>
               <strong>Merge and record what changed</strong>
-              <p>One record per vulnerability, whichever source it came from. New issues, KEV additions, EPSS jumps and fix releases are kept as events, for "What changed this week" and the Atom feed.</p>
+              <p>One record per vulnerability. New issues, KEV additions, EPSS jumps and fixes become events for "What changed" and the Atom feed.</p>
             </li>
             <li class="ai">
               <strong>Group similar CVEs</strong> <span class="tag">AI</span>
-              <p>Each new CVE's title is turned into an embedding once, so CVEs in the same product that describe nearly the same flaw can be grouped. The model sees CVE text only, never anything you type. Code decides what counts as similar, at a calibrated threshold.</p>
+              <p>Each new CVE title is embedded once, so near-duplicates in a product can be grouped. The model sees CVE text only; code sets the threshold.</p>
             </li>
             <li>
               <strong>Keep 90 days</strong>
-              <p>A vulnerability stays while it was published, or had an event, in the last 90 days, so an old CVE that lands on KEV today still shows up.</p>
+              <p>Anything published or changed in the last 90 days, so an old CVE that lands on KEV today still shows.</p>
             </li>
           </ol>
         </div>
@@ -190,27 +189,27 @@
           <ol class="pipeline">
             <li class="ai">
               <strong>Screen</strong> <span class="tag">AI</span>
-              <p>Text that reads like instructions for an AI, rather than a list of what you run, is refused: first by a phrase check, then by Jev, TypeSafe's decision model.</p>
+              <p>Text that reads like instructions to an AI is refused, first by a phrase check, then by Jev, TypeSafe's decision model.</p>
             </li>
             <li class="ai">
               <strong>Pick out components</strong> <span class="tag">AI</span>
-              <p>A model on Workers AI lists the components your text names, as structured data checked against a schema. Anything whose name isn't in your words is dropped, whether it was made up or planted.</p>
+              <p>A model lists the components you named. Any name that isn't in your own words is dropped, whether made up or planted.</p>
             </li>
             <li>
               <strong>Resolve</strong>
-              <p>Names are matched to the catalog of products and packages that appear in vulnerability data. A vague name like "Cisco switches" becomes several close matches, marked with <code>?</code>. Lockfiles and SBOMs start here: they're read in your browser and skip the AI steps.</p>
+              <p>Names become catalog products. A vague one like "Cisco switches" becomes several close matches, marked <code>?</code>. Lockfiles and SBOMs start here, read in your browser.</p>
             </li>
             <li class="ai">
               <strong>Judge fit and teams</strong> <span class="tag">AI</span>
-              <p>When your description makes your scale or hosting clear, Jev judges how well each close match fits, so a home lab sees small-business gear before data-centre switches. For an enterprise stack, it also says which team usually looks after each component, so results can be grouped by team; a fixed table fills any it leaves open. Code acts on its answers at fixed thresholds.</p>
+              <p>If your scale or hosting is clear, Jev rates each close match, so a home lab sees small-business gear first. For enterprise stacks it also names the team that owns each component. Code acts on its answers.</p>
             </li>
             <li>
               <strong>Match</strong>
-              <p>Your stack is matched to the vulnerability data. For packages with a version, OSV checks whether that exact version is affected.</p>
+              <p>Your stack meets the vulnerability data. OSV checks whether an exact package version is affected.</p>
             </li>
             <li>
               <strong>Rank</strong>
-              <p>Each result gets a priority, a score for ordering, the reasons for both and a suggested time to respond. Fix first orders your components by what upgrading each one removes.</p>
+              <p>Each result gets a priority, an ordering score, its reasons and a time to respond. Fix first orders components by what upgrading each one removes.</p>
             </li>
           </ol>
         </div>
@@ -219,34 +218,35 @@
       <section class="block" aria-labelledby="ai">
         <h2 id="ai">Where AI is used, and where it isn't</h2>
         <p>
-          AI reads and judges. Code decides. A model that ranked your risk could be wrong without you ever seeing why. A rule can be read, tested and argued with.
+          AI reads and judges; code decides. A rule can be read, tested and argued with. A model's ranking can't.
         </p>
         <ul>
-          <li><strong>Models do:</strong> pick component names out of your description, screen it for prompt injection, judge which close matches fit and, for enterprise stacks, which team owns each component, and group similar CVE titles.</li>
+          <li><strong>Models do:</strong> screen your text, pick out component names, judge close-match fit and enterprise teams, and group similar CVE titles.</li>
           <li><strong>Models never:</strong> rank CVEs, set a priority, hide a match, or see your lockfile.</li>
-          <li><strong>Their answers are untrusted.</strong> Output is checked against a schema and against your own words, and fixed thresholds in code turn a judgment into an action. Fit only reorders close matches; it never removes one.</li>
-          <li><strong>They fail open.</strong> If a model is unavailable, parsing carries on without it: close matches keep catalog order, and you can always add items by hand or upload a lockfile.</li>
+          <li><strong>Their answers are untrusted.</strong> Output is checked against a schema and your own words. Fit only reorders close matches, never removes one.</li>
+          <li><strong>They fail open.</strong> If a model is down, parsing carries on without it.</li>
         </ul>
       </section>
 
       <section class="block" aria-labelledby="ranking">
         <h2 id="ranking">How results are ranked</h2>
         <p>
-          Priorities are named after the decisions in CISA's SSVC. Evidence of exploitation always outranks a prediction, and a prediction outranks severity.
-          With AI finding more severe bugs and attackers moving faster, that order matters more every month: <a href="/about#priority">why prioritising matters more now</a>.
+          Priorities follow CISA's SSVC decisions. Evidence of exploitation outranks prediction, which outranks severity (<a href="/about#priority">why that matters more now</a>).
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's Known Exploited Vulnerabilities catalog, or CISA reports active exploitation: respond within 24 hours. Also, before any exploitation is seen, a critical bug with EPSS of 10% or more, EPSS of 50% or more, or an edge device (VPN, firewall, gateway) an attacker can take over automatically: respond within 3 days. Exploited bugs always come first.</span></li>
-          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> exploitation is likely, or the bug is critical. EPSS of 10% or more, NIST's LEV estimate of 20% or more, a similar CVE in the same product being exploited, CVSS 9.0 or more, or an edge device with a bug that is automatable or gives full control. Within 7 days.</span></li>
-          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> serious but less pressing, such as CVSS 8.0 or more, a proof-of-concept exploit, or a bug CISA rates automatable. Within 30 days.</span></li>
-          <li class="grey"><span class="light"></span><span><strong>Track:</strong> it affects your stack, but nothing above applies. Pick it up in your next routine update.</span></li>
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's KEV catalog or actively exploited, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited bugs come first.</span></li>
+          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> likely or critical. EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, CVSS 9.0+, or an edge-device bug that is automatable or gives full control. Within 7 days.</span></li>
+          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept exploit, or rated automatable by CISA. Within 30 days.</span></li>
+          <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack, nothing above applies. Next routine update.</span></li>
+        </ul>
+        <ul>
+          <li><strong>Score.</strong> A 0–100 heuristic orders results within a priority, from threat, impact, reachability and ransomware use. It isn't a probability.</li>
+          <li><strong>Older.</strong> Known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year always show, whatever window you pick.</li>
+          <li><strong>Edge devices.</strong> Treated as internet-facing, ranked ahead of similar results, and given CISA's BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked for you; change any under Edit stack.</li>
+          <li><strong>Reasons.</strong> Each result names what decided it and what data is missing, so a quiet result reads as unknown, not safe.</li>
         </ul>
         <p>
-          Within a priority, a 0–100 score puts results in order. It combines threat, impact, reachability and ransomware use. It's a heuristic, not a probability.
-          Whatever time window you pick, known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show too, marked "Older", as a safety net.
-          Edge devices are treated as internet-facing: they're labelled, rank ahead of similar results, and get CISA's deadlines for internet-facing systems (BOD 26-04), which can raise a priority but never lower one. Vulnder ticks VPNs, firewalls and gateways itself; under Edit stack you can tick anything else the internet can reach, or untick one that sits inside your network.
-          Each result names the signal that decided its priority, lists the rest, and says what data wasn't available yet, so a quiet result reads as unknown, not safe.
-          Response times are guidance, not deadlines. The full rules are in the <a href="https://github.com/fullymiddleaged/vulnder#how-it-ranks-things" rel="noreferrer">README</a>.
+          Response times are guidance, not deadlines. Full rules are in the <a href="https://github.com/fullymiddleaged/vulnder#how-it-ranks-things" rel="noreferrer">README</a>.
         </p>
       </section>
 
@@ -254,39 +254,38 @@
         <h2 id="agents">Use it with an AI assistant</h2>
         <ul>
           <li>
-            <strong>Export for AI</strong> on the results page saves a Markdown file written to hand to an assistant or a coding agent. It starts with instructions for working through the findings
-            (check each one applies, upgrade to a fixed version or apply the mitigation, report one outcome per CVE). It also says that advisory text is quoted data, never instructions,
-            so a planted line in an advisory can't steer your agent. Paste it into a chat, or drop it into the repository your agent is working on.
+            <strong>Export for AI</strong> on the results page saves a Markdown brief for an assistant or coding agent: check each finding, fix or mitigate it, report one outcome per CVE.
+            It marks advisory text as quoted data, never instructions, so a planted line can't steer your agent.
           </li>
-          <li><strong>The JSON feed</strong> at <code>/api/feed?s=…</code> carries the same priorities, scores, reasons and Fix first list for scripts and tools.</li>
-          <li><strong>The Atom feed</strong> gets one entry per change, and the <strong>badge</strong> counts known-exploited CVEs for a README.</li>
-          <li><strong>For agents</strong>, <a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build a stack from your manifests and fetch the results itself.</li>
+          <li><strong>The JSON feed</strong> at <code>/api/feed?s=…</code> carries the same priorities, scores, reasons and Fix first list.</li>
+          <li><strong>The Atom feed</strong> gets one entry per change; the <strong>badge</strong> counts known-exploited CVEs for a README.</li>
+          <li><strong>For agents</strong>, <a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build and fetch a stack itself.</li>
         </ul>
         <p class="notice">
-          Pasting an export into a hosted AI shares your stack with that provider. A list of what you run is useful to an attacker, so check the provider's data policy first.
+          Pasting an export into a hosted AI shares your stack with that provider, and a list of what you run is useful to attackers. Check their data policy first.
         </p>
       </section>
 
       <section class="block" aria-labelledby="privacy">
         <h2 id="privacy">Privacy</h2>
         <ul>
-          <li>Vulnder never stores or logs your stack or what you type. A parse is cached under a hash of the text, never the text itself.</li>
-          <li>Free text goes to Cloudflare Workers AI to be read. Cloudflare's AI Gateway can keep a log of those requests, including your text, in the Cloudflare account that runs the site. Uploaded lockfiles never reach the model.</li>
-          <li>Lockfiles and SBOMs are read in your browser. Only package names and versions are sent.</li>
-          <li>Stack links are left out of logs, and pages send no <code>Referer</code>, so clicking through to an advisory doesn't pass your stack on.</li>
-          <li>IP addresses are used only as rate-limit keys, or as a hash salted afresh each day.</li>
-          <li>No analytics or tracking scripts. Cloudflare Turnstile protects the submit form.</li>
-          <li>Vulnder runs on Cloudflare, which processes every request, including the stack in a link. If that's too much exposure, run your own copy.</li>
+          <li>Your stack and text are never stored or logged. Parses are cached under a hash, never the text.</li>
+          <li>Free text goes to Cloudflare Workers AI. Its AI Gateway can log those requests, text included, in the account that runs the site.</li>
+          <li>Lockfiles and SBOMs are read in your browser and never reach the model. Only package names and versions are sent.</li>
+          <li>Stack links are kept out of logs, and pages send no <code>Referer</code>, so advisory links don't leak your stack.</li>
+          <li>IP addresses are only rate-limit keys, or a hash salted afresh each day.</li>
+          <li>No analytics or tracking. Cloudflare Turnstile protects the submit form.</li>
+          <li>Cloudflare processes every request, stack links included. If that's too much, run your own copy.</li>
         </ul>
       </section>
 
       <section class="block" aria-labelledby="limits">
         <h2 id="limits">What it doesn't do</h2>
         <ul>
-          <li><strong>It doesn't scan your systems.</strong> It knows what you tell it. A lockfile gives exact versions; a sentence gives product matches to confirm.</li>
-          <li><strong>It covers recent CVEs.</strong> The last 30 days by default, up to 90. It isn't an inventory of every old bug you carry.</li>
-          <li><strong>It knows what the data names.</strong> Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products named in CVE records. Anything else shows as unrecognised.</li>
-          <li><strong>New CVEs are thin.</strong> Many arrive without a CVSS or EPSS score. Results say so rather than guess.</li>
+          <li><strong>It doesn't scan your systems.</strong> It knows what you tell it. A lockfile gives exact versions; a sentence gives matches to confirm.</li>
+          <li><strong>It covers recent CVEs.</strong> 30 days by default, up to 90, not every old bug you carry.</li>
+          <li><strong>It knows what the data names.</strong> Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products in CVE records. Anything else shows as unrecognised.</li>
+          <li><strong>New CVEs are thin.</strong> Many arrive unscored. Results say so rather than guess.</li>
         </ul>
       </section>
     </main>

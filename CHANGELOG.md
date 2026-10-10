@@ -23,6 +23,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - "What changed this week" is now "What changed in the last 7 days", since it ignores the time window. Empty priorities are no longer listed in the By priority view.
 - The **privacy notes** now say that free text sent to Cloudflare Workers AI can be logged by Cloudflare's AI Gateway in the account running the site. Vulnder itself still stores and logs none of it.
 - New tagline: "Someone could be into your stack."
+- **About and How it works are shorter and roomier**: tighter copy, short bullets in place of long paragraphs, and more space between sections.
 - **Accessibility:** field and button borders now meet 3:1 contrast in both themes. Keyboard focus on "choose a file" is visible. Empty priorities and pending loader steps keep readable contrast. CVE links in the priority tiles and the remove buttons are easier to tap. Start over and Start again move focus and reset the page title. "+N more below" respects reduced motion and moves focus to the results. The How it works diagram scrolls sideways on phones rather than shrinking its labels.
 
 ### Added
