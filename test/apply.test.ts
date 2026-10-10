@@ -34,6 +34,50 @@ function ghsa(id: string, over: Partial<VulnPatch> = {}): VulnPatch {
 
 beforeEach(resetDb);
 
+describe('unsupported-when-assigned', () => {
+  const router = (id: string, publishedAt: string, unsupported: boolean): VulnPatch => ({
+    source: 'cve',
+    id,
+    aliases: [],
+    fields: { publishedAt },
+    affected: [{ kind: 'product', vendor: 'trendnet', product: 'tew_827dru', label: 'TRENDnet TEW-827DRU', ranges: [] }],
+    unsupported,
+  });
+  const marks = () => rows('SELECT key, last_cve, tagged FROM eol_cve ORDER BY key');
+
+  it('records a tagged CVE’s products, and nothing for untagged ones', async () => {
+    await applyPatches(store(), [router('CVE-2026-0101', '2026-09-01T00:00:00.000Z', false)], opts);
+    expect(await marks()).toEqual([]);
+    await applyPatches(store(), [router('CVE-2026-0102', '2026-09-10T00:00:00.000Z', true)], opts);
+    expect(await marks()).toEqual([{ key: 'trendnet/tew_827dru', last_cve: 'CVE-2026-0102', tagged: 1 }]);
+  });
+
+  it('is cleared by a newer untagged CVE, but not by an older one', async () => {
+    await applyPatches(store(), [router('CVE-2026-0102', '2026-09-10T00:00:00.000Z', true)], opts);
+    await applyPatches(store(), [router('CVE-2026-0101', '2026-09-01T00:00:00.000Z', false)], opts);
+    expect(await marks()).toEqual([{ key: 'trendnet/tew_827dru', last_cve: 'CVE-2026-0102', tagged: 1 }]);
+    await applyPatches(store(), [router('CVE-2026-0103', '2026-09-20T00:00:00.000Z', false)], opts);
+    expect(await marks()).toEqual([{ key: 'trendnet/tew_827dru', last_cve: 'CVE-2026-0103', tagged: 0 }]);
+  });
+
+  it('takes the newest CVE within one page', async () => {
+    await applyPatches(store(), [router('CVE-2026-0104', '2026-09-25T00:00:00.000Z', false), router('CVE-2026-0102', '2026-09-10T00:00:00.000Z', true)], opts);
+    expect(await marks()).toEqual([{ key: 'trendnet/tew_827dru', last_cve: 'CVE-2026-0104', tagged: 0 }]);
+  });
+
+  it('outlives the CVE itself, so pruning keeps the mark', async () => {
+    await applyPatches(store(), [router('CVE-2026-0102', '2026-09-10T00:00:00.000Z', true)], opts);
+    await store().batch(maintenanceStatements(new Date('2027-12-01T00:00:00Z')));
+    expect(await rows('SELECT id FROM vulns')).toEqual([]);
+    expect(await marks()).toHaveLength(1);
+  });
+
+  it('ignores other sources', async () => {
+    await applyPatches(store(), [{ ...router('CVE-2026-0102', '2026-09-10T00:00:00.000Z', true), source: 'kev' }], opts);
+    expect(await marks()).toEqual([]);
+  });
+});
+
 describe('applyPatches', () => {
   it('stores records, affected rows, aliases, events and catalog entries', async () => {
     const stats = await applyPatches(store(), [parseAdvisory(advisory('GHSA-wp3j-xq48-xpjw'))!], opts);

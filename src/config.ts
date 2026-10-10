@@ -34,4 +34,6 @@ export const STALE_AFTER_HOURS: Record<string, number> = {
   ghsa: 6,
   kev: 6,
   epss: 48,
+  // Fetched once a day; a missed day or two is fine, since support dates rarely change.
+  eol: 72,
 };

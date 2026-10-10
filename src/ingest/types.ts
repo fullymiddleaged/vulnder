@@ -89,6 +89,11 @@ export interface VulnPatch {
   affected?: AffectedInput[];
   /** CVE REJECTED, or GHSA withdrawn. */
   withdrawn?: boolean;
+  /**
+   * CVE records only: whether the CNA tagged it "unsupported-when-assigned" (the
+   * affected products are out of vendor support). Undefined for other sources.
+   */
+  unsupported?: boolean;
 }
 
 export interface SourceContext {

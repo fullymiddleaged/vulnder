@@ -343,6 +343,14 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .brief p { margin: 0.15rem 0; }
 .brief .row { gap: 0.3rem 0.5rem; align-items: baseline; }
 .brief .links { gap: 0.3rem 1rem; }
+
+/* Out of support: one row per finding, ruled in its priority's colour like a fix-first row. */
+.support-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.support-item { border-left: 3px solid var(--light); padding: 0.3rem 0 0.3rem 0.75rem; overflow-wrap: anywhere; }
+.support-item p { margin: 0.2rem 0; }
+.support-item .row { gap: 0.3rem 0.5rem; align-items: baseline; }
+.badge.support.eol { color: var(--exploited); }
+.badge.support.ending { color: var(--likely); }
 .rank { display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border-radius: 3px; background: var(--light); color: var(--on-light); font-weight: 800; font-size: 0.85rem; flex: none; font-variant-numeric: tabular-nums; }
 .score { font-size: 0.8rem; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .why { margin: 0.3rem 0; }

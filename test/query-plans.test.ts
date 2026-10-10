@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { AFFECTED_KEYS_SQL, CATALOG_COUNTS_SQL, LEADERS_SQL, UNASSIGNED_SQL } from '../src/ingest/families';
-import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EXPLOITED_IN_FAMILIES_SQL, VULNS_BY_ID_SQL } from '../src/match/components';
+import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EOL_CVE_SQL, EOL_RELEASES_SQL, EXPLOITED_IN_FAMILIES_SQL, VULNS_BY_ID_SQL } from '../src/match/components';
 import { eventsSinceSql, RECENT_EVENTS_SQL } from '../src/match/match';
 import { KEY_RANGE_SQL, KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
-import { UPDATE_EPSS } from '../src/ingest/apply';
+import { CLEAR_UNSUPPORTED, UPDATE_EPSS } from '../src/ingest/apply';
 
 /**
  * D1 bills every row a query reads, and a full scan reads the whole table on
@@ -46,6 +46,10 @@ describe('request-path query plans', () => {
     ['feed stack size', STACK_SIZE_SQL, ['["npm:next","linux/linux"]']],
     // Ingest's daily EPSS pass.
     ['EPSS update', UPDATE_EPSS, ['[{"id":"CVE-2026-0001","epss":0.1}]']],
+    // Vendor support: the feed's reads, and the CVE tag's per-page clear.
+    ['support dates', EOL_RELEASES_SQL, ['["windows","ubuntu"]']],
+    ['unsupported tag', EOL_CVE_SQL, ['["trendnet/tew_827dru"]']],
+    ['unsupported clear', CLEAR_UNSUPPORTED, ['[{"key":"trendnet/tew_827dru","cve":"CVE-2026-0001","published":"2026-10-01"}]']],
   ] as const)('%s searches an index', async (_name, sql, params) => {
     expect(await scans(sql, [...params])).toEqual([]);
   });

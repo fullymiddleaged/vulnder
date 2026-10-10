@@ -83,6 +83,16 @@ describe('parseCveRecord', () => {
     });
   });
 
+  it("reads the CNA's unsupported-when-assigned tag: the product is out of vendor support", () => {
+    const record = structuredClone(cveRecords['CVE-2026-104910']!) as CveRecordJson & { containers: { cna: Record<string, unknown> } };
+    expect(parseCveRecord(record)?.unsupported).toBe(false);
+    record.containers.cna.tags = ['unsupported-when-assigned'];
+    expect(parseCveRecord(record)?.unsupported).toBe(true);
+    // Only the CNA's own tags count, and only that one.
+    record.containers.cna.tags = ['disputed', 42];
+    expect(parseCveRecord(record)?.unsupported).toBe(false);
+  });
+
   it('rejects things that are not CVE records', () => {
     expect(parseCveRecord(null)).toBeNull();
     expect(parseCveRecord({ cveMetadata: { cveId: 'not-a-cve' } })).toBeNull();

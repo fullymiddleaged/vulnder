@@ -11,6 +11,8 @@ import epssLatest from '../fixtures/epss/latest.json';
 import epssScores from '../fixtures/epss/scores.json';
 import ghsaPage from '../fixtures/ghsa/page.json';
 import kevFeed from '../fixtures/kev/feed.json';
+// endoflife.date's /api/v1/products/full, cut down to the products src/stack/eol.ts maps and one it doesn't (nginx).
+import eolFull from '../fixtures/eol/full.json';
 
 export type CveRecordJson = { cveMetadata: { cveId: string; dateUpdated: string; datePublished?: string; state: string } };
 
@@ -24,7 +26,7 @@ export const cveRecords: Record<string, CveRecordJson> = {
   'CVE-2026-104910': cve2026_104910 as CveRecordJson,
 };
 
-export { epssLatest, epssScores, ghsaPage, kevFeed, releases };
+export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, releases };
 
 /** A delta zip laid out like cvelistV5's (deltaCves/CVE-*.json), built from recorded records. */
 export function deltaZip(records: CveRecordJson[]): Uint8Array {

@@ -21,13 +21,15 @@ export interface ProductLine {
   names: string[];
   keys: string[];
   keep?: RegExp;
+  /** The release its names already say ("Windows 10" is release 10), used when no other version is given. */
+  version?: string;
 }
 
 export const PRODUCT_LINES: ProductLine[] = [
   // Operating systems
   { names: ['windows', 'microsoft_windows'], keys: ['microsoft/windows', 'microsoft/windows_10_version_*', 'microsoft/windows_11_version_*'] },
-  { names: ['windows_10', 'win10', 'win_10'], keys: ['microsoft/windows_10', 'microsoft/windows_10_version_*'] },
-  { names: ['windows_11', 'win11', 'win_11'], keys: ['microsoft/windows_11', 'microsoft/windows_11_version_*'] },
+  { names: ['windows_10', 'win10', 'win_10'], keys: ['microsoft/windows_10', 'microsoft/windows_10_version_*'], version: '10' },
+  { names: ['windows_11', 'win11', 'win_11'], keys: ['microsoft/windows_11', 'microsoft/windows_11_version_*'], version: '11' },
   {
     // Active Directory, its certificate and federation roles, Hyper-V and IIS ship in Windows Server: Microsoft files their CVEs there.
     names: [
@@ -48,7 +50,8 @@ export const PRODUCT_LINES: ProductLine[] = [
       'rdp',
       'remote_desktop_services',
     ],
-    keys: ['microsoft/windows_server_*'],
+    // The plain key stands for a release with nothing in the catalog ("Windows Server 2003").
+    keys: ['microsoft/windows_server', 'microsoft/windows_server_*'],
     keep: /^\d{4}/,
   },
   { names: ['iis', 'microsoft_iis', 'internet_information_services'], keys: ['microsoft/internet_information_services', 'microsoft/windows_server_*'], keep: /^\d{4}/ },
@@ -165,7 +168,7 @@ export function lineFor(name: string, vendor: string | null): LineMatch | null {
     return null;
   };
   const whole = find(key);
-  if (whole) return { line: whole, version: null };
+  if (whole) return { line: whole, version: whole.version ?? null };
   for (let i = key.length - 1; i > 0; i--) {
     if (!/\d/.test(key[i + 1] ?? '')) continue;
     // "rhel_8", or run together as "rhel8".
@@ -202,12 +205,23 @@ export function inLine(line: ProductLine, key: string): boolean {
 /**
  * The line's products a version points at: those whose product key holds the
  * version as whole segments ("9" in `red_hat_enterprise_linux_9`, "24H2" in
- * `windows_11_version_24h2`). Empty when the version names none of them.
+ * `windows_11_version_24h2`). Failing that, its leading parts with digits
+ * ("10" of "10 Pro", "2019" of "2019 CU14"). Empty when it names none of them.
  */
 export function forVersion<T extends { product: string | null }>(rows: T[], version: string | null): T[] {
   const v = normalizeKey(version);
   if (!v) return [];
-  return rows.filter((r) => `_${r.product ?? ''}_`.includes(`_${v}_`));
+  const holding = (s: string) => rows.filter((r) => `_${r.product ?? ''}_`.includes(`_${s}_`));
+  const whole = holding(v);
+  if (whole.length > 0) return whole;
+  const parts = v.split('_');
+  const n = parts.findIndex((p) => !/\d/.test(p));
+  return n > 0 ? holding(parts.slice(0, n).join('_')) : [];
+}
+
+/** True when the line's products are one per release (`windows_10_version_22h2`, `red_hat_enterprise_linux_9`). */
+export function perRelease(rows: { product: string | null }[]): boolean {
+  return rows.some((r) => /_\d/.test(r.product ?? ''));
 }
 
 /** The plain key used when the catalog has nothing for a line yet. */

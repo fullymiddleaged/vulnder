@@ -138,6 +138,22 @@ describe('exportMarkdown', () => {
   it('says when versions could not be checked', () => {
     expect(exportMarkdown({ ...feed, versionCheckUnavailable: true })).toContain('version checks were unavailable');
   });
+
+  it('lists what is out of support before the CVEs, and marks it in Fix first', () => {
+    const withSupport = exportMarkdown({
+      ...feed,
+      fixFirst: feed.fixFirst.map((f, i) => (i === 0 ? { ...f, support: 'eol' as const } : f)),
+      support: [
+        { state: 'eol', name: 'Windows Server 2012 R2', date: '2023-10-10', esuUntil: '2026-10-13', esu: false, edge: false, source: 'endoflife', cve: null, items: ['p:microsoft/windows_server_2012_r2'] },
+      ],
+    });
+    expect(withSupport.indexOf('## Out of support')).toBeLessThan(withSupport.indexOf('## Fix first'));
+    expect(withSupport).toContain(
+      '- **Windows Server 2012 R2** (Act now): Out of support since 2023-10-10: it gets no more security updates. Upgrade to a supported release urgently. Paid extended security updates run until 2026-10-13. If you have them, add ;esu to the item in the stack. Stack: `p:microsoft/windows_server_2012_r2`',
+    );
+    expect(withSupport).toContain('1. `npm:express@4.18.2`: 1 Act now; out of support; total risk 92');
+    expect(exportMarkdown(feed)).not.toContain('## Out of support');
+  });
 });
 
 describe('mdText', () => {

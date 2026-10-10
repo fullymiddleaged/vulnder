@@ -93,6 +93,20 @@ describe('parseStack', () => {
     expect(serializeStack(parseStack('p:acme/portal,p:acme/portal;edge'))).toBe('p:acme/portal;edge');
   });
 
+  it('says a product has paid extended support with ;esu, written last', () => {
+    expect(parseStack('p:microsoft/windows_server_2012_r2;esu')).toEqual([
+      { kind: 'product', vendor: 'microsoft', product: 'windows_server_2012_r2', version: null, esu: true },
+    ]);
+    for (const s of ['p:microsoft/windows_server_2012_r2;esu', '?p:microsoft/windows_10_version_22h2@10;endpoints;internal;esu', 'p:canonical/ubuntu_18_04_lts;edge;esu']) {
+      expect(serializeStack(parseStack(s)), s).toBe(s);
+    }
+    // Any copy with it keeps it.
+    expect(serializeStack(parseStack('p:microsoft/windows@7,p:microsoft/windows@7;esu'))).toBe('p:microsoft/windows@7;esu');
+    for (const bad of ['p:microsoft/windows@7;esu;edge', 'p:microsoft/windows@7;esu;platform', 'p:microsoft/windows@7;esu;esu', 'npm:express;esu', 'p:a/b;platform;edge;esu;x']) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
+  });
+
   it('rejects an edge tag out of place, twice, or on a package', () => {
     for (const bad of [
       'p:acme/portal;edge;network',
@@ -110,7 +124,7 @@ describe('parseStack', () => {
   });
 
   it('either parses hostile tag soup into a canonical item or rejects it as a format error', () => {
-    const parts = ['p:acme/gw', 'npm:x', '?', ';', ';edge', ';internal', ';network', ';__proto__', ';constructor', ';;', '@1.0', '%2C', 'é', '\u0000', ' '];
+    const parts = ['p:acme/gw', 'npm:x', '?', ';', ';edge', ';internal', ';esu', ';network', ';__proto__', ';constructor', ';;', '@1.0', '%2C', 'é', '\u0000', ' '];
     let seed = 7;
     const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) % parts.length;
     for (let n = 0; n < 2000; n++) {
@@ -124,6 +138,7 @@ describe('parseStack', () => {
       }
       for (const item of items) {
         expect(item.edge === undefined || item.kind === 'product', s).toBe(true);
+        expect(item.esu === undefined || (item.esu === true && item.kind === 'product'), s).toBe(true);
         expect(Object.getPrototypeOf(item), s).toBe(Object.prototype);
       }
       expect(parseStack(serializeStack(items)), s).toEqual(items);

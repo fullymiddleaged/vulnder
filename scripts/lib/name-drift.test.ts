@@ -27,6 +27,12 @@ describe('nameDrift', () => {
     expect(nameDrift([])).toContain('line "crushftp": nothing in the catalog (keys: crushftp/crushftp)');
   });
 
+  it('flags a support-dates product no catalog key maps to', () => {
+    const drift = nameDrift([row('canonical/ubuntu_18_04_lts')]).filter((d) => d.startsWith('support dates'));
+    expect(drift.some((d) => d.startsWith('support dates "ubuntu"'))).toBe(false);
+    expect(drift.some((d) => d.startsWith('support dates "debian"'))).toBe(true);
+  });
+
   it('flags vendor keys that look like one vendor, unless they are already a family', () => {
     const drift = nameDrift([row('zoomcorp/a'), row('acme/a'), row('acme_inc/b'), row('juniper/junos'), row('juniper_networks/junos_os')]).filter((d) => d.startsWith('vendor'));
     expect(drift).toEqual(['vendor "acme" (10) and "acme_inc" (10) may be one vendor']);

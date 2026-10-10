@@ -416,8 +416,84 @@ describe('feed cost controls', () => {
     }) as typeof counting.all;
     const res = await matchStack(counting, parseStack('p:linux/linux'), { now: NOW, days: 30, osv: fakeOsv() });
     expect(res.results).toHaveLength(n);
-    // Affected rows, then the vulns in chunks of 2,000 (at 400 a chunk this was 13).
-    expect(queries).toBe(4);
+    // Affected rows, the vulns in chunks of 2,000 (at 400 a chunk this was 13), then the
+    // product's unsupported-when-assigned tag. Linux maps to no endoflife.date product, so no dates.
+    expect(queries).toBe(5);
+  });
+});
+
+describe('vendor support', () => {
+  async function seedSupport() {
+    const day = (n: number) => daysAgo(n).slice(0, 10);
+    await env.DB.batch(
+      [
+        ['windows', '7_sp1', '7 SP1', '2020-01-14', 1, null],
+        ['windows', '11_24h2_e', '11 24H2 (E)', day(-400), 0, null],
+        ['windows-server', '2012_r2', '2012 R2', '2023-10-10', 1, day(-30)],
+        ['windows-server', '2022', '2022', day(-1800), 0, null],
+      ].map(([slug, release, label, eol, isEol, eoes]) =>
+        env.DB.prepare('INSERT INTO eol_releases (slug, release, label, eol_from, is_eol, eoes_from, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
+          slug,
+          release,
+          label,
+          eol,
+          isEol,
+          eoes,
+          NOW.toISOString(),
+        ),
+      ),
+    );
+    await applyPatches(
+      store(),
+      [
+        {
+          source: 'cve',
+          id: 'CVE-2026-1101',
+          aliases: [],
+          fields: { title: 'Windows Server 2012 R2 info leak', publishedAt: daysAgo(4), cvssScore: 3.1 },
+          affected: [{ kind: 'product', vendor: 'microsoft', product: 'windows_server_2012_r2', ranges: [], fixedVersion: null }],
+        },
+      ],
+      { now: NOW, windowStart: daysAgo(90), epssEvents: true },
+    );
+  }
+
+  it('flags named releases past their end, ranks them with Act in Fix first, and leaves CVE bands alone', async () => {
+    await seedSupport();
+    const res = await matchStack(store(), parseStack('p:microsoft/windows@7,p:microsoft/windows_server_2012_r2,p:microsoft/windows_server_2022,p:postgresql/postgresql@16'), {
+      now: NOW,
+      days: 30,
+      osv: fakeOsv(),
+    });
+    expect(res.support.map((s) => [s.state, s.name, s.items])).toEqual([
+      ['eol', 'Windows 7', ['p:microsoft/windows@7']],
+      ['eol', 'Windows Server 2012 R2', ['p:microsoft/windows_server_2012_r2']],
+    ]);
+    expect(res.support[1]).toMatchObject({ date: '2023-10-10', esuUntil: daysAgo(-30).slice(0, 10) });
+    // Its only CVE is low severity: Track, but the item ranks with Act, ahead of PostgreSQL's Watch.
+    expect(res.results.find((r) => r.id === 'CVE-2026-1101')?.priority).toBe('track');
+    expect(res.fixFirst.map((f) => [f.item, f.support ?? null])).toEqual([
+      ['p:microsoft/windows_server_2012_r2', 'eol'],
+      ['p:postgresql/postgresql@16', null],
+    ]);
+  });
+
+  it('counts ESU the stack says it has, and finds nothing in a broad name', async () => {
+    await seedSupport();
+    const res = await matchStack(store(), parseStack('p:microsoft/windows_server_2012_r2;esu,p:microsoft/windows'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(res.support.map((s) => [s.state, s.esu, s.items])).toEqual([['ending', true, ['p:microsoft/windows_server_2012_r2;esu']]]);
+  });
+
+  it('serves the findings in the JSON feed and as Atom entries', async () => {
+    await seedSupport();
+    stubOsvFetch();
+    const s = encodeURIComponent('p:microsoft/windows@7');
+    const body = (await (await app.request(`/api/feed?s=${s}`, {}, env)).json()) as { support: { name: string; state: string }[] };
+    expect(body.support).toMatchObject([{ name: 'Windows 7', state: 'eol' }]);
+    const xml = await (await app.request(`/feed.xml?s=${s}`, {}, env)).text();
+    expect(xml).toContain('<title>Out of support: Windows 7</title>');
+    expect(xml).toContain('<updated>2020-01-14T00:00:00.000Z</updated>');
+    expect(xml).toContain('Windows 7 is out of support since 2020-01-14: it gets no more security updates.');
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, turnstileSize, withItemMarks } from '../web/format';
+import type { Change, Result, SupportNotice } from '../web/api';
+import { ago, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -236,11 +236,42 @@ describe('componentGroups', () => {
       ],
       results,
     );
-    expect(groups.map((g) => [g.rank, g.component, g.close, g.also])).toEqual([
-      [1, 'p:microsoft/windows_server_2022', false, ['?p:microsoft/windows_server_2019', '?p:microsoft/windows_server_2019_server_core_installation']],
-      [2, 'p:microsoft/windows_11_version_24h2', true, []],
-      [3, 'p:microsoft/windows_server_2016', true, []],
+    expect(groups.map((g) => [g.rank, g.component, g.close, g.also, g.family])).toEqual([
+      [1, 'p:microsoft/windows_server_2022', false, ['?p:microsoft/windows_server_2019', '?p:microsoft/windows_server_2019_server_core_installation'], null],
+      [2, 'p:microsoft/windows_11_version_24h2', true, [], null],
+      [3, 'p:microsoft/windows_server_2016', true, [], null],
     ]);
+  });
+
+  it('heads a row of close matches only with their shared name, led by the shortest', () => {
+    const results = [result('CVE-1', 'exploited')];
+    const counts = { act: 1, attend: 0, watch: 0, track: 0 };
+    const fix = (item: string) => ({ item, score: 50, counts, vulns: ['CVE-1'], fixable: 1 });
+    const [g] = componentGroups([fix('?p:microsoft/windows_server_2025_server_core_installation@2025;platform'), fix('?p:microsoft/windows_server_2025@2025;platform')], results);
+    expect([g!.component, g!.also, g!.family]).toEqual([
+      'p:microsoft/windows_server_2025@2025',
+      ['?p:microsoft/windows_server_2025_server_core_installation@2025;platform'],
+      'p:microsoft/windows_server_2025',
+    ]);
+  });
+});
+
+describe('familyName', () => {
+  it('keeps the whole words the products share, without versions', () => {
+    expect(familyName(['p:microsoft/windows_server_2025@2025', 'p:microsoft/windows_server_2025_server_core_installation@2025'])).toBe('p:microsoft/windows_server_2025');
+    expect(familyName(['p:juniper_networks/junos_os_evolved', 'p:juniper_networks/junos_os'])).toBe('p:juniper_networks/junos_os');
+    expect(familyName(['p:microsoft/windows_10_1809', 'p:microsoft/windows_11_24h2', 'p:microsoft/windows_server_2022'])).toBe('p:microsoft/windows');
+    // Whole words only: windows_server_2019 and windows_server_2022 share "windows_server", not "windows_server_20".
+    expect(familyName(['p:microsoft/windows_server_2019', 'p:microsoft/windows_server_2022'])).toBe('p:microsoft/windows_server');
+  });
+
+  it('gives null when there is no honest shared name', () => {
+    expect(familyName(['p:cisco/ios', 'p:juniper_networks/ios'])).toBeNull();
+    expect(familyName(['p:microsoft/exchange_server', 'p:microsoft/windows_server_2025'])).toBeNull();
+    expect(familyName(['npm:lodash@4.17.20', 'npm:lodash@4.17.21'])).toBeNull();
+    expect(familyName(['p:f5/nginx', 'npm:nginx'])).toBeNull();
+    expect(familyName(['p:', 'p:a/b'])).toBeNull();
+    expect(familyName([])).toBeNull();
   });
 });
 
@@ -254,24 +285,83 @@ describe('splitShown', () => {
   });
 });
 
+describe('support notices', () => {
+  const notice = (over: Partial<SupportNotice>): SupportNotice => ({
+    state: 'eol',
+    name: 'Windows 7',
+    date: '2020-01-14',
+    esuUntil: null,
+    esu: false,
+    edge: false,
+    source: 'endoflife',
+    cve: null,
+    items: ['p:microsoft/windows@7'],
+    ...over,
+  });
+
+  it('says what happened and what to do', () => {
+    expect(supportLines(notice({}))).toEqual(['Out of support since 2020-01-14: it gets no more security updates. Upgrade to a supported release urgently.']);
+    expect(supportLines(notice({ esuUntil: '2026-10-13' }))[1]).toBe('Paid extended security updates run until 2026-10-13. If you have them, tick Has ESU under Edit stack.');
+    expect(supportLines(notice({ esu: true }))[0]).toBe('Paid extended support ended on 2020-01-14, so it gets no more security updates. Upgrade to a supported release urgently.');
+    expect(supportLines(notice({ state: 'ending', date: '2026-11-10' }))).toEqual(['Support ends 2026-11-10. Plan the upgrade to a supported release now.']);
+    expect(supportLines(notice({ state: 'covered', date: '2030-04-23', esu: true }))).toEqual(['Covered by paid extended support until 2030-04-23. Plan the upgrade before then.']);
+    expect(supportLines(notice({ date: null, source: 'cve', cve: 'CVE-2026-9214' }))[0]).toBe('Out of support: it gets no more security updates. Upgrade to a supported release urgently.');
+    expect(supportLines(notice({ edge: true })).at(-1)).toContain('BOD 26-02');
+  });
+
+  it('ranks out of support with Act now and ending with Attend', () => {
+    expect([supportPriority('eol'), supportPriority('ending'), supportPriority('covered')]).toEqual(['act', 'attend', null]);
+  });
+
+  it('finds each item’s notice by its name, whatever its marks', () => {
+    const n = notice({ items: ['?p:microsoft/windows_10_version_22h2@10;endpoints', '?p:microsoft/windows_10_version_1607@10;endpoints;esu'] });
+    const by = supportByItem([n]);
+    expect(by.get('p:microsoft/windows_10_version_22h2@10')).toBe(n);
+    expect(by.get('p:microsoft/windows_10_version_1607@10')).toBe(n);
+  });
+
+  it('keeps an out-of-support item out of a row with a supported one, even with the same CVEs', () => {
+    const fix = (item: string, support?: 'eol') => ({ item, score: 1, counts: { act: 0, attend: 0, watch: 0, track: 1 }, vulns: ['CVE-1'], fixable: 0, ...(support && { support }) });
+    expect(componentGroups([fix('p:microsoft/windows_server_2012_r2', 'eol'), fix('p:microsoft/windows_server_2016')], [])).toHaveLength(2);
+  });
+});
+
 describe('item marks', () => {
   it('splits a stack item into its name and marks', () => {
-    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: false, team: null, edge: null });
-    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: true, team: null, edge: null });
-    expect(itemMarks('?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', close: true, team: null, edge: null });
-    expect(itemMarks('?p:f5/nginx@1.27;platform')).toEqual({ name: 'p:f5/nginx@1.27', close: true, team: 'platform', edge: null });
-    expect(itemMarks('p:f5/nginx;platform;edge')).toEqual({ name: 'p:f5/nginx', close: false, team: 'platform', edge: true });
-    expect(itemMarks('p:fortinet/fortios;internal')).toEqual({ name: 'p:fortinet/fortios', close: false, team: null, edge: false });
+    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: false, team: null, edge: null, esu: false });
+    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: true, team: null, edge: null, esu: false });
+    expect(itemMarks('?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', close: true, team: null, edge: null, esu: false });
+    expect(itemMarks('?p:f5/nginx@1.27;platform')).toEqual({ name: 'p:f5/nginx@1.27', close: true, team: 'platform', edge: null, esu: false });
+    expect(itemMarks('p:f5/nginx;platform;edge')).toEqual({ name: 'p:f5/nginx', close: false, team: 'platform', edge: true, esu: false });
+    expect(itemMarks('p:fortinet/fortios;internal')).toEqual({ name: 'p:fortinet/fortios', close: false, team: null, edge: false, esu: false });
+    expect(itemMarks('p:microsoft/windows_server_2012_r2;platform;internal;esu')).toEqual({
+      name: 'p:microsoft/windows_server_2012_r2',
+      close: false,
+      team: 'platform',
+      edge: false,
+      esu: true,
+    });
     // Out of order or unknown: left in the name, as the server would reject it.
     expect(itemMarks('p:f5/nginx;edge;platform').name).toBe('p:f5/nginx;edge');
+    expect(itemMarks('p:f5/nginx;esu;edge').name).toBe('p:f5/nginx;esu');
   });
 
   it('writes the marks back in canonical order, matching the stack format', () => {
-    expect(withItemMarks('p:f5/nginx', { close: true, team: null, edge: null })).toBe('?p:f5/nginx');
-    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: null })).toBe('p:f5/nginx;network');
-    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: true })).toBe('p:f5/nginx;network;edge');
-    expect(withItemMarks('p:fortinet/fortios', { close: true, team: null, edge: false })).toBe('?p:fortinet/fortios;internal');
-    for (const s of ['?p:f5/nginx', 'p:f5/nginx', '?p:f5/nginx@1.27;platform', 'npm:react;frontend', 'p:f5/nginx;edge', '?p:fortinet/fortios@7.4;network;internal']) {
+    expect(withItemMarks('p:f5/nginx', { close: true, team: null, edge: null, esu: false })).toBe('?p:f5/nginx');
+    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: null, esu: false })).toBe('p:f5/nginx;network');
+    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: true, esu: false })).toBe('p:f5/nginx;network;edge');
+    expect(withItemMarks('p:fortinet/fortios', { close: true, team: null, edge: false, esu: false })).toBe('?p:fortinet/fortios;internal');
+    expect(withItemMarks('p:microsoft/windows', { close: false, team: null, edge: null, esu: true })).toBe('p:microsoft/windows;esu');
+    for (const s of [
+      '?p:f5/nginx',
+      'p:f5/nginx',
+      '?p:f5/nginx@1.27;platform',
+      'npm:react;frontend',
+      'p:f5/nginx;edge',
+      '?p:fortinet/fortios@7.4;network;internal',
+      'p:microsoft/windows_server_2012_r2;platform;internal;esu',
+      'p:microsoft/windows@7;esu',
+    ]) {
       const m = itemMarks(s);
       expect(withItemMarks(m.name, m)).toBe(serializeStack(parseStack(s)));
     }

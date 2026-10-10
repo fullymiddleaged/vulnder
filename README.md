@@ -19,6 +19,8 @@ Evidence of exploitation beats prediction, and prediction beats severity.
 | **Watch** | Serious but less pressing: CVSS 8+, or a public proof of concept | 30 days |
 | **Track** | Affects you, nothing urgent | Next routine update |
 
+**Out of support** releases rank with Act now whatever their CVEs (Windows 7 or 10, Windows Server 2012 R2, Ubuntu 18.04, an end-of-life router), since no more fixes will come; support ending within 90 days ranks with Attend. Only releases you name specifically count, never a broad "Windows". Paid extended support (ESU, ELS, LTSS) counts once you tick Has ESU.
+
 Every result says which signal decided it, what data was missing, and what to do. Scores only order results; they aren't probabilities. Vague names expand to close matches, which are labelled and never hidden. Full detail: [docs/RANKING.md](docs/RANKING.md).
 
 ## Feeds and badge
@@ -46,7 +48,7 @@ Vulnder runs on Cloudflare, which sees every request, including the stack in the
 
 ## Data
 
-[CVE records](https://github.com/CVEProject/cvelistV5) with CISA's enrichment, the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*) and [OSV](https://osv.dev) for version checks. 90 days are kept; an old CVE that lands on KEV today still shows up.
+[CVE records](https://github.com/CVEProject/cvelistV5) with CISA's enrichment, the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, and vendor support dates from [endoflife.date](https://endoflife.date) (MIT). 90 days are kept; an old CVE that lands on KEV today still shows up.
 
 ## Self-hosting
 

@@ -149,6 +149,42 @@ SELECT json_extract(value, '$.kind'), json_extract(value, '$.key'), json_extract
   json_extract(value, '$.normalized'), json_extract(value, '$.label')
 FROM json_each(?)`;
 
+/*
+ * eol_cve (migrations/0008_eol.sql): a CVE tagged "unsupported-when-assigned"
+ * records each product it names; a later untagged one clears the mark, since
+ * the vendor still supports something there. Untagged CVEs only update keys
+ * already recorded, so the table holds just the products called unsupported.
+ */
+export const UPSERT_UNSUPPORTED = `INSERT INTO eol_cve (key, last_cve, last_published, tagged)
+SELECT json_extract(value, '$.key'), json_extract(value, '$.cve'), json_extract(value, '$.published'), 1
+FROM json_each(?) WHERE true
+ON CONFLICT (key) DO UPDATE SET last_cve = excluded.last_cve, last_published = excluded.last_published, tagged = 1
+WHERE excluded.last_published >= eol_cve.last_published`;
+
+export const CLEAR_UNSUPPORTED = `UPDATE eol_cve SET last_cve = json_extract(j.value, '$.cve'), last_published = json_extract(j.value, '$.published'), tagged = 0
+FROM json_each(?) j WHERE eol_cve.key = json_extract(j.value, '$.key') AND json_extract(j.value, '$.published') >= eol_cve.last_published`;
+
+function unsupportedStatements(patches: VulnPatch[], ids: string[]): Statement[] {
+  const tagged = new Map<string, { key: string; cve: string; published: string }>();
+  const untagged = new Map<string, { key: string; cve: string; published: string }>();
+  patches.forEach((p, i) => {
+    const published = p.fields.publishedAt;
+    if (p.source !== 'cve' || p.unsupported === undefined || !published || p.withdrawn) return;
+    for (const a of p.affected ?? []) {
+      if (a.kind !== 'product' || !a.vendor || !a.product) continue;
+      const key = `${a.vendor}/${a.product}`;
+      const into = p.unsupported ? tagged : untagged;
+      const prev = into.get(key);
+      // Within a page, the newest CVE per key stands for it.
+      if (!prev || published > prev.published) into.set(key, { key, cve: ids[i]!, published });
+    }
+  });
+  const out: Statement[] = [];
+  for (const chunk of chunkByJsonSize([...tagged.values()])) out.push(stmt(UPSERT_UNSUPPORTED, JSON.stringify(chunk)));
+  for (const chunk of chunkByJsonSize([...untagged.values()])) out.push(stmt(CLEAR_UNSUPPORTED, JSON.stringify(chunk)));
+  return out;
+}
+
 /** Statements that remove vulns (and everything hanging off them) by ID. */
 export function deleteVulnsStatements(ids: string[]): Statement[] {
   if (ids.length === 0) return [];
@@ -377,6 +413,8 @@ export async function applyPatches(store: Store, patches: VulnPatch[], opts: App
   for (const chunk of chunkByJsonSize(eventRows)) statements.push(stmt(INSERT_EVENTS, JSON.stringify(chunk)));
 
   for (const chunk of chunkByJsonSize([...catalogRows.values()])) statements.push(stmt(INSERT_CATALOG, JSON.stringify(chunk)));
+
+  statements.push(...unsupportedStatements(patches, canonical));
 
   statements.push(...(opts.extraStatements ?? []));
   if (statements.length > 0) await store.batch(statements);

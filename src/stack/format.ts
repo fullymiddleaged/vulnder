@@ -36,17 +36,22 @@ const PREFIX_FOR: Record<string, string> = Object.fromEntries(Object.entries(PRE
  * `team` is who usually looks after it, set for enterprise stacks; none means
  * Unassigned. `edge` is the user's word on whether a product is an edge device
  * (true for `;edge`, false for `;internal`); none means Vulnder decides from the
- * product (src/stack/teams.ts).
+ * product (src/stack/teams.ts). `esu` says the user pays for extended security
+ * updates (ESU, ELS, LTSS, Ubuntu Pro), so a release past its normal end of
+ * support is covered until those end (src/match/support.ts).
  */
 export interface Marks {
   close?: boolean;
   team?: Team;
   edge?: boolean;
+  esu?: boolean;
 }
 
 /** The tags that say whether a product is an edge device, written after its team: `p:acme/gateway;network;edge`. Never rename one. */
 const EDGE_TAG = 'edge';
 const INTERNAL_TAG = 'internal';
+/** The tag for paid extended support, written last: `p:microsoft/windows_server_2012_r2;platform;esu`. Never rename it. */
+const ESU_TAG = 'esu';
 
 /** The teams an item can belong to, written after the item: `p:cisco/ios_xe@17.9;network`. Never rename one. */
 export const TEAMS = ['network', 'database', 'frontend', 'backend', 'platform', 'endpoints', 'business'] as const;
@@ -56,7 +61,7 @@ export function isTeam(s: string): s is Team {
   return (TEAMS as readonly string[]).includes(s);
 }
 
-/** Separates an item from its tags (team, edge). Names, product keys and versions can't contain it. */
+/** Separates an item from its tags (team, edge, esu). Names, product keys and versions can't contain it. */
 const TEAM_MARK = ';';
 export type StackItem =
   | ({ kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null } & Marks)
@@ -116,7 +121,8 @@ export function serializeStack(items: StackItem[]): string {
 
 export function formatItem(item: StackItem): string {
   const edge = item.edge === undefined ? '' : `${TEAM_MARK}${item.edge ? EDGE_TAG : INTERNAL_TAG}`;
-  return `${item.close ? CLOSE_MARK : ''}${identity(item)}${item.team ? `${TEAM_MARK}${item.team}` : ''}${edge}`;
+  const esu = item.esu ? `${TEAM_MARK}${ESU_TAG}` : '';
+  return `${item.close ? CLOSE_MARK : ''}${identity(item)}${item.team ? `${TEAM_MARK}${item.team}` : ''}${edge}${esu}`;
 }
 
 /** The item without its marks. */
@@ -128,7 +134,7 @@ export function identity(item: StackItem): string {
 /**
  * Deduplicates and sorts, so equivalent stacks share one URL and one cache
  * entry. When the same item appears more than once, exact beats close,
- * and the first team and edge tag given are kept. A close match of something
+ * and the first team and edge tag given are kept, and ESU if any copy has it. A close match of something
  * also named exactly, at any version, is dropped: it would only repeat that
  * item's CVEs.
  */
@@ -137,7 +143,10 @@ export function canonicalize(items: StackItem[]): StackItem[] {
   for (const item of items) {
     const key = identity(item);
     const prev = byKey.get(key);
-    byKey.set(key, withMarks(item, { close: !!item.close && (!prev || !!prev.close), team: prev?.team ?? item.team, edge: prev?.edge ?? item.edge }));
+    byKey.set(
+      key,
+      withMarks(item, { close: !!item.close && (!prev || !!prev.close), team: prev?.team ?? item.team, edge: prev?.edge ?? item.edge, esu: !!prev?.esu || !!item.esu }),
+    );
   }
   const named = new Set([...byKey.values()].filter((i) => !i.close).map(unversioned));
   return [...byKey.entries()]
@@ -151,34 +160,44 @@ const unversioned = (item: StackItem) => identity({ ...item, version: null });
 /**
  * The item with exactly these marks. A false close mark is left out, not
  * stored as false; `edge: false` is kept, since it says "not an edge device".
- * Only products take an edge tag.
+ * Only products take an edge or ESU tag.
  */
 export function withMarks(item: StackItem, marks: Marks): StackItem {
-  const { close: _close, team: _team, edge: _edge, ...rest } = item;
+  const { close: _close, team: _team, edge: _edge, esu: _esu, ...rest } = item;
   const edge = item.kind === 'product' && marks.edge !== undefined;
-  return { ...rest, ...(marks.close && { close: true }), ...(marks.team && { team: marks.team }), ...(edge && { edge: marks.edge }) } as StackItem;
+  const esu = item.kind === 'product' && !!marks.esu;
+  return {
+    ...rest,
+    ...(marks.close && { close: true }),
+    ...(marks.team && { team: marks.team }),
+    ...(edge && { edge: marks.edge }),
+    ...(esu && { esu: true }),
+  } as StackItem;
 }
 
 function parseItem(raw: string): StackItem | null {
   const marks: Marks = {};
-  // Tags come last, in order: a team, then an edge tag, each optional. ';' is
-  // reserved for them, so anything else after one makes the item invalid.
+  // Tags come last, in order: a team, an edge tag, then ESU, each optional. ';'
+  // is reserved for them, so anything else after one makes the item invalid.
   const [head, ...tags] = raw.split(TEAM_MARK);
   let rest = head!;
-  if (tags.length > 2) return null;
-  for (const [i, tag] of tags.entries()) {
-    if (tag === EDGE_TAG || tag === INTERNAL_TAG) {
-      if (i !== tags.length - 1) return null;
-      marks.edge = tag === EDGE_TAG;
-    } else if (i === 0 && isTeam(tag)) marks.team = tag;
-    else return null;
+  if (tags.length > 3) return null;
+  // Each tag's place in the order: a tag may only follow ones before it.
+  let at = -1;
+  for (const tag of tags) {
+    const place = isTeam(tag) ? 0 : tag === EDGE_TAG || tag === INTERNAL_TAG ? 1 : tag === ESU_TAG ? 2 : -1;
+    if (place <= at) return null;
+    at = place;
+    if (place === 0) marks.team = tag as Team;
+    else if (place === 1) marks.edge = tag === EDGE_TAG;
+    else marks.esu = true;
   }
   if (rest.startsWith(CLOSE_MARK)) {
     marks.close = true;
     rest = rest.slice(1);
   }
   const item = parseExactItem(rest);
-  if (!item || (marks.edge !== undefined && item.kind !== 'product')) return null;
+  if (!item || ((marks.edge !== undefined || marks.esu) && item.kind !== 'product')) return null;
   return withMarks(item, marks);
 }
 

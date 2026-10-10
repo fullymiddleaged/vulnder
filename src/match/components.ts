@@ -1,18 +1,24 @@
 import { allForKeys, type Store } from '../ingest/store';
+import { eolTarget } from '../stack/eol';
 import type { StackItem } from '../stack/format';
+import type { CveSupport, EolRelease } from './support';
 
 /**
  * What the feed knows about one component (a package or product): its
  * affected rows, every stored vuln they point to (the whole retention window,
- * so any `days` can be served from it), and the exploited members of those
- * vulns' families. Loaded per component rather than per stack, so a component
- * is read from D1 at most once per cache period and data version, however
- * many stacks or windows ask for it.
+ * so any `days` can be served from it), the exploited members of those
+ * vulns' families, and its vendor support dates. Loaded per component rather
+ * than per stack, so a component is read from D1 at most once per cache
+ * period and data version, however many stacks or windows ask for it.
  */
 export interface ComponentData {
   affected: AffectedRow[];
   vulns: VulnRow[];
   exploited: { id: string; family_id: string }[];
+  /** Release lines of the endoflife.date product it maps to (src/stack/eol.ts); absent in entries cached before support data. */
+  eol?: EolRelease[];
+  /** Its latest CVE's "unsupported-when-assigned" tag, when a tagged CVE has named it. */
+  cveSupport?: CveSupport | null;
 }
 
 /** Where loaded components are kept between requests (the Cache API in the Worker). */
@@ -79,6 +85,10 @@ export const VULNS_BY_ID_SQL = `SELECT id, aliases, title, summary, published_at
 export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
   WHERE family_id IN (SELECT value FROM json_each(?))
     AND (kev_added_at IS NOT NULL OR lower(json_extract(ssvc, '$.exploitation')) = 'active')`;
+/** Release lines of these endoflife.date products: a few dozen rows each. */
+export const EOL_RELEASES_SQL = `SELECT slug, release, label, eol_from, is_eol, eoes_from FROM eol_releases
+  WHERE slug IN (SELECT value FROM json_each(?))`;
+export const EOL_CVE_SQL = `SELECT key, last_cve, last_published, tagged FROM eol_cve WHERE key IN (SELECT value FROM json_each(?))`;
 /**
  * Keys per query: 2,000 IDs is about 45 KB of JSON, so the biggest stack stays
  * around 15 D1 queries, well inside Workers Free's 50 per request. Rows read
@@ -86,8 +96,8 @@ export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
  */
 export const FEED_CHUNK = 2000;
 
-/** The data for each distinct component among `items`, from the cache where it can. */
-export async function loadComponents(store: Store, items: StackItem[], cache?: ComponentCache): Promise<ComponentData[]> {
+/** The data for each distinct component among `items` (by itemKey), from the cache where it can. */
+export async function loadComponents(store: Store, items: StackItem[], cache?: ComponentCache): Promise<Map<string, ComponentData>> {
   const wanted = new Map<string, StackItem>();
   for (const item of items) if (!wanted.has(itemKey(item))) wanted.set(itemKey(item), item);
 
@@ -111,7 +121,7 @@ export async function loadComponents(store: Store, items: StackItem[], cache?: C
     }
     await Promise.all(puts);
   }
-  return [...found.values()];
+  return found;
 }
 
 /** Reads components from D1: affected rows, their vulns, then exploited family members. */
@@ -128,7 +138,22 @@ async function fetchComponents(store: Store, items: StackItem[]): Promise<Map<st
   const familyIds = [...vulns.values()].map((v) => v.family_id).filter((f): f is string => !!f);
   const exploited = familyIds.length === 0 ? [] : await allForKeys<{ id: string; family_id: string }>(store, EXPLOITED_IN_FAMILIES_SQL, familyIds, FEED_CHUNK);
 
-  const out = new Map<string, ComponentData>(items.map((i) => [itemKey(i), { affected: [], vulns: [], exploited: [] }]));
+  // Support data: by endoflife.date product, and by product key for the CVE tag.
+  const productItems = items.filter((i): i is Extract<StackItem, { kind: 'product' }> => i.kind === 'product');
+  const slugOf = new Map(productItems.map((i) => [itemKey(i), eolTarget(i)?.slug ?? null]));
+  const slugs = [...new Set([...slugOf.values()].filter((s): s is string => s !== null))];
+  const releases = slugs.length === 0 ? [] : await allForKeys<EolRelease>(store, EOL_RELEASES_SQL, slugs, FEED_CHUNK);
+  const tags =
+    productItems.length === 0 ? [] : await allForKeys<CveSupport>(store, EOL_CVE_SQL, productItems.map((i) => `${i.vendor}/${i.product}`), FEED_CHUNK);
+  const tagOf = new Map(tags.map((t) => [`prod:${t.key}`, t]));
+
+  const out = new Map<string, ComponentData>(
+    items.map((i) => {
+      const k = itemKey(i);
+      const slug = slugOf.get(k) ?? null;
+      return [k, { affected: [], vulns: [], exploited: [], eol: slug ? releases.filter((r) => r.slug === slug) : [], cveSupport: tagOf.get(k) ?? null }];
+    }),
+  );
   const vulnsOf = new Map<string, Set<string>>();
   for (const a of affected) {
     const data = out.get(rowKey(a));

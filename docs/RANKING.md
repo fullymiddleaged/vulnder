@@ -40,6 +40,18 @@ Their CVEs get × 1.25 on the risk score, so they rank ahead of similar results 
 
 "Edge device" means internet-facing, and you know your network better than a product name does. Under Edit stack, tick **Edge device** on anything else the internet can reach directly (a customer portal, an exposed file server) and it's ranked the same way; untick it on a firewall that sits inside your network and it's ranked like any other product. Your choice goes into the link (`;edge` or `;internal`, see [STACK_FORMAT.md](STACK_FORMAT.md#edge-devices)). Only you set it: Jev never guesses it from a description. Unticking is the one way a priority can go down, and only back to what any other product would get, never below BOD 26-04's deadlines for a system that isn't exposed.
 
+## Out of support
+
+A product its vendor no longer supports gets no more security fixes, so every new bug in it stays open, whatever any one CVE says. That's a finding about the component, not a CVE, so it never changes a CVE's priority, and Act now stays about as big as KEV. Instead the item gets an **Out of support** notice above the priorities, and in Fix first it ranks with **Act now**, whatever its CVEs; one whose support ends within 90 days ranks with **Attend**. It shows even when the item has no CVEs in the window.
+
+Support dates come from [endoflife.date](https://endoflife.date), fetched once a day: Windows and Windows Server, Exchange, SQL Server, Office, SharePoint, macOS, iOS, Android, Ubuntu, Debian, RHEL, CentOS, Oracle Linux, SLES, ESXi, vCenter, FortiOS, PAN-OS, Cisco IOS XE and BIG-IP. A fixed table (`src/stack/eol.ts`) maps catalog keys to its products and releases; the dates themselves are never typed in by hand. For hardware endoflife.date doesn't cover, such as home and small-office routers, a CVE record its vendor tagged "unsupported-when-assigned" marks the product, until a newer CVE for it comes without the tag.
+
+Only what you named counts. An item is out of support when every release it could mean is past its end of support, so "Windows 7" and "Windows 10" are, and a bare "Windows", "Windows 11" or "macOS" never is. A close match counts only through the version you gave, never through the product it was expanded to. LTSC and IoT editions are left out unless you name one.
+
+Paid extended support (Microsoft ESU, Red Hat ELS, SUSE LTSS, Ubuntu Pro) keeps a release patched past its normal end. Vulnder assumes you don't have it, and says when it's available and until when. If you do, tick **Has ESU** under Edit stack, or say so in your description ("Windows Server 2012 R2 with ESU"), and the item is covered until the extended support ends: Attend in its last 90 days, then out of support. The choice goes into the link as `;esu` (see [STACK_FORMAT.md](STACK_FORMAT.md#extended-support)).
+
+An out-of-support edge device also cites CISA's BOD 26-02, which has US federal agencies replace end-of-support edge devices.
+
 ## Teams
 
 When a description reads as an enterprise stack (Jev's screen says enterprise with 0.5 confidence or more), each item gets the team that usually looks after it: Network, Database, Front-end, Back-end, Platform, Endpoints or Business apps. Jev answers for each component you named, reading your own description; a fixed table of ecosystems, vendors and product names fills whatever Jev leaves open or can't answer. Items neither knows are Unassigned. The team goes into the link (see [STACK_FORMAT.md](STACK_FORMAT.md)), and you can change it under Edit stack. Home, small-business and lockfile stacks get no teams.
@@ -92,5 +104,7 @@ The JSON feed carries on each result:
 | `mitigation` | Set for urgent results with no fixed version known |
 | `family`, `related` | Similar CVEs; `related` lists the other results in the feed from the same family |
 | `tier` | The older exploited / likely / backlog field, from KEV and EPSS only; unchanged |
+
+The feed also carries `support`: one entry per out-of-support finding, with `state` (`eol`, `ending` or `covered`), `name`, `date`, `esuUntil`, `esu`, `edge`, `source` (`endoflife` or `cve`), `cve` and the stack `items` it's about. Fix first entries carry the same `support` state. The Atom feed has an entry for each item out of support or losing it soon.
 
 The feed also has a `fixFirst` list. Atom entries carry the priority, the window and the reasons. The badge counts exploited CVEs.

@@ -11,7 +11,8 @@ import { ADVISORIES_URL } from '../src/ingest/sources/ghsa';
 import { KEV_URL } from '../src/ingest/sources/kev';
 import { HEALTH_CACHE, HEALTH_CACHE_SECONDS, healthCacheKey, sourceHealth } from '../src/routes/health';
 import { FakeFetch, jsonResponse } from './helpers/fake-fetch';
-import { cveRecords, deltaZip, epssLatest, ghsaPage, kevFeed, releases, withMeta } from './helpers/fixtures';
+import { cveRecords, deltaZip, eolFull, epssLatest, ghsaPage, kevFeed, releases, withMeta } from './helpers/fixtures';
+import { EOL_URL } from '../src/ingest/eol';
 import { resetDb, rows, unlimitedBudget } from './helpers/db';
 
 const NOW = new Date('2026-10-04T18:00:00Z');
@@ -47,7 +48,8 @@ function upstreams(): FakeFetch {
         // KEV entries score high, everything else low.
         .map((cve) => ({ cve, epss: cve.startsWith('CVE-2026-102') ? '0.450000000' : '0.002000000', percentile: '0.500000000', date }));
       return jsonResponse({ status: 'OK', data });
-    });
+    })
+    .on(EOL_URL, (req) => (req.headers.get('if-none-match') === '"eol-1"' ? new Response(null, { status: 304 }) : jsonResponse(eolFull, { headers: { etag: '"eol-1"' } })));
 }
 
 async function ingest(f: FakeFetch, budget = unlimitedBudget()) {
@@ -101,8 +103,46 @@ describe('runIngest', () => {
 
     expect(await rows("SELECT value FROM meta WHERE key = 'data_version'")).toEqual([{ value: '1' }]);
     const status = await rows<{ key: string; value: string }>("SELECT key, value FROM meta WHERE key LIKE 'status:%' ORDER BY key");
-    expect(status).toHaveLength(4);
+    // The four sources and the daily support dates.
+    expect(status.map((s) => s.key)).toEqual(['status:cve', 'status:eol', 'status:epss', 'status:ghsa', 'status:kev']);
     for (const s of status) expect(JSON.parse(s.value)).toMatchObject({ lastSuccessAt: NOW.toISOString(), lastError: null, partial: false });
+    expect(report.eol).toMatchObject({ status: 'ok' });
+    expect(report.eol!.written).toBeGreaterThan(100);
+    // The products src/stack/eol.ts maps, not the ones it doesn't.
+    expect(await rows("SELECT release, eol_from, is_eol, eoes_from FROM eol_releases WHERE slug = 'windows-server' AND release = '2012_r2'")).toEqual([
+      { release: '2012_r2', eol_from: '2023-10-10', is_eol: 1, eoes_from: '2026-10-13' },
+    ]);
+    expect(await rows("SELECT slug FROM eol_releases WHERE slug = 'nginx'")).toEqual([]);
+  });
+
+  it('fetches support dates once a UTC day, conditionally, writing only what changed', async () => {
+    const f = upstreams();
+    await ingest(f);
+    expect(f.urls().filter((u) => u === EOL_URL)).toHaveLength(1);
+    // Later the same day: not fetched again.
+    await ingest(f);
+    expect(f.urls().filter((u) => u === EOL_URL)).toHaveLength(1);
+
+    // The next day: a conditional GET, answered 304, writes no release rows.
+    const tomorrow = new Date(NOW.getTime() + 86_400_000);
+    const budget = unlimitedBudget();
+    const next = await runIngest({ store: new D1BindingStore(env.DB, budget), fetch: f.fetch, budget, runtime: 'worker', now: () => tomorrow, sleep: async () => {} });
+    expect(next.eol).toEqual({ status: 'unchanged', written: 0 });
+    expect(f.calls.filter((c) => c.url === EOL_URL).at(-1)!.headers.get('if-none-match')).toBe('"eol-1"');
+  });
+
+  it('keeps the last support dates when endoflife.date fails, and says so', async () => {
+    await ingest(upstreams());
+    const before = await rows('SELECT slug, release, eol_from FROM eol_releases ORDER BY slug, release');
+    // FakeFetch takes the first route that matches: endoflife.date fails, the rest answer as usual.
+    const rest = upstreams();
+    const failing = new FakeFetch().on(EOL_URL, () => new Response('down', { status: 503 })).on(() => true, (req) => rest.fetch(req));
+    const budget = unlimitedBudget();
+    const report = await runIngest({ store: new D1BindingStore(env.DB, budget), fetch: failing.fetch, budget, runtime: 'worker', now: () => new Date(NOW.getTime() + 86_400_000), sleep: async () => {} });
+    expect(report.eol).toEqual({ status: 'error', written: 0, error: 'endoflife.date: HTTP 503' });
+    expect(await rows('SELECT slug, release, eol_from FROM eol_releases ORDER BY slug, release')).toEqual(before);
+    const [status] = await rows<{ value: string }>("SELECT value FROM meta WHERE key = 'status:eol'");
+    expect(JSON.parse(status!.value)).toMatchObject({ lastSuccessAt: NOW.toISOString(), lastError: 'endoflife.date: HTTP 503' });
   });
 
   it('writes nothing on a second run with unchanged upstreams', async () => {
@@ -228,7 +268,7 @@ describe('health', () => {
       dataVersion: number;
     };
     // NOW is in the past relative to the real clock, so these read as stale.
-    expect(Object.keys(body.sources)).toEqual(['cve', 'ghsa', 'kev', 'epss']);
+    expect(Object.keys(body.sources)).toEqual(['cve', 'ghsa', 'kev', 'epss', 'eol']);
     expect(body.sources.cve!.lastSuccessAt).toBe(NOW.toISOString());
     expect(body).not.toHaveProperty('counts');
     expect(body.dataVersion).toBe(1);
@@ -247,7 +287,7 @@ describe('health', () => {
     const res = await app.request('/api/health', {}, env);
     const body = (await res.json()) as { status: string; sources: Record<string, { health: string }> };
     expect(body.status).toBe('degraded');
-    expect(Object.values(body.sources).map((s) => s.health)).toEqual(['never', 'never', 'never', 'never']);
+    expect(Object.values(body.sources).map((s) => s.health)).toEqual(['never', 'never', 'never', 'never', 'never']);
   });
 
   it('returns JSON 404s under /api', async () => {

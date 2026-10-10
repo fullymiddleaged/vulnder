@@ -13,6 +13,7 @@ import { looksLikeInjection } from '../resolve/injection';
 import { MAX_MANIFEST_ENTRIES } from '../resolve/limits';
 import { blocks, fitTargets, judgeStack, screenText, teamTargets, type Judgement } from '../resolve/jev';
 import { parseManifest } from '../resolve/manifests';
+import { markEsu } from '../resolve/esu';
 import { canRank, isEnterprise, markTeams, NO_PROFILE, orderByFit, parseProfile, type StackProfile } from '../resolve/profile';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { Candidate } from '../resolve/types';
@@ -189,6 +190,8 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
     chips = orderByFit(chips, fit);
     // The fixed table fills what Jev left out, so teams appear even when Jev doesn't answer.
     if (enterprise) chips = markTeams(chips, team);
+    // "…2012 R2 with ESU": paid extended support the user says they have (src/resolve/esu.ts).
+    chips = markEsu(chips, text);
   }
   return c.json({ source, format, ...result, chips, profile }, 200, { 'Cache-Control': 'no-store' });
 });

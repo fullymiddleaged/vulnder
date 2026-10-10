@@ -85,6 +85,28 @@ export interface FixItem {
   counts: Record<Priority, number>;
   vulns: string[];
   fixable: number;
+  /** Set when it's out of support, losing it soon, or kept going by paid extended support. */
+  support?: SupportState;
+}
+
+export type SupportState = 'eol' | 'ending' | 'covered';
+
+/** A stack item's vendor support finding (src/match/support.ts). */
+export interface SupportNotice {
+  state: SupportState;
+  /** "Windows Server 2012 R2". */
+  name: string;
+  /** When support ended or ends (YYYY-MM-DD); null when no date is known. */
+  date: string | null;
+  /** When paid extended support it could have ends; null when there is none or the user has it. */
+  esuUntil: string | null;
+  /** The dates counted the user's ESU. */
+  esu: boolean;
+  edge: boolean;
+  source: 'endoflife' | 'cve';
+  cve: string | null;
+  /** The stack items it's about. */
+  items: string[];
 }
 
 export interface Change {
@@ -106,6 +128,8 @@ export interface Feed {
   priorities: Record<Priority, number>;
   /** Matched stack items in the order to fix them. */
   fixFirst: FixItem[];
+  /** Out of support, losing it soon, or on paid extended support; absent from feeds cached before it existed. */
+  support?: SupportNotice[];
   changes: Change[];
   results: Result[];
   watching: string[];

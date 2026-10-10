@@ -3,6 +3,7 @@ import { utcDay, windowStart } from '../lib/time';
 import { applyPatches, type ApplyStats } from './apply';
 import { Budget, BudgetExhausted, RateLimited } from './budget';
 import { catchUpHighEpss } from './epss-net';
+import { EOL_CURSOR_KEY, EOL_LAST_KEY, EOL_STATUS_KEY, EOL_STORED_SQL, eolStatements, fetchEol, type EolCursor, type EolRow } from './eol';
 import { assignFamilies, type Embedder, type FamilyReport } from './families';
 import { maintenanceStatements } from './maintenance';
 import { keepStart } from './retention';
@@ -21,7 +22,7 @@ import { cveSource, fetchCveRecord } from './sources/cve';
 import { epssSource } from './sources/epss';
 import { ghsaSource } from './sources/ghsa';
 import { kevSource } from './sources/kev';
-import type { Store } from './store';
+import type { Statement, Store } from './store';
 import type { Source, SourceContext, SourceName, VulnPatch } from './types';
 
 /** Run order matters: CVE and GHSA create records that KEV and EPSS then enrich. */
@@ -49,6 +50,8 @@ export interface RunOptions {
   epssEvents?: boolean;
   /** Daily prune and catalog recount. 'force' runs it even if it ran today. */
   maintenance?: boolean | 'force';
+  /** Daily vendor support dates from endoflife.date (src/ingest/eol.ts). 'force' fetches even if it ran today. */
+  eol?: boolean | 'force';
   /** Workers AI embeddings for variant families; without it, families wait. */
   embed?: Embedder;
   /** Most vulns to assign families in a UTC day (FREE_PLAN_FAMILY_DAILY on Free); no cap when left out. */
@@ -76,6 +79,15 @@ export interface RunReport {
   /** True when the run did nothing because a seed is in progress. */
   waitingForSeed?: boolean;
   families?: FamilyReport;
+  /** The daily support-dates fetch, when this run made it. */
+  eol?: EolReport;
+}
+
+export interface EolReport {
+  status: 'ok' | 'unchanged' | 'error';
+  /** Release rows written or deleted. */
+  written: number;
+  error?: string;
 }
 
 /**
@@ -194,6 +206,17 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     if (families.joined > 0) anyWrites = true;
   }
 
+  // Once a UTC day: vendor support dates. One subrequest and a few D1 statements.
+  let eol: EolReport | undefined;
+  if (opts.eol !== false && budget.has(4)) {
+    const today = utcDay(now());
+    if (opts.eol === 'force' || (await getMeta<string>(store, EOL_LAST_KEY)) !== today) {
+      eol = await refreshEol(ctx, today);
+      if (eol.written > 0) anyWrites = true;
+      log(`eol: ${eol.status}, ${eol.written} release row(s) written${eol.error ? ` (${eol.error})` : ''}`);
+    }
+  }
+
   let maintained = false;
   if (opts.maintenance !== false) {
     const today = utcDay(now());
@@ -207,7 +230,52 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
 
   if (anyWrites) await store.batch([bumpDataVersionStatement(now())]);
   await store.flush?.();
-  return { sources: reports, maintenance: maintained, subrequests: budget.spent, d1Queries: budget.d1Spent, ...(families ? { families } : {}) };
+  return {
+    sources: reports,
+    maintenance: maintained,
+    subrequests: budget.spent,
+    d1Queries: budget.d1Spent,
+    ...(families ? { families } : {}),
+    ...(eol ? { eol } : {}),
+  };
+}
+
+/**
+ * Fetches endoflife.date and writes what changed, with its status. A failure
+ * keeps the last good dates and is tried again tomorrow.
+ */
+async function refreshEol(ctx: SourceContext, today: string): Promise<EolReport> {
+  const { store, now, log } = ctx;
+  const status: SourceStatus = { ...EMPTY_STATUS, ...((await getMeta<SourceStatus>(store, EOL_STATUS_KEY)) ?? {}) };
+  const cursor = (await getMeta<EolCursor>(store, EOL_CURSOR_KEY)) ?? { etag: null };
+  const at = now().toISOString();
+  status.lastRunAt = at;
+  status.partial = false;
+  let report: EolReport;
+  const writes: Statement[] = [];
+  try {
+    const res = await fetchEol(cursor, ctx);
+    if (res.missing.length > 0) log(`eol: endoflife.date no longer lists ${res.missing.join(', ')} (see src/stack/eol.ts)`);
+    let written = 0;
+    if (res.status === 'fetched') {
+      const diff = eolStatements(await store.all<EolRow>(EOL_STORED_SQL), res.rows, now());
+      writes.push(...diff.statements);
+      written = diff.rows;
+    }
+    writes.push(setMetaStatement(EOL_CURSOR_KEY, res.nextCursor, now()));
+    report = { status: res.status === 'unchanged' ? 'unchanged' : 'ok', written };
+    status.lastSuccessAt = at;
+    status.lastError = null;
+    status.lastRecords = res.rows.length;
+  } catch (err) {
+    if (err instanceof BudgetExhausted) return { status: 'error', written: 0, error: 'budget' };
+    const message = err instanceof Error ? err.message : String(err);
+    report = { status: 'error', written: 0, error: message };
+    status.lastError = message;
+    status.lastErrorAt = at;
+  }
+  await store.batch([...writes, setMetaStatement(EOL_STATUS_KEY, status, now()), setMetaStatement(EOL_LAST_KEY, today, now())]);
+  return report;
 }
 
 /**

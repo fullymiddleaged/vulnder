@@ -4,7 +4,22 @@ import { guessTeam, isEdge, isEdgeDevice } from '../src/stack/teams';
 import { MAX_MANIFEST_BYTES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
-import { ApiError, getConfig, getFeed, getHealth, getPass, resolve, type AppConfig, type Feed, type PassStatus, type Priority, type Reason, type Result } from './api';
+import {
+  ApiError,
+  getConfig,
+  getFeed,
+  getHealth,
+  getPass,
+  resolve,
+  type AppConfig,
+  type Feed,
+  type PassStatus,
+  type Priority,
+  type Reason,
+  type Result,
+  type SupportNotice,
+  type SupportState,
+} from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
 import { exportFileName, exportMarkdown, remediationSteps } from './export';
@@ -35,6 +50,9 @@ import {
   RISK,
   shortSummary,
   stackSummary,
+  supportByItem,
+  supportLines,
+  supportPriority,
   turnstileSize,
   withItemMarks,
   type ChangeGroup,
@@ -487,7 +505,8 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
 
 // ---------- Edit ----------
 
-function renderEdit(initial: string[]): void {
+/** `support`: the last feed's support findings by item name, so items with paid extended support on offer get a Has ESU tick. */
+function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map()): void {
   clear(app);
   const items = [...new Set(initial)];
   // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
@@ -526,6 +545,18 @@ function renderEdit(initial: string[]): void {
     return h('label', { class: 'edge-toggle small', title: 'Faces the internet: a VPN, firewall, gateway or anything else reachable from outside' }, box, ' Edge device');
   };
 
+  // Only where it changes something: a release past its end that paid extended support can cover.
+  const esuToggle = (i: number) => {
+    const { name, ...marks } = itemMarks(items[i]!);
+    const n = support.get(name);
+    if (!n || !(marks.esu || n.esu || n.esuUntil)) return null;
+    const box = h('input', { type: 'checkbox', checked: marks.esu }) as HTMLInputElement;
+    box.addEventListener('change', () => {
+      items[i] = withItemMarks(name, { ...marks, esu: box.checked });
+    });
+    return h('label', { class: 'edge-toggle small', title: 'You pay for extended security updates (Microsoft ESU, Red Hat ELS, SUSE LTSS, Ubuntu Pro), so it’s covered until those end' }, box, ' Has ESU');
+  };
+
   const draw = () => {
     clear(list);
     items.forEach((item, i) => {
@@ -537,6 +568,7 @@ function renderEdit(initial: string[]): void {
           h('code', {}, name),
           close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
           edgeToggle(i),
+          esuToggle(i),
           teamed ? teamPicker(i) : null,
           h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
         ),
@@ -596,7 +628,7 @@ function renderEdit(initial: string[]): void {
       h(
         'p',
         { class: 'muted' },
-        'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Tick Edge device for anything the internet can reach directly; Vulnder ticks VPNs, firewalls and gateways for you, and you can untick one that sits inside your network. Items with nothing reported are still watched.',
+        'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Tick Edge device for anything the internet can reach directly; Vulnder ticks VPNs, firewalls and gateways for you, and you can untick one that sits inside your network. Tick Has ESU on a release past its end of support if you pay for extended security updates. Items with nothing reported are still watched.',
       ),
       list,
       addForm,
@@ -685,6 +717,9 @@ async function renderResults(stack: string, days: number): Promise<void> {
     ),
     renderStack(feed, notes),
   );
+  // Before the CVEs: out of support outweighs any one of them, and a stack can have it with none.
+  const support = renderSupport(feed);
+  if (support) app.append(support);
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
@@ -702,14 +737,20 @@ async function renderResults(stack: string, days: number): Promise<void> {
     app.append(h('div', { class: 'results-head' }, groupingToggle(draw, initial, teamed), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
     draw(initial);
   }
-  if (feed.watching.length > 0) {
+  // Items out of support or losing it show above, not as quietly watched.
+  const flagged = supportByItem(feed.support ?? []);
+  const watching = feed.watching.filter((w) => {
+    const n = flagged.get(itemMarks(w).name);
+    return !n || n.state === 'covered';
+  });
+  if (watching.length > 0) {
     app.append(
       h(
         'section',
         { class: 'block', 'aria-labelledby': 'watching-title' },
         h('h2', { id: 'watching-title' }, 'Watching'),
         h('p', { class: 'muted' }, `No admirers in the last ${feed.days} days. The feed will pick up new issues.`),
-        h('ul', { class: 'chips compact' }, feed.watching.map((w) => h('li', { class: 'chip' }, h('code', {}, itemMarks(w).name)))),
+        h('ul', { class: 'chips compact' }, watching.map((w) => h('li', { class: 'chip' }, h('code', {}, itemMarks(w).name)))),
       ),
     );
   }
@@ -732,7 +773,11 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
     if (isLocked()) return void (daySelect.value = String(feed.days));
     navigate(feed.stack, Number(daySelect.value));
   });
-  const editButton = h('button', { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i]))), app.focus()) }, 'Edit stack');
+  const editButton = h(
+    'button',
+    { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i])), supportByItem(feed.support ?? [])), app.focus()) },
+    'Edit stack',
+  );
   // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
   const editNotice = lockControls([editButton, daySelect]);
   const anyClose = items.some((i) => i.close);
@@ -761,6 +806,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
             h('code', {}, identity(i)),
             i.close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
             isEdge(i) ? edgeBadge() : null,
+            i.esu ? h('span', { class: 'team-mark small muted', title: 'You pay for extended security updates' }, 'Has ESU') : null,
             i.team ? h('span', { class: 'team-mark small muted' }, TEAM[i.team].label) : null,
           ),
         ),
@@ -769,6 +815,54 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
         ? h('p', { class: 'muted small' }, 'Exact matches are the products you named. Close matches are products your description loosely fits: check they are yours, and remove any that aren’t with Edit stack.')
         : null,
     ),
+  );
+}
+
+/**
+ * Items whose vendor no longer supports them, or soon won't: no fix will come for their next CVE,
+ * so they rank with Act now or Attend whatever their CVEs. Null when there are none.
+ */
+function renderSupport(feed: Feed): HTMLElement | null {
+  const notices = feed.support ?? [];
+  if (notices.length === 0) return null;
+  const out = notices.some((n) => n.state === 'eol');
+  return h(
+    'section',
+    { class: 'block support', 'aria-labelledby': 'support-title' },
+    h('h2', { id: 'support-title' }, out ? 'Out of support' : 'Vendor support'),
+    h(
+      'p',
+      { class: 'muted small' },
+      'Past its vendor’s end of support, software gets no more security fixes, so every new bug in it stays open. Out of support ranks with Act now, and support ending within 90 days with Attend, whatever its CVEs. Dates from ',
+      externalLink('https://endoflife.date', 'endoflife.date'),
+      '.',
+    ),
+    h('ul', { class: 'support-list', role: 'list' }, notices.map(renderNotice)),
+  );
+}
+
+function renderNotice(n: SupportNotice): HTMLElement {
+  const p = supportPriority(n.state);
+  const light = p ? RISK[p].light : 'grey';
+  const lines = supportLines(n);
+  return h(
+    'li',
+    { class: `support-item ${light}` },
+    h('p', { class: 'row wrap' }, h('span', { class: `pill ${light}` }, p ? RISK[p].label : 'Covered'), h('strong', {}, n.name), n.edge ? edgeBadge() : null),
+    lines.map((l) => h('p', { class: 'small' }, l)),
+    n.source === 'cve' && n.cve
+      ? h('p', { class: 'small' }, 'Its vendor said it is no longer supported in ', externalLink(`https://www.cve.org/CVERecord?id=${encodeURIComponent(n.cve)}`, n.cve), '.')
+      : null,
+    h('p', { class: 'small muted' }, n.items.length === 1 ? 'Stack item: ' : 'Stack items: ', n.items.flatMap((i, k) => [k > 0 ? ', ' : '', h('code', {}, itemMarks(i).name)])),
+  );
+}
+
+function supportBadge(state: SupportState): HTMLElement | null {
+  if (state === 'covered') return null;
+  return h(
+    'span',
+    { class: `badge support ${state}`, title: 'Its vendor no longer ships security fixes for it, or stops within 90 days. See Out of support above.' },
+    state === 'eol' ? 'Out of support' : 'Support ending',
   );
 }
 
@@ -894,7 +988,7 @@ function renderFixFirst(feed: Feed): HTMLElement {
  * to hunt for them further down. CVEs an earlier row already showed are listed by ID only.
  */
 function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
-  const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  const worst = worstOf(g);
   const total = g.vulns.length;
   const { fresh, repeated } = splitShown(g.results, shown);
   return h(
@@ -907,10 +1001,9 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
         'summary',
         {},
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
-        h('code', {}, g.component),
-        g.also.length > 0 ? [pause(), h('span', { class: 'small muted' }, `+${g.also.length} more`)] : null,
-        g.close ? [pause(), h('span', { class: 'badge match-close' }, 'Close match')] : null,
+        groupName(g).flatMap((part, i) => (i === 0 ? [part] : [pause(), part])),
         groupIsEdge(g) ? [pause(), edgeBadge()] : null,
+        g.support ? [pause(), supportBadge(g.support)] : null,
         pause(),
         tally(g.counts),
         pause(),
@@ -927,9 +1020,26 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
   );
 }
 
-/** The other items sharing a row, each with its close-match mark. */
+/**
+ * A row's name and its marks. Close matches merged into one row go by their shared name, so the
+ * row doesn't read as one SKU (Server Core) the user may not run.
+ */
+function groupName(g: ComponentGroup): HTMLElement[] {
+  if (g.family) return [h('code', {}, g.family), h('span', { class: 'badge match-close' }, `${g.also.length + 1} close matches`)];
+  return [
+    h('code', {}, g.component),
+    g.also.length > 0 ? h('span', { class: 'small muted' }, `+${g.also.length} more`) : null,
+    g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+  ].filter((e) => e !== null);
+}
+
+/** The other items sharing a row, each with its close-match mark; under a family name, every member. */
 function sameCves(g: ComponentGroup): HTMLElement | null {
   if (g.also.length === 0) return null;
+  if (g.family) {
+    const names = [g.component, ...g.also.map((item) => itemMarks(item).name)].map((n) => h('code', {}, n));
+    return h('p', { class: 'small muted also' }, 'Covers: ', names.flatMap((n, i) => (i === 0 ? [n] : [', ', n])));
+  }
   const names = g.also.map((item) => {
     const { name, close } = itemMarks(item);
     return [h('code', {}, name), close ? ' (close match)' : ''];
@@ -947,6 +1057,13 @@ function listedAbove(repeated: Result[]): HTMLElement | null {
     `${n === 1 ? '1 more CVE' : `${n} more CVEs`}, shown above: `,
     repeated.flatMap((r, i) => (i === 0 ? [externalLink(r.links.advisory, r.id)] : [', ', externalLink(r.links.advisory, r.id)])),
   );
+}
+
+/** A row's most urgent priority: its CVEs', or what its vendor support ranks with when that's higher. */
+function worstOf(g: ComponentGroup): Priority {
+  const byCves = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  const bySupport = g.support ? supportPriority(g.support) : null;
+  return bySupport && PRIORITIES.indexOf(bySupport) < PRIORITIES.indexOf(byCves) ? bySupport : byCves;
 }
 
 function groupIsEdge(g: ComponentGroup): boolean {
@@ -1071,19 +1188,18 @@ function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
 
 /** Like a fix-first row: CVEs an earlier group showed in full are listed by ID only. */
 function renderComponent(g: ComponentGroup, shown: Set<string>): HTMLElement {
-  const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  const worst = worstOf(g);
   const { fresh, repeated } = splitShown(g.results, shown);
   return h(
     'details',
-    { class: `component ${RISK[worst].light}`, open: g.counts.act + g.counts.attend > 0 },
+    { class: `component ${RISK[worst].light}`, open: worst === 'act' || worst === 'attend' },
     h(
       'summary',
       {},
       h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
-      h('code', {}, g.component),
-      g.also.length > 0 ? h('span', { class: 'small muted' }, `+${g.also.length} more`) : null,
-      g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
+      groupName(g),
       groupIsEdge(g) ? edgeBadge() : null,
+      g.support ? supportBadge(g.support) : null,
       h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
       tally(g.counts),
     ),
@@ -1388,7 +1504,7 @@ async function renderFreshness(): Promise<void> {
   if (!el) return;
   try {
     const health = await getHealth();
-    const names: Record<string, string> = { cve: 'CVE records', ghsa: 'GitHub advisories', kev: 'CISA KEV', epss: 'EPSS' };
+    const names: Record<string, string> = { cve: 'CVE records', ghsa: 'GitHub advisories', kev: 'CISA KEV', epss: 'EPSS', eol: 'support dates' };
     el.replaceChildren(
       'Data freshness: ',
       ...Object.entries(health.sources).flatMap(([k, s], i) => [

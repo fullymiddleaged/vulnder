@@ -2,7 +2,8 @@ import { Hono, type Context } from 'hono';
 import { D1BindingStore } from '../ingest/d1-store';
 import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
-import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult } from '../match/match';
+import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult, type SupportNotice } from '../match/match';
+import { supportText } from '../match/support';
 import { getCookie } from 'hono/cookie';
 import { clientKey } from '../lib/client';
 import { isSpent, lockedStatus, PASS_COOKIE, usePass } from '../lib/pass';
@@ -225,6 +226,7 @@ export const feeds = new Hono<AppEnv>()
         },
         priorities: Object.fromEntries(PRIORITIES.map((p) => [p, match.results.filter((r) => r.priority === p).length])),
         fixFirst: match.fixFirst,
+        support: match.support,
         changes: changes.map((e) => ({ ...e, title: byId.get(e.vulnId)?.title ?? null, tier: byId.get(e.vulnId)?.tier })),
         results: match.results,
         watching: match.watching,
@@ -251,6 +253,7 @@ export const feeds = new Hono<AppEnv>()
         now,
         events,
         vulns: new Map(match.results.map((r) => [r.id, r])),
+        support: match.support,
       });
       return c.body(xml, 200, { 'Content-Type': 'application/atom+xml; charset=utf-8' });
     });
@@ -311,9 +314,27 @@ export function atomFeed(opts: {
   now: Date;
   events: ChangeEvent[];
   vulns: Map<string, MatchedVuln>;
+  /** Out-of-support findings: one entry each, dated when support ended (or ends). */
+  support?: SupportNotice[];
 }): string {
   const links = stackLinks(opts.base, opts.canonical, opts.days);
   const updated = opts.events[0]?.occurredAt ?? opts.now.toISOString();
+  const supportEntries = (opts.support ?? [])
+    .filter((s) => s.state !== 'covered')
+    .map((s) => {
+      // Stable while the finding holds, so a reader shows it once; it changes when the state or date does.
+      const id = `${opts.base}/support/${encodeURIComponent(s.items[0]!)}/${s.state}/${s.date ?? 'undated'}`;
+      const at = s.date && s.date <= opts.now.toISOString().slice(0, 10) ? `${s.date}T00:00:00.000Z` : opts.now.toISOString();
+      const title = s.state === 'eol' ? `Out of support: ${s.name}` : `Support ends ${s.date ?? 'soon'}: ${s.name}`;
+      return `  <entry>
+    <id>${xml(id)}</id>
+    <title>${xml(title)}</title>
+    <updated>${xml(at)}</updated>
+    <link rel="alternate" href="${xml(links.page)}"/>
+    <category term="${xml(s.state === 'eol' ? 'out_of_support' : 'support_ending')}"/>
+    <summary type="text">${xml([...supportText(s), `Matched: ${s.items.join(', ')}.`].join('\n\n'))}</summary>
+  </entry>`;
+    });
   const entries = opts.events.map((e) => {
     const v = opts.vulns.get(e.vulnId);
     const id = `${opts.base}/events/${encodeURIComponent(e.vulnId)}/${e.type}/${encodeURIComponent(e.occurredAt)}`;
@@ -336,7 +357,7 @@ export function atomFeed(opts: {
   <link rel="self" href="${xml(links.atom)}"/>
   <link rel="alternate" href="${xml(links.page)}"/>
   <generator>${xml(opts.displayName)}</generator>
-${entries.join('\n')}
+${[...supportEntries, ...entries].join('\n')}
 </feed>
 `;
 }

@@ -3,7 +3,7 @@ import type { Store } from '../ingest/store';
 import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem, type Team } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES, CATEGORIES, vendorFamily, vendorSpellings } from './aliases';
-import { fallbackKey, forVersion, inLine, lineFor, lineRanges, type LineMatch } from './lines';
+import { fallbackKey, forVersion, inLine, lineFor, lineRanges, perRelease, type LineMatch } from './lines';
 import type { Candidate } from './types';
 
 /**
@@ -272,6 +272,10 @@ function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor
       return resolved(fallback ? [make(`p:${fallback}`, labelFor(`p:${fallback}`), false, false)] : []);
     }
     const picked = forVersion(members, c.version);
+    // A release none of the line's per-release products is ("Windows 7", "RHEL 5"): its main key
+    // at that version is what was named, rather than every other release as a close match.
+    const fallback = picked.length === 0 && c.version && perRelease(members) ? fallbackKey(line) : null;
+    if (fallback) return resolved([make(`p:${fallback}`, labelFor(`p:${fallback}`), false, members.some((r) => r.key === fallback))]);
     const shown = picked.length > 0 ? picked : members;
     return resolved(shown.map((r) => make(itemOf(r), r.label ?? r.key, shown.length > 1, true)));
   }

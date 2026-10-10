@@ -9,6 +9,7 @@ import { isEdge } from '../stack/teams';
 import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
+import { supportFor, type Support, type SupportState } from './support';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -103,7 +104,20 @@ export interface MatchResult {
   versionCheckUnavailable: boolean;
   /** Matched stack items in the order to fix them. */
   fixFirst: FixItem[];
+  /** Stack items out of support, losing it soon, or kept going by paid extended support (src/match/support.ts). */
+  support: SupportNotice[];
 }
+
+export interface SupportNotice extends Support {
+  /**
+   * The stack items (canonical form) it's about: one, or the close matches one
+   * name expanded to ("Windows 10" is every windows_10_version_* key), which
+   * share a finding.
+   */
+  items: string[];
+}
+
+const SUPPORT_ORDER: SupportState[] = ['eol', 'ending', 'covered'];
 
 export interface MatchOptions {
   now: Date;
@@ -156,7 +170,8 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
 
   // 1. Each component's affected rows and vulns (cached per component), and
   // 2. the vulns among those that are inside the window.
-  const components = await loadComponents(store, items, opts.components);
+  const loaded = await loadComponents(store, items, opts.components);
+  const components = [...loaded.values()];
   const affected = components.flatMap((d) => d.affected);
   const vulns = new Map(components.flatMap((d) => d.vulns.filter((v) => inWindow(v, since) || inSafetyNet(v, netStart)).map((v) => [v.id, v] as const)));
   const rowsByVuln = new Map<string, AffectedRow[]>();
@@ -239,8 +254,30 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
   results.sort(compareResults);
   linkFamilies(results, (id) => vulns.get(id)?.family_id ?? null);
   const watching = items.map(formatItem).filter((f) => !matchedItems.has(f));
-  const ranked = fixFirst(results.map((r) => ({ ...r, assessment: r })));
-  return { results, watching, versionCheckUnavailable, fixFirst: ranked };
+
+  // 5. Vendor support, per item: whatever its CVEs, an item out of support gets no more fixes.
+  const bySupport = new Map<string, SupportNotice>();
+  const stateOf = new Map<string, SupportState>();
+  for (const item of items) {
+    const data = loaded.get(itemKey(item));
+    const s = supportFor(item, data?.eol ?? [], data?.cveSupport ?? null, opts.now);
+    if (!s) continue;
+    const formatted = formatItem(item);
+    stateOf.set(formatted, s.state);
+    const same = JSON.stringify([s.state, s.name, s.date, s.esuUntil, s.esu, s.edge, s.source, s.cve]);
+    const notice = bySupport.get(same);
+    if (notice) notice.items.push(formatted);
+    else bySupport.set(same, { ...s, items: [formatted] });
+  }
+  const support = [...bySupport.values()].sort(
+    (a, b) => SUPPORT_ORDER.indexOf(a.state) - SUPPORT_ORDER.indexOf(b.state) || a.name.localeCompare(b.name) || a.items[0]!.localeCompare(b.items[0]!),
+  );
+
+  const ranked = fixFirst(
+    results.map((r) => ({ ...r, assessment: r })),
+    stateOf,
+  );
+  return { results, watching, versionCheckUnavailable, fixFirst: ranked, support };
 }
 
 /**

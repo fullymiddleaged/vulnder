@@ -1,5 +1,5 @@
-import { isTeam, type Team } from '../src/stack/format';
-import type { Change, FixItem, PassStatus, Priority, Result } from './api';
+import { isTeam, parseStack, type Team } from '../src/stack/format';
+import type { Change, FixItem, PassStatus, Priority, Result, SupportNotice, SupportState } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
 
@@ -295,28 +295,33 @@ export interface ItemMarks {
   team: Team | null;
   /** The user's `;edge` (true) or `;internal` (false) tag; null leaves it to the product. */
   edge: boolean | null;
+  /** The user's `;esu` tag: they pay for extended security updates. */
+  esu: boolean;
 }
 
-/** A stack item as the feed writes it, split into its name and its marks (`?` close match, `;team` its team, `;edge` or `;internal`). */
+/** A stack item as the feed writes it, split into its name and its marks (`?` close match, `;team` its team, `;edge` or `;internal`, `;esu`). */
 export function itemMarks(item: string): { name: string } & ItemMarks {
   const close = item.startsWith('?');
   let name = close ? item.slice(1) : item;
   let team: Team | null = null;
   let edge: boolean | null = null;
+  let esu = false;
+  // Read from the end, so each tag may only come before the ones already read.
   for (let semi = name.lastIndexOf(';'); semi >= 0; semi = name.lastIndexOf(';')) {
     const tag = name.slice(semi + 1);
-    if (edge === null && team === null && (tag === 'edge' || tag === 'internal')) edge = tag === 'edge';
+    if (!esu && edge === null && team === null && tag === 'esu') esu = true;
+    else if (edge === null && team === null && (tag === 'edge' || tag === 'internal')) edge = tag === 'edge';
     else if (team === null && isTeam(tag)) team = tag;
     else break;
     name = name.slice(0, semi);
   }
-  return { name, close, team, edge };
+  return { name, close, team, edge, esu };
 }
 
 /** The item written back with the given marks, in canonical order. */
 export function withItemMarks(name: string, marks: ItemMarks): string {
   const edge = marks.edge === null ? '' : marks.edge ? ';edge' : ';internal';
-  return `${marks.close ? '?' : ''}${name}${marks.team ? `;${marks.team}` : ''}${edge}`;
+  return `${marks.close ? '?' : ''}${name}${marks.team ? `;${marks.team}` : ''}${edge}${marks.esu ? ';esu' : ''}`;
 }
 
 export interface ComponentGroup extends FixItem {
@@ -324,8 +329,13 @@ export interface ComponentGroup extends FixItem {
   component: string;
   close: boolean;
   team: Team | null;
-  /** Other stack items with exactly the same CVEs, team and edge tag, shown in this row as written in the feed. */
+  /** Other stack items with exactly the same CVEs, team, edge tag and support state, shown in this row as written in the feed. */
   also: string[];
+  /**
+   * The close matches' shared name ("p:microsoft/windows_server_2025") when this row merges close
+   * matches only; the row is then headed by it, since any one member's name reads as a single SKU.
+   */
+  family: string | null;
   /** 1-based position in the fix-first order. */
   rank: number;
   results: Result[];
@@ -342,11 +352,13 @@ export function componentGroups(fixFirst: FixItem[], results: Result[]): Compone
   const rows = new Map<string, FixItem[]>();
   for (const f of fixFirst) {
     const { team, edge } = itemMarks(f.item);
-    const key = JSON.stringify([team, edge, [...f.vulns].sort()]);
+    // An item out of support doesn't share a row with one that isn't, even with the same CVEs.
+    const key = JSON.stringify([team, edge, f.support ?? null, [...f.vulns].sort()]);
     rows.set(key, [...(rows.get(key) ?? []), f]);
   }
   return [...rows.values()].map((members, i) => {
-    const lead = members.find((m) => !itemMarks(m.item).close) ?? members[0]!;
+    // With no exact item, the shortest name is the most generic (windows_server_2025 over its _server_core_installation).
+    const lead = members.find((m) => !itemMarks(m.item).close) ?? members.reduce((a, b) => (itemMarks(b.item).name.length < itemMarks(a.item).name.length ? b : a));
     const { name, close, team } = itemMarks(lead.item);
     return {
       ...lead,
@@ -354,10 +366,70 @@ export function componentGroups(fixFirst: FixItem[], results: Result[]): Compone
       close,
       team,
       also: members.filter((m) => m !== lead).map((m) => m.item),
+      family: close && members.length > 1 ? familyName(members.map((m) => itemMarks(m.item).name)) : null,
       rank: i + 1,
       results: lead.vulns.flatMap((id) => byId.get(id) ?? []),
     };
   });
+}
+
+/**
+ * The name several products share, as whole `_` words of the product with no version:
+ * windows_server_2025@2025 and windows_server_2025_server_core_installation@2025 give
+ * p:microsoft/windows_server_2025. Null for packages, mixed vendors or nothing in common.
+ */
+export function familyName(items: string[]): string | null {
+  let parsed;
+  try {
+    parsed = items.map((i) => parseStack(i)[0]);
+  } catch {
+    return null;
+  }
+  const products = parsed.flatMap((p) => (p?.kind === 'product' ? [p] : []));
+  const first = products[0];
+  if (!first || products.length !== items.length || products.some((p) => p.vendor !== first.vendor)) return null;
+  const shared = products.slice(1).reduce((words, p) => {
+    const other = p.product.split('_');
+    const n = words.findIndex((w, i) => w !== other[i]);
+    return n < 0 ? words : words.slice(0, n);
+  }, first.product.split('_'));
+  return shared.length > 0 && shared[0] !== '' ? `p:${first.vendor}/${shared.join('_')}` : null;
+}
+
+/** The priority a support finding ranks with in Fix first (src/match/priority.ts), or null for one paid support covers. */
+export function supportPriority(state: SupportState): Priority | null {
+  return state === 'eol' ? 'act' : state === 'ending' ? 'attend' : null;
+}
+
+/**
+ * What a support finding tells the reader, in order: the finding with what to
+ * do, the paid support it could still buy, where a CVE said so, and BOD 26-02
+ * for edge devices.
+ */
+export function supportLines(n: SupportNotice): string[] {
+  const since = n.date ? ` since ${n.date}` : '';
+  const out: string[] = [];
+  if (n.state === 'eol') {
+    out.push(
+      n.esu
+        ? `Paid extended support ended${n.date ? ` on ${n.date}` : ''}, so it gets no more security updates. Upgrade to a supported release urgently.`
+        : `Out of support${since}: it gets no more security updates. Upgrade to a supported release urgently.`,
+    );
+    if (n.esuUntil) out.push(`Paid extended security updates run until ${n.esuUntil}. If you have them, tick Has ESU under Edit stack.`);
+  } else if (n.state === 'ending') {
+    out.push(`${n.esu ? 'Your paid extended support ends' : 'Support ends'} ${n.date ?? 'soon'}. Plan the upgrade to a supported release now.`);
+  } else {
+    out.push(`Covered by paid extended support until ${n.date ?? 'its end date'}. Plan the upgrade before then.`);
+  }
+  if (n.edge && n.state !== 'covered') out.push('CISA’s BOD 26-02 has US federal agencies replace end-of-support edge devices.');
+  return out;
+}
+
+/** Each stack item's support finding, by item name without marks. */
+export function supportByItem(notices: readonly SupportNotice[]): Map<string, SupportNotice> {
+  const out = new Map<string, SupportNotice>();
+  for (const n of notices) for (const item of n.items) out.set(itemMarks(item).name, n);
+  return out;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseStack } from '../src/stack/format';
-import { fallbackKey, forVersion, inLine, lineFor, lineRanges, PRODUCT_LINES } from '../src/resolve/lines';
+import { fallbackKey, forVersion, inLine, lineFor, lineRanges, perRelease, PRODUCT_LINES } from '../src/resolve/lines';
 
 const keysOf = (name: string, vendor: string | null = null) => lineFor(name, vendor)?.line.keys ?? null;
 const RHEL = keysOf('RHEL')!;
@@ -75,6 +75,25 @@ describe('forVersion', () => {
     expect(forVersion(rows, '1')).toEqual([]);
     expect(forVersion(rows, '24H2').map((r) => r.product)).toEqual(['windows_11_version_24h2']);
     expect(forVersion(rows, null)).toEqual([]);
+  });
+
+  it('falls back to the leading parts with digits: an edition or update after the release', () => {
+    expect(forVersion(rows, '9 Server').map((r) => r.product)).toEqual(['red_hat_enterprise_linux_9']);
+    expect(forVersion(rows, '24H2 Pro').map((r) => r.product)).toEqual(['windows_11_version_24h2']);
+    // Only words before the first one without a digit count.
+    expect(forVersion(rows, 'Pro 9')).toEqual([]);
+  });
+
+  it('tells per-release lines from ones with a single product', () => {
+    expect(perRelease(rows)).toBe(true);
+    expect(perRelease([{ product: 'ios_xe' }, { product: 'cisco_ios_xe_software' }])).toBe(false);
+  });
+
+  it('gives a name that says its release that release', () => {
+    expect(lineFor('Windows 10', null)?.version).toBe('10');
+    expect(lineFor('Win11', null)?.version).toBe('11');
+    // A version written after it still wins.
+    expect(lineFor('Windows 10 22H2', null)?.version).toBe('22h2');
   });
 });
 

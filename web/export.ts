@@ -1,7 +1,7 @@
 import { describeHours } from '../src/lib/time';
 import type { Feed, Priority, Reason, Result } from './api';
 import { safeHref } from './url';
-import { componentGroups, cvssSeverity, formatScore, itemMarks, ordinal, pct, RISK } from './format';
+import { componentGroups, cvssSeverity, formatScore, itemMarks, ordinal, pct, RISK, supportLines, supportPriority } from './format';
 import { TEAM } from './teams';
 
 /**
@@ -71,8 +71,8 @@ function mdLink(url: string | null): string | null {
 }
 
 function stackLine(item: string): string {
-  const { name, close, team } = itemMarks(item);
-  const notes = [close ? 'close match' : '', team ? `team: ${TEAM[team].label}` : ''].filter(Boolean);
+  const { name, close, team, esu } = itemMarks(item);
+  const notes = [close ? 'close match' : '', team ? `team: ${TEAM[team].label}` : '', esu ? 'has paid extended support' : ''].filter(Boolean);
   return `${code(name)}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
 }
 
@@ -126,11 +126,28 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   out.push('', '## How to work through this', '', ...EXPORT_INSTRUCTIONS.map((t, i) => `${i + 1}. ${t}`), '', '## Priority levels', '');
   for (const p of PRIORITIES) out.push(`- **${RISK[p].label}:** ${RISK[p].note}`);
 
+  const support = feed.support ?? [];
+  if (support.length > 0) {
+    out.push(
+      '',
+      '## Out of support',
+      '',
+      'These get no more security fixes from their vendor (or stop within 90 days). Upgrade them to a supported release: out of support ranks with Act now, and support ending soon with Attend, whatever their CVEs.',
+      '',
+    );
+    for (const s of support) {
+      const p = supportPriority(s.state);
+      const lines = supportLines(s).map((l) => l.replace('tick Has ESU under Edit stack', 'add ;esu to the item in the stack'));
+      out.push(`- **${mdText(s.name)}** (${p ? RISK[p].label : 'Covered'}): ${lines.map(mdText).join(' ')}${s.cve ? ` Source: ${s.cve}.` : ''} Stack: ${s.items.map(stackLine).join(', ')}`);
+    }
+  }
+
   if (n > 0) {
     out.push('', '## Fix first', '');
     for (const g of componentGroups(feed.fixFirst, feed.results)) {
       const tally = PRIORITIES.filter((p) => g.counts[p] > 0).map((p) => `${g.counts[p]} ${RISK[p].label}`).join(', ');
-      out.push(`${g.rank}. ${[g.item, ...g.also].map(stackLine).join(', ')}: ${tally}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. CVEs: ${g.vulns.join(', ')}`);
+      const unsupported = g.support === 'eol' ? '; out of support' : g.support === 'ending' ? '; support ending' : '';
+      out.push(`${g.rank}. ${[g.item, ...g.also].map(stackLine).join(', ')}: ${tally}${unsupported}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. CVEs: ${g.vulns.join(', ')}`);
     }
     out.push('', '## Vulnerabilities', '');
     for (const p of PRIORITIES) {

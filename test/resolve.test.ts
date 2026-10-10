@@ -212,6 +212,35 @@ describe('resolveCandidates', () => {
     ]);
   });
 
+  it('resolves a release a line has no product for to its main key, so an old release is named exactly', async () => {
+    const rows: [string, string, string, number][] = [
+      ['microsoft/windows', 'microsoft', 'windows', 19],
+      ['microsoft/windows_10_version_1607', 'microsoft', 'windows_10_version_1607', 958],
+      ['microsoft/windows_10_version_22h2', 'microsoft', 'windows_10_version_22h2', 1057],
+      ['microsoft/windows_11_version_24h2', 'microsoft', 'windows_11_version_24h2', 1218],
+      ['red_hat/red_hat_enterprise_linux_9', 'red_hat', 'red_hat_enterprise_linux_9', 352],
+    ];
+    await env.DB.batch(
+      rows.map(([key, vendor, product, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, key, count),
+      ),
+    );
+    const product = (name: string, version: string | null = null) => ({ kind: 'product' as const, name, vendor: null, version, direct: true });
+    const res = await resolveCandidates(store(), [product('Windows 7'), product('Windows 10'), product('Windows 10 Pro'), product('Windows 10 22H2'), product('RHEL 6'), product('Windows')]);
+    expect(res.chips.map((c) => [c.input, c.items.map((i) => i.item).join(' | ')])).toEqual([
+      // Not Windows 10 and 11 as close matches: those are other releases.
+      ['Windows 7', 'p:microsoft/windows@7'],
+      // The name says the release, so it carries it; each SKU is still a close match.
+      ['Windows 10', '?p:microsoft/windows_10_version_22h2@10 | ?p:microsoft/windows_10_version_1607@10'],
+      // An edition word after the release still finds it.
+      ['Windows 10 Pro', '?p:microsoft/windows_10_version_22h2@10_pro | ?p:microsoft/windows_10_version_1607@10_pro'],
+      ['Windows 10 22H2', 'p:microsoft/windows_10_version_22h2@22h2'],
+      ['RHEL 6', 'p:redhat/enterprise_linux@6'],
+      // A broad name still expands, with no version.
+      ['Windows', '?p:microsoft/windows_11_version_24h2 | ?p:microsoft/windows_10_version_22h2 | ?p:microsoft/windows_10_version_1607 | ?p:microsoft/windows'],
+    ]);
+  });
+
   it('keeps direct packages even when nothing is known, and drops unknown transitive ones', async () => {
     const res = await resolveCandidates(store(), [
       { kind: 'package', ecosystem: 'npm', name: 'next', version: '14.2.3', direct: false },

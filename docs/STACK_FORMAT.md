@@ -65,7 +65,11 @@ The team comes after the version, and after the close-match mark: `?p:f5/nginx@1
 
 A product ending in `;edge` **faces the internet**, and one ending in `;internal` **doesn't**: `p:acme/customer_portal;edge`, `p:fortinet/fortios;internal`. Without either, Vulnder decides from the product: VPNs, edge firewalls, gateways and ADCs are edge devices, everything else isn't. Edge devices get CISA's BOD 26-04 deadlines for an internet-facing system (see [RANKING.md](RANKING.md#edge-devices)). The tag comes last, after the team if there is one: `?p:fortinet/fortios@7.4;network;internal`. Only products take it. If the same item appears with different tags, the first one wins.
 
-`;` is reserved for the team and the edge tag, so an item with any other `;` suffix, with them out of order, or with either one twice, is invalid.
+### Extended support
+
+A product ending in `;esu` is **covered by paid extended support**: Microsoft's Extended Security Updates, Red Hat ELS, SUSE LTSS, Ubuntu Pro and the like. `p:microsoft/windows_server_2012_r2;esu`. A release past its vendor's end of support is out of support unless it has this tag; with it, it's covered until the extended support ends too (see [RANKING.md](RANKING.md#out-of-support)). The tag comes last, after the team and the edge tag: `p:microsoft/windows_server_2012_r2;platform;internal;esu`. Only products take it. If the same item appears with and without it, it keeps it.
+
+`;` is reserved for the team, the edge tag and `esu`, so an item with any other `;` suffix, with them out of order, or with any one twice, is invalid.
 
 ### Escaping
 
@@ -76,7 +80,7 @@ Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled 
 Vulnder rewrites every stack into one canonical form, so equivalent stacks share a URL and a cache entry:
 
 - package names are normalised the way their registry compares them (for example, PyPI names follow PEP 503, so `Django_REST.framework` becomes `django-rest-framework`, and npm names are lowercased);
-- duplicate items are removed, keeping the exact item over a `?` close match, and the first team and edge tag;
+- duplicate items are removed, keeping the exact item over a `?` close match, the first team and edge tag, and `esu` if any copy has it;
 - a `?` close match of an item also given exactly, at any version, is removed;
 - items are sorted.
 

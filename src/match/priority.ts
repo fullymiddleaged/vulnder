@@ -1,5 +1,6 @@
 import { EPSS_HIGH, LEV_HIGH } from '../config';
 import type { SeverityLabel, Ssvc } from '../ingest/types';
+import type { SupportState } from './support';
 
 /**
  * What to fix first. Two layers, both explained on every result:
@@ -309,14 +310,21 @@ export interface FixItem {
   vulns: string[];
   /** How many of them name a fixed version. */
   fixable: number;
+  /** Its vendor support (src/match/support.ts), when it's out of support, losing it soon, or on paid extended support. */
+  support?: SupportState;
 }
 
 /**
  * Stack items ranked by what fixing them removes: the item with the most
  * urgent band first, then by summed score. One upgrade usually closes several
- * CVEs, so this is the order to work in.
+ * CVEs, so this is the order to work in. An item out of support ranks with Act
+ * and one losing support soon with Attend, whatever its CVEs: no fix will come
+ * for the next one. That orders items only; it never changes a CVE's band.
  */
-export function fixFirst(results: { id: string; matched: string[]; fixedVersions: string[]; assessment: Ranked }[]): FixItem[] {
+export function fixFirst(
+  results: { id: string; matched: string[]; fixedVersions: string[]; assessment: Ranked }[],
+  support: ReadonlyMap<string, SupportState> = new Map(),
+): FixItem[] {
   const items = new Map<string, FixItem>();
   const sorted = [...results].sort((a, b) => comparePriority(a.assessment, b.assessment));
   for (const r of sorted) {
@@ -332,7 +340,16 @@ export function fixFirst(results: { id: string; matched: string[]; fixedVersions
       if (r.fixedVersions.length > 0) f.fixable++;
     }
   }
-  for (const f of items.values()) f.score = Math.round(f.score * 10) / 10;
-  const worst = (f: FixItem) => PRIORITIES.findIndex((p) => f.counts[p] > 0);
+  for (const f of items.values()) {
+    f.score = Math.round(f.score * 10) / 10;
+    const s = support.get(f.item);
+    if (s) f.support = s;
+  }
+  const lifted = (f: FixItem) => (f.support === 'eol' ? 0 : f.support === 'ending' ? 1 : -1);
+  const worst = (f: FixItem) => {
+    const byCves = PRIORITIES.findIndex((p) => f.counts[p] > 0);
+    const bySupport = lifted(f);
+    return bySupport < 0 ? byCves : Math.min(byCves, bySupport);
+  };
   return [...items.values()].sort((a, b) => worst(a) - worst(b) || b.score - a.score || a.item.localeCompare(b.item));
 }
