@@ -168,6 +168,9 @@ button.link { border: none; background: none; padding: 0; min-height: auto; font
 .chips.compact .chip { padding: 0.1rem 0.65rem; }
 /* An item's team, on enterprise stacks: a compact picker on Edit, a quiet label on results. */
 select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999px; font-size: 0.8rem; }
+/* Edit: whether a product faces the internet, ticked for VPNs, firewalls and gateways. */
+.edge-toggle { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+.edge-toggle input { accent-color: var(--accent); margin: 0; }
 /* A VPN, firewall or gateway: in violet, beside the other match badges. */
 .badge.edge { color: var(--accent); }
 .add { margin-top: 0.5rem; }

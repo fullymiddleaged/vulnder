@@ -279,24 +279,30 @@ export function formatScore(score: number): string {
 export interface ItemMarks {
   close: boolean;
   team: Team | null;
+  /** The user's `;edge` (true) or `;internal` (false) tag; null leaves it to the product. */
+  edge: boolean | null;
 }
 
-/** A stack item as the feed writes it, split into its name and its marks (`?` close match, `;team` its team). */
+/** A stack item as the feed writes it, split into its name and its marks (`?` close match, `;team` its team, `;edge` or `;internal`). */
 export function itemMarks(item: string): { name: string } & ItemMarks {
   const close = item.startsWith('?');
   let name = close ? item.slice(1) : item;
   let team: Team | null = null;
-  const semi = name.lastIndexOf(';');
-  if (semi >= 0 && isTeam(name.slice(semi + 1))) {
-    team = name.slice(semi + 1) as Team;
+  let edge: boolean | null = null;
+  for (let semi = name.lastIndexOf(';'); semi >= 0; semi = name.lastIndexOf(';')) {
+    const tag = name.slice(semi + 1);
+    if (edge === null && team === null && (tag === 'edge' || tag === 'internal')) edge = tag === 'edge';
+    else if (team === null && isTeam(tag)) team = tag;
+    else break;
     name = name.slice(0, semi);
   }
-  return { name, close, team };
+  return { name, close, team, edge };
 }
 
 /** The item written back with the given marks, in canonical order. */
 export function withItemMarks(name: string, marks: ItemMarks): string {
-  return `${marks.close ? '?' : ''}${name}${marks.team ? `;${marks.team}` : ''}`;
+  const edge = marks.edge === null ? '' : marks.edge ? ';edge' : ';internal';
+  return `${marks.close ? '?' : ''}${name}${marks.team ? `;${marks.team}` : ''}${edge}`;
 }
 
 export interface ComponentGroup extends FixItem {

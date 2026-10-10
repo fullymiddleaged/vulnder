@@ -73,6 +73,56 @@ describe('parseStack', () => {
     }
   });
 
+  it('says whether a product is an edge device with ;edge or ;internal, after its team', () => {
+    expect(parseStack('p:acme/portal;edge')).toEqual([{ kind: 'product', vendor: 'acme', product: 'portal', version: null, edge: true }]);
+    expect(parseStack('p:fortinet/fortios@7.4;network;internal')).toEqual([
+      { kind: 'product', vendor: 'fortinet', product: 'fortios', version: '7.4', team: 'network', edge: false },
+    ]);
+    for (const s of ['p:acme/portal;edge', '?p:fortinet/fortios@7.4;network;internal', 'p:f5/nginx;platform;edge']) {
+      expect(serializeStack(parseStack(s)), s).toBe(s);
+    }
+    // The first tag given wins, as for teams.
+    expect(serializeStack(parseStack('p:acme/portal;internal,p:acme/portal;edge'))).toBe('p:acme/portal;internal');
+    expect(serializeStack(parseStack('p:acme/portal,p:acme/portal;edge'))).toBe('p:acme/portal;edge');
+  });
+
+  it('rejects an edge tag out of place, twice, or on a package', () => {
+    for (const bad of [
+      'p:acme/portal;edge;network',
+      'p:acme/portal;edge;internal',
+      'p:acme/portal;edge;edge',
+      'p:acme/portal;network;platform',
+      'p:acme/portal;network;edge;',
+      'p:acme/portal;Edge',
+      'npm:express;edge',
+      'npm:express;backend;internal',
+      ';edge',
+    ]) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
+  });
+
+  it('either parses hostile tag soup into a canonical item or rejects it as a format error', () => {
+    const parts = ['p:acme/gw', 'npm:x', '?', ';', ';edge', ';internal', ';network', ';__proto__', ';constructor', ';;', '@1.0', '%2C', 'é', '\u0000', ' '];
+    let seed = 7;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) % parts.length;
+    for (let n = 0; n < 2000; n++) {
+      const s = Array.from({ length: 1 + (n % 6) }, () => parts[next()]).join('');
+      let items: StackItem[];
+      try {
+        items = parseStack(s);
+      } catch (err) {
+        expect(err, s).toBeInstanceOf(StackFormatError);
+        continue;
+      }
+      for (const item of items) {
+        expect(item.edge === undefined || item.kind === 'product', s).toBe(true);
+        expect(Object.getPrototypeOf(item), s).toBe(Object.prototype);
+      }
+      expect(parseStack(serializeStack(items)), s).toEqual(items);
+    }
+  });
+
   it('unescapes commas and percent signs', () => {
     const items = parseStack('p:acme/widget%2C%20pro');
     expect(items).toEqual([{ kind: 'product', vendor: 'acme', product: 'widget_20pro', version: null }]);

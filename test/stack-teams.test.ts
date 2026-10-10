@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseStack, type Team } from '../src/stack/format';
-import { guessTeam, isEdgeDevice } from '../src/stack/teams';
+import { guessTeam, isEdge, isEdgeDevice } from '../src/stack/teams';
 import { TEAM, TEAM_GROUPS, teamOf } from '../web/teams';
 
 const guess = (item: string) => guessTeam(parseStack(item)[0]!);
@@ -51,6 +51,19 @@ describe('guessTeam', () => {
     }
     expect(guess('p:__proto__/constructor')).toBeNull();
     expect(guess('p:constructor/tostring')).toBeNull();
+  });
+});
+
+describe('isEdge', () => {
+  const edge = (item: string) => isEdge(parseStack(item)[0]!);
+
+  it("takes the user's tag over what the product is, both ways", () => {
+    expect(edge('p:fortinet/fortios')).toBe(true);
+    expect(edge('p:fortinet/fortios;internal')).toBe(false);
+    expect(edge('p:acme/customer_portal')).toBe(false);
+    expect(edge('p:acme/customer_portal;edge')).toBe(true);
+    expect(edge('p:acme/customer_portal;business;edge')).toBe(true);
+    expect(edge('npm:express')).toBe(false);
   });
 });
 

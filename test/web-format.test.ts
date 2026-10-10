@@ -219,16 +219,22 @@ describe('componentGroups', () => {
 
 describe('item marks', () => {
   it('splits a stack item into its name and marks', () => {
-    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: false, team: null });
-    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: true, team: null });
-    expect(itemMarks('?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', close: true, team: null });
-    expect(itemMarks('?p:f5/nginx@1.27;platform')).toEqual({ name: 'p:f5/nginx@1.27', close: true, team: 'platform' });
+    expect(itemMarks('p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: false, team: null, edge: null });
+    expect(itemMarks('?p:f5/nginx')).toEqual({ name: 'p:f5/nginx', close: true, team: null, edge: null });
+    expect(itemMarks('?npm:@scope/pkg@1.0')).toEqual({ name: 'npm:@scope/pkg@1.0', close: true, team: null, edge: null });
+    expect(itemMarks('?p:f5/nginx@1.27;platform')).toEqual({ name: 'p:f5/nginx@1.27', close: true, team: 'platform', edge: null });
+    expect(itemMarks('p:f5/nginx;platform;edge')).toEqual({ name: 'p:f5/nginx', close: false, team: 'platform', edge: true });
+    expect(itemMarks('p:fortinet/fortios;internal')).toEqual({ name: 'p:fortinet/fortios', close: false, team: null, edge: false });
+    // Out of order or unknown: left in the name, as the server would reject it.
+    expect(itemMarks('p:f5/nginx;edge;platform').name).toBe('p:f5/nginx;edge');
   });
 
   it('writes the marks back in canonical order, matching the stack format', () => {
-    expect(withItemMarks('p:f5/nginx', { close: true, team: null })).toBe('?p:f5/nginx');
-    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network' })).toBe('p:f5/nginx;network');
-    for (const s of ['?p:f5/nginx', 'p:f5/nginx', '?p:f5/nginx@1.27;platform', 'npm:react;frontend']) {
+    expect(withItemMarks('p:f5/nginx', { close: true, team: null, edge: null })).toBe('?p:f5/nginx');
+    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: null })).toBe('p:f5/nginx;network');
+    expect(withItemMarks('p:f5/nginx', { close: false, team: 'network', edge: true })).toBe('p:f5/nginx;network;edge');
+    expect(withItemMarks('p:fortinet/fortios', { close: true, team: null, edge: false })).toBe('?p:fortinet/fortios;internal');
+    for (const s of ['?p:f5/nginx', 'p:f5/nginx', '?p:f5/nginx@1.27;platform', 'npm:react;frontend', 'p:f5/nginx;edge', '?p:fortinet/fortios@7.4;network;internal']) {
       const m = itemMarks(s);
       expect(withItemMarks(m.name, m)).toBe(serializeStack(parseStack(s)));
     }

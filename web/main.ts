@@ -1,6 +1,6 @@
 import { parseManifest } from '../src/resolve/manifests';
 import { identity, isTeam, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
-import { guessTeam, isEdgeDevice } from '../src/stack/teams';
+import { guessTeam, isEdge, isEdgeDevice } from '../src/stack/teams';
 import { MAX_MANIFEST_BYTES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { describeHours } from '../src/lib/time';
@@ -474,6 +474,25 @@ function renderEdit(initial: string[]): void {
     return select;
   };
 
+  // Products only. Ticked means "faces the internet"; the link keeps a tag only
+  // where the user disagrees with what the product is.
+  const edgeToggle = (i: number) => {
+    let parsed: StackItem | undefined;
+    try {
+      parsed = parseStack(items[i]!)[0];
+    } catch {
+      return null;
+    }
+    if (parsed?.kind !== 'product') return null;
+    const { name, ...marks } = itemMarks(items[i]!);
+    const byProduct = isEdgeDevice(parsed);
+    const box = h('input', { type: 'checkbox', checked: isEdge(parsed) }) as HTMLInputElement;
+    box.addEventListener('change', () => {
+      items[i] = withItemMarks(name, { ...marks, edge: box.checked === byProduct ? null : box.checked });
+    });
+    return h('label', { class: 'edge-toggle small', title: 'Faces the internet: a VPN, firewall, gateway or anything else reachable from outside' }, box, ' Edge device');
+  };
+
   const draw = () => {
     clear(list);
     items.forEach((item, i) => {
@@ -484,6 +503,7 @@ function renderEdit(initial: string[]): void {
           { class: `chip ${close ? 'close' : 'resolved'}` },
           h('code', {}, name),
           close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
+          edgeToggle(i),
           teamed ? teamPicker(i) : null,
           h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
         ),
@@ -543,7 +563,7 @@ function renderEdit(initial: string[]): void {
       h(
         'p',
         { class: 'muted' },
-        'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Mark what the internet can reach, so bugs an attacker could get at there rank higher. Items with nothing reported are still watched.',
+        'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Tick Edge device for anything the internet can reach directly; Vulnder ticks VPNs, firewalls and gateways for you, and you can untick one that sits inside your network. Items with nothing reported are still watched.',
       ),
       list,
       addForm,
@@ -691,7 +711,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
             { class: `chip ${i.close ? 'close' : 'resolved'}` },
             h('code', {}, identity(i)),
             i.close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
-            isEdgeDevice(i) ? edgeBadge() : null,
+            isEdge(i) ? edgeBadge() : null,
             i.team ? h('span', { class: 'team-mark small muted' }, TEAM[i.team].label) : null,
           ),
         ),
@@ -860,11 +880,11 @@ function renderBrief(r: Result): HTMLElement {
   );
 }
 
-/** A VPN, edge firewall, gateway or ADC: the same test the server ranks with (src/stack/teams.ts). */
+/** A VPN, edge firewall, gateway or ADC, or whatever the user ticked: the same test the server ranks with (src/stack/teams.ts). */
 function isEdgeItem(item: string): boolean {
   try {
     const parsed = parseStack(item)[0];
-    return !!parsed && isEdgeDevice(parsed);
+    return !!parsed && isEdge(parsed);
   } catch {
     return false;
   }
@@ -873,7 +893,7 @@ function isEdgeItem(item: string): boolean {
 function edgeBadge(): HTMLElement {
   return h(
     'span',
-    { class: 'badge edge', title: 'VPNs, firewalls and gateways face the internet and are a top target, so their CVEs rank ahead of similar ones in the same priority' },
+    { class: 'badge edge', title: 'Faces the internet, so CISA’s deadlines for internet-facing systems apply and its CVEs rank ahead of similar ones. Change it under Edit stack.' },
     'Edge device',
   );
 }

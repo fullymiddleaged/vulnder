@@ -243,7 +243,7 @@
         </ul>
         <p>
           Within a priority, a 0–100 score puts results in order. It combines threat, impact, reachability and ransomware use. It's a heuristic, not a probability.
-          Edge devices (VPNs, firewalls, gateways) are labelled and rank ahead of similar results in the same priority, since they face the internet by what they are; that never changes a priority.
+          Edge devices are treated as internet-facing: they're labelled, rank ahead of similar results, and get CISA's deadlines for internet-facing systems (BOD 26-04), which can raise a priority but never lower one. Vulnder ticks VPNs, firewalls and gateways itself; under Edit stack you can tick anything else the internet can reach, or untick one that sits inside your network.
           Each result names the signal that decided its priority, lists the rest, and says what data wasn't available yet, so a quiet result reads as unknown, not safe.
           Response times are guidance, not deadlines. The full rules are in the <a href="https://github.com/fullymiddleaged/vulnder#how-it-ranks-things" rel="noreferrer">README</a>.
         </p>

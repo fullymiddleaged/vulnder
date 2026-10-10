@@ -59,7 +59,13 @@ An item starting with `?` is a **close match**: something your description loose
 
 An item ending in `;` and a team is **owned by that team**: `p:cisco/ios_xe@17.9;network`. The teams are `network`, `database`, `frontend`, `backend`, `platform`, `endpoints` and `business`, lowercase. An item without one is Unassigned. Vulnder adds teams only for stacks described as enterprise (see [RANKING.md](RANKING.md#teams)); you can add or change them by hand. A team only groups results; it never changes them.
 
-The team comes after the version, and after the close-match mark: `?p:f5/nginx@1.27;platform`. `;` is reserved for it, so an item with any other `;` suffix, or more than one `;`, is invalid. If the same item appears with different teams, the first one wins.
+The team comes after the version, and after the close-match mark: `?p:f5/nginx@1.27;platform`. If the same item appears with different teams, the first one wins.
+
+### Edge devices
+
+A product ending in `;edge` **faces the internet**, and one ending in `;internal` **doesn't**: `p:acme/customer_portal;edge`, `p:fortinet/fortios;internal`. Without either, Vulnder decides from the product: VPNs, edge firewalls, gateways and ADCs are edge devices, everything else isn't. Edge devices get CISA's BOD 26-04 deadlines for an internet-facing system (see [RANKING.md](RANKING.md#edge-devices)). The tag comes last, after the team if there is one: `?p:fortinet/fortios@7.4;network;internal`. Only products take it. If the same item appears with different tags, the first one wins.
+
+`;` is reserved for the team and the edge tag, so an item with any other `;` suffix, with them out of order, or with either one twice, is invalid.
 
 ### Escaping
 
@@ -70,7 +76,7 @@ Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled 
 Vulnder rewrites every stack into one canonical form, so equivalent stacks share a URL and a cache entry:
 
 - package names are normalised the way their registry compares them (for example, PyPI names follow PEP 503, so `Django_REST.framework` becomes `django-rest-framework`, and npm names are lowercased);
-- duplicate items are removed, keeping the exact item over a `?` close match, and the first team;
+- duplicate items are removed, keeping the exact item over a `?` close match, and the first team and edge tag;
 - items are sorted.
 
 The JSON feed returns the canonical value as `stack`.

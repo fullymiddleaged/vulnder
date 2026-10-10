@@ -188,6 +188,14 @@ describe('matchStack', () => {
     ]);
     expect(res.results[0]!.score).toBeGreaterThan(res.results[1]!.score);
     expect(res.fixFirst.map((f) => f.item)).toEqual(['p:fortinet/fortios', 'p:postgresql/postgresql@16']);
+
+    // The user's tags win both ways: an internal FortiGate, an internet-facing database.
+    const tagged = await matchStack(store(), parseStack('p:fortinet/fortios;internal,p:postgresql/postgresql@16;edge'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(tagged.results.map((r) => [r.id, r.priority, edge(r)])).toEqual([
+      ['CVE-2026-1003', 'watch', true],
+      ['CVE-2026-1009', 'watch', false],
+    ]);
+    expect(tagged.fixFirst.map((f) => f.item)).toEqual(['p:postgresql/postgresql@16;edge', 'p:fortinet/fortios;internal']);
   });
 
   it('carries an item’s team through to its matches without changing the ranking', async () => {

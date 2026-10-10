@@ -120,10 +120,18 @@ function productTeam(vendor: string, raw: string): Team | null {
 }
 
 /**
+ * Whether ranking treats an item as an edge device: the user's `;edge` or
+ * `;internal` tag when there is one, otherwise what the product is.
+ */
+export function isEdge(item: StackItem): boolean {
+  return item.edge ?? isEdgeDevice(item);
+}
+
+/**
  * True for a product that faces the internet by what it is: a VPN, an edge
- * firewall, a gateway or an ADC. Their results rank a little higher within
- * their priority (src/match/priority.ts); nothing else changes, so a wrong
- * answer here can only lift a result slightly, never lower one.
+ * firewall, a gateway or an ADC. Ranking holds them to CISA BOD 26-04's
+ * deadlines for an internet-facing system (src/match/priority.ts), so a wrong
+ * answer here can only lift a result, never lower one.
  */
 export function isEdgeDevice(item: StackItem): boolean {
   if (item.kind !== 'product') return false;

@@ -4,7 +4,7 @@ import { addDays } from '../lib/time';
 import { allForKeys, type Store } from '../ingest/store';
 import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
-import { isEdgeDevice } from '../stack/teams';
+import { isEdge } from '../stack/teams';
 import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
@@ -204,7 +204,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
         unverified = true;
         matched.add(formatItem(item));
         if (!item.close) exact = true;
-        if (isEdgeDevice(item)) edge = true;
+        if (isEdge(item)) edge = true;
         if (r.fixed_version) fixes.add(r.fixed_version);
       }
     }
