@@ -118,6 +118,19 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   const reports: SourceReport[] = [];
   let anyWrites = false;
 
+  // Once a UTC day: vendor support dates. One subrequest and a few D1
+  // statements, taken first: the sources and families spend whatever budget
+  // they are given, so a step after them never ran on a busy cron.
+  let eol: EolReport | undefined;
+  if (opts.eol !== false && budget.has(4)) {
+    const today = utcDay(now());
+    if (opts.eol === 'force' || (await getMeta<string>(store, EOL_LAST_KEY)) !== today) {
+      eol = await refreshEol(ctx, today);
+      if (eol.written > 0) anyWrites = true;
+      log(`eol: ${eol.status}, ${eol.written} release row(s) written${eol.error ? ` (${eol.error})` : ''}`);
+    }
+  }
+
   const order = opts.sources ?? SOURCE_ORDER;
   for (const [index, name] of order.entries()) {
     const source = SOURCES[name];
@@ -204,17 +217,6 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     }
     log(`families: ${families.assigned} assigned, ${families.joined} joined a family, ${families.tokens} tokens${families.stopped ? ` (stopped: ${families.stopped})` : ''}`);
     if (families.joined > 0) anyWrites = true;
-  }
-
-  // Once a UTC day: vendor support dates. One subrequest and a few D1 statements.
-  let eol: EolReport | undefined;
-  if (opts.eol !== false && budget.has(4)) {
-    const today = utcDay(now());
-    if (opts.eol === 'force' || (await getMeta<string>(store, EOL_LAST_KEY)) !== today) {
-      eol = await refreshEol(ctx, today);
-      if (eol.written > 0) anyWrites = true;
-      log(`eol: ${eol.status}, ${eol.written} release row(s) written${eol.error ? ` (${eol.error})` : ''}`);
-    }
   }
 
   let maintained = false;

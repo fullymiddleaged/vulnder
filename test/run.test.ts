@@ -182,7 +182,8 @@ describe('runIngest', () => {
       if (report.sources.some((s) => s.status === 'partial')) partialSeen = true;
       expect(report.sources.every((s) => s.status !== 'error')).toBe(true);
       const statuses = await rows<{ value: string }>("SELECT value FROM meta WHERE key LIKE 'status:%'");
-      if (statuses.length === 4 && statuses.every((s) => JSON.parse(s.value).partial === false && JSON.parse(s.value).lastSuccessAt)) break;
+      // The four sources and the support dates, which go first.
+      if (statuses.length === 5 && statuses.every((s) => JSON.parse(s.value).partial === false && JSON.parse(s.value).lastSuccessAt)) break;
     }
     expect(partialSeen).toBe(true);
     expect(runs).toBeLessThan(40);
@@ -206,6 +207,13 @@ describe('runIngest', () => {
       if (report.sources.every((s) => s.status === 'ok')) break;
     }
     expect(await snapshot()).toEqual(expected);
+  });
+
+  it('fetches support dates even when the sources spend the whole budget', async () => {
+    const report = await ingest(upstreams(), new Budget({ maxSubrequests: 10_000, maxD1Queries: 25, deadline: Number.MAX_SAFE_INTEGER }));
+    expect(report.sources.some((s) => s.status === 'partial')).toBe(true);
+    expect(report.eol).toMatchObject({ status: 'ok' });
+    expect(await rows("SELECT is_eol FROM eol_releases WHERE slug = 'windows-server' AND release = '2012'")).toEqual([{ is_eol: 1 }]);
   });
 
   it('does not let a source that is far behind starve the others', async () => {
