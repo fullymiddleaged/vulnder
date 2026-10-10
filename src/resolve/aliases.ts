@@ -28,37 +28,19 @@ export const ALIASES: Record<string, string[]> = {
   spring_framework: ['maven:org.springframework:spring-core'],
   spring_boot: ['maven:org.springframework.boot:spring-boot'],
   log4j: ['maven:org.apache.logging.log4j:log4j-core'],
+  // Products filed under several keys (Apache, Exchange, MySQL, …) are product lines (lines.ts) instead.
   postgres: ['p:postgresql/postgresql'],
   postgresql: ['p:postgresql/postgresql'],
-  mysql: ['p:oracle/mysql'],
-  mariadb: ['p:mariadb/mariadb'],
-  mongodb: ['p:mongodb/mongodb'],
   redis: ['p:redis/redis'],
-  nginx: ['p:f5/nginx', 'p:nginx/nginx'],
-  apache: ['p:apache/http_server'],
-  httpd: ['p:apache/http_server'],
-  apache_httpd: ['p:apache/http_server'],
-  tomcat: ['p:apache/tomcat'],
   kubernetes: ['p:kubernetes/kubernetes'],
   k8s: ['p:kubernetes/kubernetes'],
-  node: ['p:nodejs/node_js'],
-  node_js: ['p:nodejs/node_js'],
-  nodejs: ['p:nodejs/node_js'],
   openssl: ['p:openssl/openssl'],
   openssh: ['p:openbsd/openssh'],
   wordpress: ['p:wordpress/wordpress'],
-  jenkins: ['p:jenkins/jenkins'],
   gitlab: ['p:gitlab/gitlab'],
-  grafana: ['p:grafana/grafana'],
-  ios_xe: ['p:cisco/ios_xe'],
-  cisco_ios_xe: ['p:cisco/ios_xe'],
   fortigate: ['p:fortinet/fortios'],
   fortios: ['p:fortinet/fortios'],
-  exchange: ['p:microsoft/exchange_server'],
-  microsoft_exchange: ['p:microsoft/exchange_server'],
-  vcenter: ['p:vmware/vcenter_server'],
   confluence: ['p:atlassian/confluence_data_center', 'p:atlassian/confluence_server'],
-  jira: ['p:atlassian/jira_data_center', 'p:atlassian/jira_server'],
 };
 
 /**
@@ -83,10 +65,10 @@ export const CATEGORIES: Category[] = [
     generic: /switch/,
     byVendor: {
       cisco: /(^|_)(ios_xe|nx_os)(_|$)|^ios(_software)?$|catalyst(?!_sd_wan)|nexus|switch|meraki_ms/,
-      juniper: /^junos$|^ex\d|qfx/,
-      arista: /^eos$|switch/,
-      hpe: /aruba|procurve|switch/,
-      aruba: /arubaos|switch/,
+      // Junos OS and Junos OS Evolved, not Junos Space (the management app).
+      juniper: /^junos(_os(_evolved)?)?$|^ex\d|qfx/,
+      arista: /^eos$|extensible_operating_system|switch/,
+      hpe: /aruba|procurve|switch|aos_(cx|s)(_|$)/,
       ubiquiti: /unifi|edgeswitch/,
       fortinet: /fortiswitch/,
     },
@@ -97,9 +79,9 @@ export const CATEGORIES: Category[] = [
     generic: /router/,
     byVendor: {
       cisco: /(^|_)ios_(xe|xr)(_|$)|^ios(_software)?$|router|(^|_)(isr|asr)(\d|_|$)/,
-      juniper: /^junos$|^mx\d|srx/,
+      juniper: /^junos(_os(_evolved)?)?$|^mx\d|srx/,
       mikrotik: /routeros/,
-      tp_link: /router|archer/,
+      tp_link: /router|archer|^tl_wr/,
       netgear: /router|nighthawk/,
     },
   },
@@ -110,12 +92,11 @@ export const CATEGORIES: Category[] = [
     byVendor: {
       cisco: /adaptive_security|^asa|firepower|secure_firewall|threat_defense|^ftd|^fmc/,
       fortinet: /fortios|fortigate|fortiproxy/,
-      paloaltonetworks: /pan_os/,
       palo_alto_networks: /pan_os/,
-      juniper: /srx|^junos$/,
+      juniper: /srx|^junos(_os(_evolved)?)?$/,
       sonicwall: /sonicos|firewall/,
       sophos: /firewall|sfos/,
-      checkpoint: /gaia|quantum|security_gateway/,
+      checkpoint: /gaia|quantum|security_gateway|spark_firewall/,
     },
   },
   {
@@ -125,7 +106,6 @@ export const CATEGORIES: Category[] = [
     byVendor: {
       cisco: /anyconnect|secure_client|adaptive_security|^asa|threat_defense/,
       fortinet: /fortios|fortigate|ssl_vpn/,
-      paloaltonetworks: /globalprotect|pan_os/,
       palo_alto_networks: /globalprotect|pan_os/,
       ivanti: /connect_secure|policy_secure|pulse/,
     },
@@ -137,7 +117,52 @@ export const CATEGORIES: Category[] = [
     byVendor: {
       cisco: /wireless|wlc|aironet|meraki_mr|catalyst_9800/,
       ubiquiti: /unifi/,
-      aruba: /instant|arubaos/,
+      hpe: /instant|arubaos/,
     },
   },
 ];
+
+/**
+ * Vendors stored under more than one key: CVE records carry each CNA's own
+ * spelling ("Juniper Networks", "Ubiquiti Inc."), older data the short one.
+ * Each family is named by the key CATEGORIES uses, and lists every key and
+ * common word that means it; Aruba is HPE's. Checked against the catalog's
+ * real vendor keys: a family missing a spelling makes "Juniper switches"
+ * find nothing.
+ */
+const VENDOR_FAMILIES: Record<string, string[]> = {
+  juniper: ['juniper', 'juniper_networks'],
+  arista: ['arista', 'arista_networks'],
+  hpe: ['hpe', 'hewlett_packard_enterprise', 'hewlett_packard_enterprise_hpe', 'aruba', 'aruba_networks', 'arubanetworks'],
+  ubiquiti: ['ubiquiti', 'ubiquiti_inc', 'ubiquiti_networks'],
+  tp_link: ['tp_link', 'tp_link_systems_inc', 'tp_link_system_inc', 'tplink'],
+  palo_alto_networks: ['palo_alto_networks', 'paloaltonetworks', 'palo_alto', 'palo'],
+  checkpoint: ['checkpoint', 'check_point', 'check_point_software'],
+  sonicwall: ['sonicwall', 'sonicwall_inc'],
+  apache: ['apache', 'apache_software_foundation'],
+  oracle: ['oracle', 'oracle_corporation'],
+  jenkins: ['jenkins', 'jenkins_project'],
+  mariadb: ['mariadb', 'mariadb_corporation'],
+  red_hat: ['red_hat', 'redhat'],
+  sap: ['sap', 'sap_se'],
+  zoom: ['zoom', 'zoom_communications', 'zoom_communications_inc', 'zoom_video_communications'],
+  proxmox: ['proxmox', 'proxmox_server_solutions_gmbh'],
+  mongodb: ['mongodb', 'mongodb_inc'],
+  d_link: ['d_link', 'dlink', 'd_link_corporation'],
+  progress: ['progress', 'progress_software', 'progress_software_corporation'],
+  n8n: ['n8n', 'n8n_io'],
+  wolfssl: ['wolfssl', 'wolfssl_inc'],
+};
+
+const FAMILY_OF = new Map(Object.entries(VENDOR_FAMILIES).flatMap(([family, keys]) => keys.map((k) => [k, family] as const)));
+
+/** The family a vendor key or word belongs to; a vendor with one spelling is its own. */
+export function vendorFamily(vendor: string): string {
+  return FAMILY_OF.get(vendor) ?? vendor;
+}
+
+/** Every key a vendor may be stored under, the given one first. */
+export function vendorSpellings(vendor: string): string[] {
+  const family = FAMILY_OF.get(vendor);
+  return family ? [vendor, ...VENDOR_FAMILIES[family]!.filter((k) => k !== vendor)] : [vendor];
+}

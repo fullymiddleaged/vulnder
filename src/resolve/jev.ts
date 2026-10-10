@@ -178,12 +178,16 @@ export function parseJudgement(raw: unknown, fitCount: number, teamCount: number
   };
 }
 
+/** Each Jev call gives up after this and parsing carries on without it, as on any other failure. Measured 0.4-0.8 s in October 2026. */
+export const JEV_TIMEOUT_MS = 3_000;
+
 async function runJev(ai: Ai, input: unknown): Promise<unknown> {
   try {
-    return await ai.run(JEV_MODEL as keyof AiModels, input as never);
+    return await ai.run(JEV_MODEL as keyof AiModels, input as never, { signal: AbortSignal.timeout(JEV_TIMEOUT_MS) });
   } catch (err) {
     // The name only: a message could echo the input.
-    console.error(`jev call failed: ${err instanceof Error ? err.name : typeof err}`);
+    const name = (err as { name?: unknown } | null)?.name;
+    console.error(`jev call failed: ${typeof name === 'string' ? name : typeof err}`);
     return null;
   }
 }

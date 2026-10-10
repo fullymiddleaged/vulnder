@@ -111,7 +111,7 @@ describe('resolveCandidates', () => {
     expect(res.chips).toEqual([
       { input: 'Postgres 16', status: 'resolved', items: [{ item: 'p:postgresql/postgresql@16', label: 'postgresql postgresql', close: false, known: true }] },
       { input: 'Grafanna', status: 'resolved', items: [{ item: 'p:grafana/grafana', label: 'Grafana', close: false, known: true }] },
-      { input: 'nginx', status: 'resolved', items: [close('?p:f5/nginx', 'f5 nginx'), close('?p:nginx/nginx', 'nginx nginx')] },
+      { input: 'nginx', status: 'resolved', items: [close('?p:f5/nginx', 'F5 NGINX'), close('?p:nginx/nginx', 'nginx')] },
       {
         // Every Cisco switch product, but not the SD-WAN manager.
         input: 'Cisco switches',
@@ -134,6 +134,81 @@ describe('resolveCandidates', () => {
           close('?p:cisco/industrial_ethernet_switches', 'Cisco Industrial Ethernet Switches'),
         ],
       },
+    ]);
+  });
+
+  it('finds a vendor under every key its CVE records use ("Juniper" is juniper_networks)', async () => {
+    const rows: [string, string, string, string, number][] = [
+      ['juniper_networks/junos_os', 'juniper_networks', 'junos_os', 'Juniper Networks Junos OS', 0],
+      ['juniper_networks/junos_os_evolved', 'juniper_networks', 'junos_os_evolved', 'Juniper Networks Junos OS Evolved', 1],
+      ['juniper_networks/junos_space', 'juniper_networks', 'junos_space', 'Juniper Networks Junos Space', 2],
+      ['arista_networks/eos', 'arista_networks', 'eos', 'Arista Networks EOS', 42],
+      ['arista_networks/cloudvision_portal', 'arista_networks', 'cloudvision_portal', 'Arista CloudVision Portal', 8],
+      ['arista/extensible_operating_system', 'arista', 'extensible_operating_system', 'Arista Extensible Operating System', 1],
+    ];
+    await env.DB.batch(
+      rows.map(([key, vendor, product, label, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, label, count),
+      ),
+    );
+    const res = await resolveCandidates(store(), [
+      { kind: 'product', name: 'switches', vendor: 'Juniper', version: null, direct: true },
+      { kind: 'product', name: 'Juniper switches', vendor: null, version: null, direct: true },
+      { kind: 'product', name: 'Arista switches', vendor: null, version: null, direct: true },
+      { kind: 'product', name: 'Juniper', vendor: null, version: null, direct: true },
+    ]);
+    expect(res.chips.map((c) => [c.input, c.items.map((i) => i.item).join(' | ')])).toEqual([
+      // Junos Space is the management app, not a switch.
+      ['Juniper switches', '?p:juniper_networks/junos_os_evolved | ?p:juniper_networks/junos_os'],
+      ['Juniper switches', '?p:juniper_networks/junos_os_evolved | ?p:juniper_networks/junos_os'],
+      // Both spellings, one list.
+      ['Arista switches', '?p:arista_networks/eos | ?p:arista/extensible_operating_system'],
+      ['Juniper', '?p:juniper_networks/junos_space | ?p:juniper_networks/junos_os_evolved | ?p:juniper_networks/junos_os'],
+    ]);
+  });
+
+  it('resolves product lines to every key their CVEs are filed under, and lets a version pick one', async () => {
+    const rows: [string, string, string, string, number][] = [
+      ['red_hat/red_hat_enterprise_linux_8', 'red_hat', 'red_hat_enterprise_linux_8', 'Red Hat Enterprise Linux 8', 337],
+      ['red_hat/red_hat_enterprise_linux_9', 'red_hat', 'red_hat_enterprise_linux_9', 'Red Hat Enterprise Linux 9', 352],
+      ['red_hat/red_hat_enterprise_linux_9_4_update_services_for_sap_solutions', 'red_hat', 'red_hat_enterprise_linux_9_4_update_services_for_sap_solutions', 'RHEL 9.4 for SAP', 27],
+      ['apache_software_foundation/apache_http_server', 'apache_software_foundation', 'apache_http_server', 'Apache HTTP Server', 21],
+      ['mikrotik/routeros', 'mikrotik', 'routeros', 'MikroTik RouterOS', 14],
+      ['mikro_orm/mikro_orm', 'mikro_orm', 'mikro_orm', 'MikroORM', 2],
+      ['sophos/sophos_home_for_macos', 'sophos', 'sophos_home_for_macos', 'Sophos Home for macOS', 1],
+      ['amazon_ion/amazon_ion_java', 'amazon_ion', 'amazon_ion_java', 'Amazon Ion Java', 1],
+    ];
+    await env.DB.batch(
+      rows.map(([key, vendor, product, label, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, label, count),
+      ),
+    );
+    const product = (name: string, version: string | null = null, vendor: string | null = null) => ({ kind: 'product' as const, name, vendor, version, direct: true });
+    const res = await resolveCandidates(store(), [
+      product('RHEL'),
+      product('RHEL', '8'),
+      product('RHEL 9'),
+      product('Apache'),
+      product('IIS'),
+      product('MikroTik'),
+      product('Sophos firewall'),
+      product('Amazon Linux'),
+    ]);
+    expect(res.chips.map((c) => [c.input, c.status, c.items.map((i) => `${i.item}${i.known ? '' : ' (unknown)'}`).join(' | ')])).toEqual([
+      // Every major version, most-affected first; not the add-on for SAP.
+      ['RHEL', 'resolved', '?p:red_hat/red_hat_enterprise_linux_9 | ?p:red_hat/red_hat_enterprise_linux_8'],
+      ['RHEL 8', 'resolved', 'p:red_hat/red_hat_enterprise_linux_8@8'],
+      ['RHEL 9', 'resolved', 'p:red_hat/red_hat_enterprise_linux_9@9'],
+      // The key Apache's own CVE records use, not NVD's apache/http_server.
+      ['Apache', 'resolved', 'p:apache_software_foundation/apache_http_server'],
+      // Nothing in the catalog yet: watched under its main key.
+      ['IIS', 'resolved', 'p:microsoft/internet_information_services (unknown)'],
+      // A vendor's name goes to its products, not to a near-spelling of another vendor.
+      ['MikroTik', 'resolved', '?p:mikrotik/routeros'],
+      // Sophos makes no firewall in the catalog, so nothing, rather than Sophos Home.
+      ['Sophos firewall', 'unrecognised', ''],
+      // Known to have nothing, rather than Amazon Ion.
+      ['Amazon Linux', 'unrecognised', ''],
     ]);
   });
 
@@ -173,8 +248,8 @@ describe('resolveCandidates', () => {
     const close = (item: string, label: string) => ({ item, label, close: true, known: true });
     const pg = (v: string) => [{ item: `p:postgresql/postgresql@${v}`, label: 'postgresql postgresql', close: false, known: true }];
     expect(res.chips).toEqual([
-      { input: 'nginx 1.25', status: 'resolved', items: [close('?p:f5/nginx@1.25', 'f5 nginx'), close('?p:nginx/nginx@1.25', 'nginx nginx')] },
-      { input: 'NGINX', status: 'resolved', items: [close('?p:f5/nginx', 'f5 nginx'), close('?p:nginx/nginx', 'nginx nginx')] },
+      { input: 'nginx 1.25', status: 'resolved', items: [close('?p:f5/nginx@1.25', 'F5 NGINX'), close('?p:nginx/nginx@1.25', 'nginx')] },
+      { input: 'NGINX', status: 'resolved', items: [close('?p:f5/nginx', 'F5 NGINX'), close('?p:nginx/nginx', 'nginx')] },
       { input: 'Postgres 16', status: 'resolved', items: pg('16') },
       { input: 'postgres 15', status: 'resolved', items: pg('15') },
     ]);
@@ -479,6 +554,20 @@ describe('POST /api/resolve', () => {
     const res = await post({ text: `Redis ${++textSalt}`, turnstileToken: 't' }, e);
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ fallback: 'manual' });
+  });
+
+  it('gives up on a stuck model and falls back to the manual path', async () => {
+    stubTurnstile();
+    const e = testEnv(async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    });
+    const res = await post({ text: `Redis ${++textSalt}`, turnstileToken: 't' }, e);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ fallback: 'manual' });
+    // Every model call carries a deadline, so a hung one can't hold the request open.
+    const calls = (e.AI.run as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown[][];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call[2]).toEqual({ signal: expect.any(AbortSignal) });
   });
 
   it('caps model calls per client per day, without counting cached parses', async () => {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AFFECTED_KEYS_SQL, CATALOG_COUNTS_SQL, LEADERS_SQL, UNASSIGNED_SQL } from '../src/ingest/families';
 import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EXPLOITED_IN_FAMILIES_SQL, VULNS_BY_ID_SQL } from '../src/match/components';
 import { eventsSinceSql, RECENT_EVENTS_SQL } from '../src/match/match';
-import { KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
+import { KEY_RANGE_SQL, KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
 import { UPDATE_EPSS } from '../src/ingest/apply';
@@ -31,6 +31,7 @@ describe('request-path query plans', () => {
     ['catalog prefix neighbours', PREFIX_NEAR_SQL, ['[["cisc","cisd","cisco_asa"]]', 2000]],
     ['catalog vendor', VENDOR_SQL, ['["cisco"]', 4000]],
     ['catalog vendor top', VENDOR_TOP_SQL, ['["cisco"]', 8]],
+    ['catalog key ranges', KEY_RANGE_SQL, ['[["red_hat/red_hat_enterprise_linux_","red_hat/red_hat_enterprise_linux`"],["apache/http_server","apache/http_server "]]', 4000]],
     ['catalog keys', KNOWN_KEYS_SQL, ['["npm:next","cisco/ios_xe"]']],
     ['affected packages', AFFECTED_PACKAGES_SQL, ['[["npm","next"]]']],
     ['affected products', AFFECTED_PRODUCTS_SQL, ['[["cisco","ios_xe"]]']],

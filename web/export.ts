@@ -130,7 +130,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
     out.push('', '## Fix first', '');
     for (const g of componentGroups(feed.fixFirst, feed.results)) {
       const tally = PRIORITIES.filter((p) => g.counts[p] > 0).map((p) => `${g.counts[p]} ${RISK[p].label}`).join(', ');
-      out.push(`${g.rank}. ${stackLine(g.item)}: ${tally}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. CVEs: ${g.vulns.join(', ')}`);
+      out.push(`${g.rank}. ${[g.item, ...g.also].map(stackLine).join(', ')}: ${tally}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. CVEs: ${g.vulns.join(', ')}`);
     }
     out.push('', '## Vulnerabilities', '');
     for (const p of PRIORITIES) {

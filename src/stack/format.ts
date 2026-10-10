@@ -128,7 +128,9 @@ export function identity(item: StackItem): string {
 /**
  * Deduplicates and sorts, so equivalent stacks share one URL and one cache
  * entry. When the same item appears more than once, exact beats close,
- * and the first team and edge tag given are kept.
+ * and the first team and edge tag given are kept. A close match of something
+ * also named exactly, at any version, is dropped: it would only repeat that
+ * item's CVEs.
  */
 export function canonicalize(items: StackItem[]): StackItem[] {
   const byKey = new Map<string, StackItem>();
@@ -137,8 +139,14 @@ export function canonicalize(items: StackItem[]): StackItem[] {
     const prev = byKey.get(key);
     byKey.set(key, withMarks(item, { close: !!item.close && (!prev || !!prev.close), team: prev?.team ?? item.team, edge: prev?.edge ?? item.edge }));
   }
-  return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, item]) => item);
+  const named = new Set([...byKey.values()].filter((i) => !i.close).map(unversioned));
+  return [...byKey.entries()]
+    .filter(([, item]) => !item.close || !named.has(unversioned(item)))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([, item]) => item);
 }
+
+const unversioned = (item: StackItem) => identity({ ...item, version: null });
 
 /**
  * The item with exactly these marks. A false close mark is left out, not

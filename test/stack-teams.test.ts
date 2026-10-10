@@ -27,6 +27,11 @@ describe('guessTeam', () => {
     ['p:netscaler/adc', 'network'],
     ['p:citrix_netscaler/gateway', 'network'],
     ['p:tp_link_systems_inc/archer_ax21', 'network'],
+    // Vendors CVE records spell their own way: found through the vendor's family.
+    ['p:juniper_networks/junos_os', 'network'],
+    ['p:arista_networks/eos', 'network'],
+    ['p:hewlett_packard_enterprise_hpe/aos_cx', 'network'],
+    ['p:check_point/security_gateway', 'network'],
     ['p:cisco/webex_meetings', 'endpoints'],
     ['p:f5/nginx', 'platform'],
     ['p:apache/http_server', 'platform'],
@@ -94,6 +99,8 @@ describe('isEdgeDevice', () => {
       'p:vmware/avi_load_balancer',
       'p:okta/okta_access_gateway',
       'p:connectwise/screenconnect',
+      'p:juniper_networks/junos_os',
+      'p:check_point/security_gateway',
     ]) {
       expect(edge(item), item).toBe(true);
     }

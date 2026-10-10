@@ -1,4 +1,4 @@
-import { CATEGORIES } from '../resolve/aliases';
+import { CATEGORIES, vendorFamily } from '../resolve/aliases';
 import { ownValue } from '../lib/normalize';
 import type { StackItem, Team } from './format';
 
@@ -110,12 +110,14 @@ function bare(product: string, vendor: string): string {
 
 function productTeam(vendor: string, raw: string): Team | null {
   const product = bare(raw, vendor);
-  if (NETWORK_VENDORS.has(vendor) && NETWORK_CLIENTS.test(product)) return 'endpoints';
-  if (CATEGORIES.some((c) => (ownValue(c.byVendor, vendor) ?? c.generic).test(product))) return 'network';
+  const family = vendorFamily(vendor);
+  const network = NETWORK_VENDORS.has(vendor) || NETWORK_VENDORS.has(family);
+  if (network && NETWORK_CLIENTS.test(product)) return 'endpoints';
+  if (CATEGORIES.some((c) => (ownValue(c.byVendor, family) ?? c.generic).test(product))) return 'network';
   // Keywords see the vendor too: `mongodb/server` and `linux/kernel` say what they are only together.
   const both = `${vendor}_${raw}`;
   for (const [team, pattern] of KEYWORDS) if (pattern.test(both)) return team;
-  if (NETWORK_VENDORS.has(vendor)) return 'network';
+  if (network) return 'network';
   return ownValue(VENDORS, vendor) ?? null;
 }
 
@@ -139,7 +141,7 @@ export function isEdgeDevice(item: StackItem): boolean {
   if (EDGE_EXCLUDE.test(product)) return false;
   const both = `${item.vendor}_${item.product}`;
   if (EDGE.test(both) || EDGE_APPS.test(both)) return true;
-  return EDGE_CATEGORIES.some((c) => ownValue(c.byVendor, item.vendor)?.test(product) ?? false);
+  return EDGE_CATEGORIES.some((c) => ownValue(c.byVendor, vendorFamily(item.vendor))?.test(product) ?? false);
 }
 
 export function guessTeam(item: StackItem): Team | null {

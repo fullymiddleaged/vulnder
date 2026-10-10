@@ -53,7 +53,7 @@ For packages, a version lets Vulnder check whether that exact version is affecte
 
 ### Close matches
 
-An item starting with `?` is a **close match**: something your description loosely fits rather than names outright. For example, "Cisco switches" becomes `?p:cisco/ios_xe,?p:cisco/nx_os,…`. Close matches are shown, labelled "Close match", and ranked after exact matches in the same tier. If the same item appears both with and without `?`, the exact one wins. Older URLs without `?` items mean exactly what they did before.
+An item starting with `?` is a **close match**: something your description loosely fits rather than names outright. For example, "Cisco switches" becomes `?p:cisco/ios_xe,?p:cisco/nx_os,…`. Close matches are shown, labelled "Close match", and ranked after exact matches in the same tier. If the same item appears both with and without `?`, the exact one wins, and a close match of something also named exactly, at any version, is dropped (products match whatever the version, so it would only repeat the exact item's CVEs). Older URLs without `?` items mean exactly what they did before.
 
 ### Teams
 
@@ -77,6 +77,7 @@ Vulnder rewrites every stack into one canonical form, so equivalent stacks share
 
 - package names are normalised the way their registry compares them (for example, PyPI names follow PEP 503, so `Django_REST.framework` becomes `django-rest-framework`, and npm names are lowercased);
 - duplicate items are removed, keeping the exact item over a `?` close match, and the first team and edge tag;
+- a `?` close match of an item also given exactly, at any version, is removed;
 - items are sorted.
 
 The JSON feed returns the canonical value as `stack`.

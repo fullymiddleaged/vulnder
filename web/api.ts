@@ -140,17 +140,40 @@ async function json<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export const getPass = () => fetch('/api/pass').then((r) => json<PassStatus>(r));
+/**
+ * How long the browser waits before saying a request is stuck, rather than
+ * loading forever: about twice a slow normal answer. Reading a description
+ * (4-9 s uncached) waits longest, and the server gives up on its own model
+ * calls within it (3 + 12 + 3 s), so its fallbacks answer first. A feed is
+ * cached or takes a few seconds; OSV gives up after 5.
+ */
+export const RESOLVE_TIMEOUT_MS = 20_000;
+export const FEED_TIMEOUT_MS = 15_000;
+export const SMALL_TIMEOUT_MS = 10_000;
 
-export const getConfig = () => fetch('/api/config').then((r) => json<AppConfig>(r));
-export const getHealth = () => fetch('/api/health').then((r) => json<Health>(r));
+/** fetch with a deadline. A timeout or a dropped connection becomes an ApiError that says which. */
+export async function request(url: string, init: RequestInit, timeoutMs: number, fetchImpl: typeof fetch = (...a) => fetch(...a)): Promise<Response> {
+  try {
+    return await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if ((err as { name?: unknown } | null)?.name === 'TimeoutError') {
+      throw new ApiError('Vulnder took too long to answer. Try again in a moment.', 0, undefined, 'timeout');
+    }
+    throw new ApiError("Couldn't reach Vulnder. Check your connection and try again.", 0, undefined, 'network');
+  }
+}
+
+export const getPass = () => request('/api/pass', {}, SMALL_TIMEOUT_MS).then((r) => json<PassStatus>(r));
+
+export const getConfig = () => request('/api/config', {}, SMALL_TIMEOUT_MS).then((r) => json<AppConfig>(r));
+export const getHealth = () => request('/api/health', {}, SMALL_TIMEOUT_MS).then((r) => json<Health>(r));
 export const getFeed = (s: string, days: number) =>
-  fetch(`/api/feed?s=${encodeURIComponent(s)}${days === 30 ? '' : `&days=${days}`}`).then((r) => json<Feed>(r));
+  request(`/api/feed?s=${encodeURIComponent(s)}${days === 30 ? '' : `&days=${days}`}`, {}, FEED_TIMEOUT_MS).then((r) => json<Feed>(r));
 
 export function resolve(body: { text: string } | { candidates: Candidate[] }, turnstileToken: string): Promise<ResolveResponse> {
-  return fetch('/api/resolve', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...body, turnstileToken }),
-  }).then((r) => json<ResolveResponse>(r));
+  return request(
+    '/api/resolve',
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, turnstileToken }) },
+    RESOLVE_TIMEOUT_MS,
+  ).then((r) => json<ResolveResponse>(r));
 }

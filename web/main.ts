@@ -17,6 +17,7 @@ import {
   CHANGE_LABEL,
   changeCounts,
   componentGroups,
+  splitShown,
   cvssSeverity,
   eventDetail,
   formatScore,
@@ -34,6 +35,7 @@ import {
   RISK,
   shortSummary,
   stackSummary,
+  turnstileSize,
   withItemMarks,
   type ChangeGroup,
   type ComponentGroup,
@@ -296,6 +298,7 @@ function mountTurnstile(box: HTMLElement): void {
     turnstileWidget = window.turnstile.render(box, {
       sitekey: config!.turnstileSiteKey,
       action: TURNSTILE_ACTION,
+      size: turnstileSize(box.clientWidth),
       callback: (token: string) => ((turnstileToken = token), (turnstileFailed = false)),
       'expired-callback': () => (turnstileToken = null),
       'error-callback': () => ((turnstileToken = null), (turnstileFailed = true)),
@@ -329,10 +332,14 @@ const FEED_STEPS = [
   'OSV, to confirm affected versions',
   'Exact and close matches, ranked by what to fix first',
 ];
+/** A description's lookup reads it first, then checks the feed: one checklist for both. */
+const READ_STEP = 'Reading your stack';
+const FEED_TITLE = 'Finding matches…';
+const FEED_DETAIL = 'Checking your stack against these sources, for exact and close matches:';
 /** How long each step shows while the request runs; the last one waits for the answer. */
 const STEP_MS = 2000;
-/** Once the answer is in, the steps left tick off this quickly, so each is still seen, even on a fast answer. */
-const STEP_FINISH_MS = 250;
+/** Once the answer is in, the steps left tick off this quickly, slow enough to read each one, even on a fast answer. */
+const STEP_FINISH_MS = 450;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -355,14 +362,25 @@ function loader(title: string, detail: string, steps: HTMLElement | null): HTMLE
   return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail), steps));
 }
 
+interface Busy {
+  el: HTMLElement;
+  /** Ticks off the current step and starts timing the ones after it. */
+  next(): void;
+  /** `done(true)` ticks off the rest before the loader goes; `done()` removes it at once. */
+  done(complete?: boolean): Promise<void>;
+}
+
+/** A submit's loader, kept on screen for the results page to carry on with. */
+let handoff: Busy | null = null;
+
 /**
- * Shows the loader and hides the rest of the page until the returned function
- * is called. The page underneath is left intact, so a failed request can show
- * the form again as it was. With steps, one is ticked off every STEP_MS while
- * waiting; `done(true)` ticks off the rest before the loader goes, and
- * `done()` removes it at once.
+ * Shows the loader and hides the rest of the page until `done` is called. The
+ * page underneath is left intact, so a failed request can show the form again
+ * as it was. With steps, one is ticked off every STEP_MS while waiting; with
+ * `timed` false the first step waits for `next()` instead, for a request of
+ * its own.
  */
-function showBusy(title: string, detail: string, steps: readonly string[] = []): (complete?: boolean) => Promise<void> {
+function showBusy(title: string, detail: string, steps: readonly string[] = [], timed = true): Busy {
   const rows = steps.map((s) => h('li', { class: 'step' }, s));
   let at = 0;
   const mark = (i: number, state: 'active' | 'done') => {
@@ -375,11 +393,18 @@ function showBusy(title: string, detail: string, steps: readonly string[] = []):
     mark(++at, 'active');
   };
   mark(0, 'active');
-  const timer = setInterval(() => at < rows.length - 1 && advance(), STEP_MS);
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const time = () => (timer = setInterval(() => at < rows.length - 1 && advance(), STEP_MS));
+  if (timed) time();
   const el = loader(title, detail, rows.length > 0 ? h('ol', { class: 'steps small' }, rows) : null);
   app.setAttribute('aria-busy', 'true');
   app.prepend(el);
-  return async (complete = false) => {
+  const next = () => {
+    clearInterval(timer);
+    if (at < rows.length - 1) advance();
+    time();
+  };
+  const done = async (complete = false) => {
     clearInterval(timer);
     if (complete && rows.length > 0) {
       while (at < rows.length - 1) {
@@ -393,6 +418,7 @@ function showBusy(title: string, detail: string, steps: readonly string[] = []):
     el.remove();
     app.removeAttribute('aria-busy');
   };
+  return { el, next, done };
 }
 
 /** Shown on the results page after a submit, e.g. names that matched nothing; cleared once shown. */
@@ -413,10 +439,9 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
   window.turnstile?.reset(turnstileWidget);
   report('');
   say('Working out what is in your stack…');
-  const done = showBusy('Reading your stack…', 'Picking out the software and devices you named.');
+  const busy = showBusy(FEED_TITLE, FEED_DETAIL, [READ_STEP, ...FEED_STEPS], false);
   try {
     const res = await resolve(body, token);
-    void done();
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
     const unrecognised = res.chips.filter((c) => c.status === 'unrecognised').map((c) => c.input);
     const teamed = res.chips.some((c) => c.items.some((i) => i.team));
@@ -427,25 +452,33 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
       res.droppedTransitive > 0 ? `Left out ${res.droppedTransitive} indirect dependencies with no known vulnerabilities.` : '',
     ].filter(Boolean);
     if (items.length === 0) {
+      void busy.done();
       renderEdit([]);
       report(notes.join(' ') || 'Nothing recognisable there. Add items by hand below.');
       return void app.focus();
     }
     const stack = parseStack(items.join(','));
     if (stack.length > 200) {
+      void busy.done();
       renderEdit(items);
       report('That is more than 200 items. Trim the list, or self-host Vulnder for larger stacks.');
       return void app.focus();
     }
     pendingNotes = notes;
     pendingUnmatched = unrecognised.length;
+    // Read: tick it off and leave the loader up, for the results page to carry on through the sources.
+    busy.next();
+    handoff = busy;
     navigate(serializeStack(stack), 30);
   } catch (err) {
-    void done();
+    void busy.done();
     if (err instanceof ApiError && err.fallback === 'manual') {
       renderEdit([]);
       report(err.message);
       app.focus();
+    } else if (err instanceof ApiError && err.reason === 'timeout') {
+      // The description stays in the box, so trying again costs nothing.
+      report(err.message, addByHandButton());
     } else {
       report(err instanceof Error ? err.message : 'Something went wrong. Try again in a moment.');
     }
@@ -584,16 +617,25 @@ function navigate(stack: string, days: number): void {
 }
 
 async function renderResults(stack: string, days: number): Promise<void> {
-  clear(app);
+  // After a submit, its loader stays exactly as it is (no second fade-in) and carries on.
+  let busy = handoff;
+  handoff = null;
+  if (busy?.el.isConnected) {
+    for (const child of [...app.children]) if (child !== busy.el) child.remove();
+  } else {
+    void busy?.done();
+    clear(app);
+    busy = null;
+  }
   clearInterval(lockTimer);
-  say('Finding matches…');
-  const done = showBusy('Finding matches…', 'Checking your stack against these sources, for exact and close matches:', FEED_STEPS);
+  say(FEED_TITLE);
+  busy ??= showBusy(FEED_TITLE, FEED_DETAIL, FEED_STEPS);
   let feed: Feed;
   try {
     feed = await getFeed(stack, days);
-    await done(true);
+    await busy.done(true);
   } catch (err) {
-    void done();
+    void busy.done();
     say('');
     if (err instanceof ApiError && err.reason === 'pass-limit') {
       // Answered from the lock cookie, without a database read.
@@ -610,6 +652,12 @@ async function renderResults(stack: string, days: number): Promise<void> {
           retry,
         ),
       );
+      return;
+    }
+    if (err instanceof ApiError && (err.reason === 'timeout' || err.reason === 'network')) {
+      // Stuck or offline, not a bad link: the same link can simply be tried again.
+      const retry = h('button', { type: 'button', class: 'primary', onclick: () => void route() }, 'Try again');
+      app.append(h('div', { class: 'block' }, h('h2', {}, 'No answer from Vulnder'), h('p', {}, err.message), retry));
       return;
     }
     app.append(h('div', { class: 'block' }, h('h2', {}, 'That stack link did not work'), h('p', {}, err instanceof Error ? err.message : ''), h('button', { type: 'button', onclick: showInput }, 'Start again')));
@@ -684,7 +732,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
     if (isLocked()) return void (daySelect.value = String(feed.days));
     navigate(feed.stack, Number(daySelect.value));
   });
-  const editButton = h('button', { type: 'button', onclick: () => (renderEdit(items.map((i) => serializeStack([i]))), app.focus()) }, 'Edit stack');
+  const editButton = h('button', { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i]))), app.focus()) }, 'Edit stack');
   // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
   const editNotice = lockControls([editButton, daySelect]);
   const anyClose = items.some((i) => i.close);
@@ -818,22 +866,37 @@ const FIX_SHOWN = 5;
 
 function renderFixFirst(feed: Feed): HTMLElement {
   const items = componentGroups(feed.fixFirst, feed.results);
+  const shown = new Set<string>();
   // role=list: Safari drops list semantics from a list styled without markers, and here the order is the point.
-  const list = (from: number, to: number) => h('ol', { class: 'fix-list', role: 'list', start: from + 1 }, items.slice(from, to).map(renderFixItem));
+  const list = (from: number, to: number) => h('ol', { class: 'fix-list', role: 'list', start: from + 1 }, items.slice(from, to).map((g) => renderFixItem(g, shown)));
   return h(
     'section',
     { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
     h('h2', { id: 'fix-title' }, 'Fix first'),
     h('p', { class: 'muted small' }, 'Each item in your stack, ranked by what fixing it removes: the most urgent priority first, then the total risk score of its CVEs.'),
+    items.some((g) => g.close || g.also.some((i) => itemMarks(i).close))
+      ? h(
+          'p',
+          { class: 'muted small' },
+          'Broad names like “Windows” bring in close matches that share most of their CVEs. Remove the ones you don’t run to tighten this list: ',
+          // The stack's own Edit button, so a used-up pass refuses it the same way.
+          h('button', { type: 'button', class: 'link', onclick: () => document.getElementById('edit-stack')?.click() }, 'Edit stack'),
+          '.',
+        )
+      : null,
     list(0, FIX_SHOWN),
     items.length > FIX_SHOWN ? h('details', { class: 'more' }, h('summary', {}, `Show ${items.length - FIX_SHOWN} more`), list(FIX_SHOWN, items.length)) : null,
   );
 }
 
-/** One stack item; expands to its CVEs with their links, so nobody has to hunt for them further down. */
-function renderFixItem(g: ComponentGroup): HTMLElement {
+/**
+ * One stack item (or several with the same CVEs); expands to its CVEs with their links, so nobody has
+ * to hunt for them further down. CVEs an earlier row already showed are listed by ID only.
+ */
+function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
   const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
   const total = g.vulns.length;
+  const { fresh, repeated } = splitShown(g.results, shown);
   return h(
     'li',
     { class: `fix-item ${RISK[worst].light}` },
@@ -845,8 +908,9 @@ function renderFixItem(g: ComponentGroup): HTMLElement {
         {},
         h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
         h('code', {}, g.component),
+        g.also.length > 0 ? [pause(), h('span', { class: 'small muted' }, `+${g.also.length} more`)] : null,
         g.close ? [pause(), h('span', { class: 'badge match-close' }, 'Close match')] : null,
-        isEdgeItem(g.item) ? [pause(), edgeBadge()] : null,
+        groupIsEdge(g) ? [pause(), edgeBadge()] : null,
         pause(),
         tally(g.counts),
         pause(),
@@ -856,9 +920,37 @@ function renderFixItem(g: ComponentGroup): HTMLElement {
         pause(),
         h('span', { class: 'expand small' }, h('span', { class: 'when-closed' }, `Show ${total === 1 ? 'CVE' : `${total} CVEs`}`), h('span', { class: 'when-open' }, 'Hide')),
       ),
-      h('ol', { class: 'briefs' }, g.results.map(renderBrief)),
+      sameCves(g),
+      fresh.length > 0 ? h('ol', { class: 'briefs' }, fresh.map(renderBrief)) : null,
+      listedAbove(repeated),
     ),
   );
+}
+
+/** The other items sharing a row, each with its close-match mark. */
+function sameCves(g: ComponentGroup): HTMLElement | null {
+  if (g.also.length === 0) return null;
+  const names = g.also.map((item) => {
+    const { name, close } = itemMarks(item);
+    return [h('code', {}, name), close ? ' (close match)' : ''];
+  });
+  return h('p', { class: 'small muted also' }, 'With the same CVEs: ', names.flatMap((n, i) => (i === 0 ? n : [', ', ...n])));
+}
+
+/** CVEs an earlier row showed in full, by linked ID. */
+function listedAbove(repeated: Result[]): HTMLElement | null {
+  if (repeated.length === 0) return null;
+  const n = repeated.length;
+  return h(
+    'p',
+    { class: 'small muted listed-above' },
+    `${n === 1 ? '1 more CVE' : `${n} more CVEs`}, shown above: `,
+    repeated.flatMap((r, i) => (i === 0 ? [externalLink(r.links.advisory, r.id)] : [', ', externalLink(r.links.advisory, r.id)])),
+  );
+}
+
+function groupIsEdge(g: ComponentGroup): boolean {
+  return [g.item, ...g.also].some(isEdgeItem);
 }
 
 /** A CVE in a line or two: priority, linked ID, title, why, and the fix. */
@@ -973,11 +1065,14 @@ function renderByPriority(results: Result[]): HTMLElement[] {
 
 /** One collapsible group per stack item, in fix-first order; urgent groups start open. */
 function renderByComponent(groups: ComponentGroup[]): HTMLElement[] {
-  return groups.map(renderComponent);
+  const shown = new Set<string>();
+  return groups.map((g) => renderComponent(g, shown));
 }
 
-function renderComponent(g: ComponentGroup): HTMLElement {
+/** Like a fix-first row: CVEs an earlier group showed in full are listed by ID only. */
+function renderComponent(g: ComponentGroup, shown: Set<string>): HTMLElement {
   const worst = PRIORITIES.find((p) => g.counts[p] > 0) ?? 'track';
+  const { fresh, repeated } = splitShown(g.results, shown);
   return h(
     'details',
     { class: `component ${RISK[worst].light}`, open: g.counts.act + g.counts.attend > 0 },
@@ -986,12 +1081,15 @@ function renderComponent(g: ComponentGroup): HTMLElement {
       {},
       h('span', { class: 'rank', 'aria-hidden': 'true' }, String(g.rank)),
       h('code', {}, g.component),
+      g.also.length > 0 ? h('span', { class: 'small muted' }, `+${g.also.length} more`) : null,
       g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
-      isEdgeItem(g.item) ? edgeBadge() : null,
+      groupIsEdge(g) ? edgeBadge() : null,
       h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
       tally(g.counts),
     ),
-    renderList(g.results),
+    sameCves(g),
+    fresh.length > 0 ? renderList(fresh) : null,
+    listedAbove(repeated),
   );
 }
 
@@ -1007,6 +1105,7 @@ function renderByTeam(groups: ComponentGroup[]): HTMLElement[] {
     byTeam.set(team, [...(byTeam.get(team) ?? []), g]);
   }
   const teams = TEAM_GROUPS.filter((t) => byTeam.has(t)).sort((a, b) => (a === 'unassigned' ? 1 : b === 'unassigned' ? -1 : byTeam.get(a)![0]!.rank - byTeam.get(b)![0]!.rank));
+  const shown = new Set<string>();
   return teams.map((t) => {
     const members = byTeam.get(t)!;
     const counts = Object.fromEntries(PRIORITIES.map((p) => [p, members.reduce((n, g) => n + g.counts[p], 0)])) as Record<Priority, number>;
@@ -1016,7 +1115,7 @@ function renderByTeam(groups: ComponentGroup[]): HTMLElement[] {
       { class: 'tier team', 'aria-labelledby': `team-${t}` },
       h('h2', { id: `team-${t}` }, `${TEAM[t].label} `, h('span', { class: 'count' }, `${total} ${total === 1 ? 'CVE' : 'CVEs'}`), tally(counts)),
       h('p', { class: 'muted small' }, TEAM[t].note),
-      members.map(renderComponent),
+      members.map((g) => renderComponent(g, shown)),
     );
   });
 }

@@ -2,7 +2,8 @@ import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '..
 import type { Store } from '../ingest/store';
 import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem, type Team } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
-import { ALIASES, CATEGORIES } from './aliases';
+import { ALIASES, CATEGORIES, vendorFamily, vendorSpellings } from './aliases';
+import { fallbackKey, forVersion, inLine, lineFor, lineRanges, type LineMatch } from './lines';
 import type { Candidate } from './types';
 
 /**
@@ -92,6 +93,8 @@ export class TooManyProducts extends Error {
 /** What resolveProduct shares across one request's candidates. */
 interface Lookup {
   byVendor: CatalogRow[];
+  /** Every catalog product in the requested product lines' key ranges, most-affected first. */
+  lineRows: CatalogRow[];
   knownAlias: Set<string>;
   /** The fetched rows in one prefix's range, with their trigram index; built once per prefix. */
   scope: (prefix: string) => { rows: CatalogRow[]; index: GramIndex };
@@ -106,32 +109,40 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   const packageKeys = candidates.flatMap((c) => (c.kind === 'package' ? [`${c.ecosystem}:${normalizePackageName(c.ecosystem, c.name)}`] : []));
   const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
   const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
-  const queries = [...new Set(products.map((p) => normalizeKey(p.name)).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
+  const lines = products.map((p) => lineFor(p.name, p.vendor));
+  const queries = [...new Set(products.flatMap((p, i) => (lines[i] ? [] : [normalizeKey(p.name)])).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
+  const ranges = [...new Map(lines.flatMap((m) => (m ? lineRanges(m.line) : [])).map((r) => [r.join('\n'), r])).values()];
   // Each vendor named (or implied by the first word). Most names only need to
   // know the vendor exists, plus its top few products for vendor-only input;
   // only a category ("Cisco switches") needs every product of its vendor.
   const vendors = [...new Set(products.flatMap((p) => vendorGuesses(p)))];
   const categoryVendors = [...new Set(products.filter((p) => CATEGORIES.some((cat) => cat.words.test(p.name))).flatMap((p) => vendorGuesses(p)))];
+  // Read under every key each vendor is stored as ("juniper" is `juniper_networks` in CVE records).
+  const spelled = (vs: string[]) => [...new Set(vs.flatMap(vendorSpellings))];
   // Each distinct product is resolved once (duplicates reuse it), and fuzzy
   // scoring costs about rows × lookups, so lookups are capped by what drives
   // resolveProduct, not only by name: 5,000 copies of a name, or one name with
   // 5,000 vendors, would otherwise score the rows 5,000 times.
-  const lookupKeys = products.map(productLookupKey);
-  // Each product makes up to two vendor guesses.
-  if (queries.length > MAX_PRODUCT_LOOKUPS || vendors.length > 2 * MAX_PRODUCT_LOOKUPS || new Set(lookupKeys).size > MAX_PRODUCT_LOOKUPS) {
+  // A line's version picks its products, so lines are looked up per version too.
+  const lookupKeys = products.map((p, i) => productLookupKey(p, lines[i] ? (p.version ?? lines[i].version) : null));
+  // Each product makes up to three vendor guesses.
+  if (queries.length > MAX_PRODUCT_LOOKUPS || vendors.length > 3 * MAX_PRODUCT_LOOKUPS || new Set(lookupKeys).size > MAX_PRODUCT_LOOKUPS) {
     throw new TooManyProducts();
   }
 
   // Independent queries, sent together. Each reads only index ranges: exact keys
-  // (packages and alias targets), name prefixes, each vendor's top products, and
-  // every product of the vendors a category names.
-  const [known, rows, top, all] = await Promise.all([
+  // (packages and alias targets), name prefixes, each vendor's top products,
+  // every product of the vendors a category names, and the product lines' keys.
+  const [known, rows, top, all, lineHits] = await Promise.all([
     knownKeys(store, [...packageKeys.map((key) => ({ kind: 'package' as const, key })), ...aliasItems.map(catalogKey)]),
     queries.length === 0 ? [] : productCandidates(store, queries),
-    vendors.length === 0 ? [] : store.all<CatalogRow>(VENDOR_TOP_SQL, [JSON.stringify(vendors), MAX_VENDOR_ONLY]),
-    categoryVendors.length === 0 ? [] : productsByVendor(store, categoryVendors),
+    vendors.length === 0 ? [] : store.all<CatalogRow>(VENDOR_TOP_SQL, [JSON.stringify(spelled(vendors)), MAX_VENDOR_ONLY]),
+    categoryVendors.length === 0 ? [] : productsByVendor(store, spelled(categoryVendors)),
+    ranges.length === 0 ? [] : store.all<CatalogRow>(KEY_RANGE_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS]),
   ]);
   const byVendor = mergeVendorRows(all, top);
+  // Lines can share a key (ASA and FTD), so each row once; then most-affected first, like every other list of close matches.
+  const lineRows = [...new Map(lineHits.map((r) => [r.key, r])).values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const knownPackages = new Set(packageKeys.filter((key) => known.has(`package ${key}`)));
   const knownAlias = new Set(aliasItems.filter((item) => {
     const { kind, key } = catalogKey(item);
@@ -150,7 +161,7 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
     }
     return s;
   };
-  const lookup: Lookup = { byVendor, knownAlias, scope, categories: new Map() };
+  const lookup: Lookup = { byVendor, lineRows, knownAlias, scope, categories: new Map() };
   let productIndex = 0;
   let itemCount = 0;
   for (const c of candidates) {
@@ -178,9 +189,11 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
       });
       continue;
     }
-    const lookupKey = lookupKeys[productIndex++]!;
+    const i = productIndex++;
+    const lookupKey = lookupKeys[i]!;
     let chip = lookups.get(lookupKey);
-    if (!chip) lookups.set(lookupKey, (chip = resolveProduct({ ...c, version: null }, lookup)));
+    const line = lines[i] ?? null;
+    if (!chip) lookups.set(lookupKey, (chip = resolveProduct(line ? { ...c, version: c.version ?? line.version } : { ...c, version: null }, line, lookup)));
     // Counted before forCandidate copies the items, so an oversized request stops early.
     itemCount += chip.items.length;
     if (itemCount > MAX_RESOLVED_ITEMS) throw new TooManyProducts(`these names match more than ${MAX_RESOLVED_ITEMS} products`);
@@ -190,9 +203,9 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   return { chips, droppedTransitive };
 }
 
-/** Everything resolveProduct reads from a candidate, apart from its version and label. */
-function productLookupKey(c: ProductCandidate): string {
-  return JSON.stringify([normalizeKey(c.name), vendorGuesses(c), CATEGORIES.findIndex((cat) => cat.words.test(c.name))]);
+/** Everything resolveProduct reads from a candidate, apart from its label (and its version, except for a product line). */
+function productLookupKey(c: ProductCandidate, version: string | null): string {
+  return JSON.stringify([normalizeKey(c.name), vendorGuesses(c), CATEGORIES.findIndex((cat) => cat.words.test(c.name)), version]);
 }
 
 /** A resolved lookup, labelled and versioned for one candidate. */
@@ -231,7 +244,7 @@ function roundTrips(ecosystem: Ecosystem, rawName: string, version: string | nul
   }
 }
 
-function resolveProduct(c: ProductCandidate, { byVendor, knownAlias, scope, categories }: Lookup): Chip {
+function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor, lineRows, knownAlias, scope, categories }: Lookup): Chip {
   const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   const key = normalizeKey(c.name);
   if (!key) return { input, status: 'unrecognised', items: [] };
@@ -248,33 +261,57 @@ function resolveProduct(c: ProductCandidate, { byVendor, knownAlias, scope, cate
     return resolved(aliased.map((item) => make(item, labelFor(item), close, knownAlias.has(item))));
   }
 
-  // 2. Categories: "Cisco switches" means every Cisco switch product.
+  // 2. Product lines: every key a product's CVEs are filed under (lines.ts). A
+  // version that picks out one of them ("RHEL 9") makes it exact.
+  if (match) {
+    const { line } = match;
+    const members = lineRows.filter((r) => inLine(line, r.key));
+    if (members.length === 0) {
+      // Nothing in the window yet: watch its main key, so the feed picks up the first CVE.
+      const fallback = fallbackKey(line);
+      return resolved(fallback ? [make(`p:${fallback}`, labelFor(`p:${fallback}`), false, false)] : []);
+    }
+    const picked = forVersion(members, c.version);
+    const shown = picked.length > 0 ? picked : members;
+    return resolved(shown.map((r) => make(itemOf(r), r.label ?? r.key, shown.length > 1, true)));
+  }
+
+  // 3. Categories: "Cisco switches" means every Cisco switch product.
   const categoryIndex = CATEGORIES.findIndex((cat) => cat.words.test(c.name));
   const category = CATEGORIES[categoryIndex];
-  const vendorKey = vendorGuesses(c).find((v) => byVendor.some((r) => r.vendor === v)) ?? null;
+  // The vendor as a family, so `juniper` and `juniper_networks` rows both count.
+  const ofVendor = (family: string) => (r: CatalogRow) => r.vendor !== null && vendorFamily(r.vendor) === family;
+  const vendorKey = vendorGuesses(c).map(vendorFamily).find((f) => byVendor.some(ofVendor(f))) ?? null;
+  const isVendor = vendorKey ? ofVendor(vendorKey) : () => false;
   if (category && vendorKey) {
     // The same for every name in this category and vendor ("Cisco switches", "Cisco access switches").
     const cacheKey = `${categoryIndex}|${vendorKey}`;
     let items = categories.get(cacheKey);
     if (!items) {
       const pattern = ownValue(category.byVendor, vendorKey) ?? category.generic;
-      const fitting = byVendor.filter((r) => r.vendor === vendorKey && pattern.test(stripVendor(r.product!, vendorKey)));
+      const fitting = byVendor.filter((r) => isVendor(r) && pattern.test(stripVendor(r.product!, r.vendor!)));
       categories.set(cacheKey, (items = fitting.map((r) => make(itemOf(r), r.label ?? r.key, true, true))));
     }
-    if (items.length > 0) return resolved(items);
+    // None of the vendor's products fit ("Sophos firewall" with only Sophos Home in the catalog):
+    // say so, rather than offer near-spellings that aren't the thing named.
+    return resolved(items);
   }
 
-  // 3. Exact key or clear fuzzy winner; otherwise every plausible guess as close.
+  // 4. Exact key or clear fuzzy winner; otherwise every plausible guess as close.
   // Only rows in this name's own prefix range count, so a name resolves the
   // same whatever else was asked for alongside it.
   const { rows: own, index } = scope(prefixOf(key));
+  // The name is a vendor ("MikroTik", "Check Point") and no product of that name: go
+  // straight to its products, before near-spellings of other vendors (mikro_orm).
+  const isVendorName = vendorKey !== null && vendorFamily(key) === vendorKey && !own.some((r) => r.product === key);
+  if (isVendorName) return resolved(byVendor.filter(isVendor).slice(0, MAX_VENDOR_ONLY).map((r) => make(itemOf(r), r.label ?? r.key, true, true)));
   const sims = similarities(key, index);
   const scored: { r: CatalogRow; score: number }[] = [];
   for (let i = 0; i < own.length; i++) {
     // Most rows share a letter or two and no more: skip them before building anything.
     if (sims[i]! + MAX_BONUS < SUGGEST_SCORE) continue;
     const r = own[i]!;
-    const score = sims[i]! + (vendorKey && r.vendor === vendorKey ? VENDOR_BONUS : 0) + (r.product === key ? PRODUCT_BONUS : 0);
+    const score = sims[i]! + (isVendor(r) ? VENDOR_BONUS : 0) + (r.product === key ? PRODUCT_BONUS : 0);
     if (score >= SUGGEST_SCORE) scored.push({ r, score });
   }
   scored.sort((a, b) => b.score - a.score || b.r.count - a.r.count);
@@ -290,19 +327,19 @@ function resolveProduct(c: ProductCandidate, { byVendor, knownAlias, scope, cate
     return resolved(closest.map((s) => make(itemOf(s.r), s.r.label ?? s.r.key, true, true)));
   }
 
-  // 4. Only a vendor: its most-affected products, as close matches.
+  // 5. Only a vendor: its most-affected products, as close matches.
   if (vendorKey) {
-    const top = byVendor.filter((r) => r.vendor === vendorKey).slice(0, MAX_VENDOR_ONLY);
+    const top = byVendor.filter(isVendor).slice(0, MAX_VENDOR_ONLY);
     return resolved(top.map((r) => make(itemOf(r), r.label ?? r.key, true, true)));
   }
   return { input, status: 'unrecognised', items: [] };
 }
 
-/** The vendor given, or else the first word of the name ("Cisco switches"). */
+/** The vendor given, the first word of the name ("Cisco switches"), then the whole name ("Check Point"). */
 function vendorGuesses(c: ProductCandidate): string[] {
   const given = normalizeKey(c.vendor);
   const firstWord = normalizeKey(c.name.trim().split(/\s+/)[0]);
-  return [given, firstWord].filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
+  return [given, firstWord, normalizeKey(c.name)].filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
 }
 
 /** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
@@ -374,6 +411,12 @@ export const VENDOR_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, 
   FROM json_each(?1) j
   CROSS JOIN catalog c ON c.kind = 'product' AND c.key >= j.value || '/' AND c.key < j.value || '0'
   ORDER BY c.count DESC, c.key LIMIT ?2`;
+
+/** Products with a key in any [from, to) range: the product lines' keys and key prefixes (lines.ts). */
+export const KEY_RANGE_SQL = `SELECT c.kind, c.key, c.ecosystem, c.name, c.vendor, c.product, c.normalized, c.label, c.count
+  FROM json_each(?1) j
+  CROSS JOIN catalog c ON c.kind = 'product' AND c.key >= json_extract(j.value, '$[0]') AND c.key < json_extract(j.value, '$[1]')
+  LIMIT ?2`;
 
 /** Which of the given keys the catalog has. Naming both kinds lets the (kind, key) primary key answer it. */
 export const KNOWN_KEYS_SQL = `SELECT kind, key FROM catalog

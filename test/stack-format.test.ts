@@ -46,6 +46,13 @@ describe('parseStack', () => {
     expect(serializeStack(parseStack('p:cisco/ios_xe,?p:cisco/ios_xe'))).toBe('p:cisco/ios_xe');
   });
 
+  it('drops a close match of something also named exactly, at any version', () => {
+    expect(serializeStack(parseStack('?p:microsoft/windows_server_2025@2010,p:microsoft/windows_server_2025@2025'))).toBe('p:microsoft/windows_server_2025@2025');
+    expect(serializeStack(parseStack('?npm:express@4.18.2,npm:express'))).toBe('npm:express');
+    // Two close versions of one product both stay: neither was named.
+    expect(serializeStack(parseStack('?p:f5/nginx@1.26,?p:f5/nginx@1.27'))).toBe('?p:f5/nginx@1.26,?p:f5/nginx@1.27');
+  });
+
   it('has no internet-facing mark: a leading ! is invalid', () => {
     for (const bad of ['!p:f5/nginx', '!?p:f5/nginx', '?!p:f5/nginx']) {
       expect(() => parseStack(bad), bad).toThrow(StackFormatError);

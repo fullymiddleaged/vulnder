@@ -66,6 +66,14 @@ export function examplePlaceholder(examples: readonly { text: string }[], random
 }
 
 /**
+ * The verification widget's size for the width it has. The normal widget is a
+ * fixed 300px; any wider than its box and Chrome on Android zooms the page out.
+ */
+export function turnstileSize(width: number): 'normal' | 'compact' {
+  return width >= 300 ? 'normal' : 'compact';
+}
+
+/**
  * The description counter's text, and whether the description is too long to
  * send. Counts the trimmed text, as submitting does; manifests have no limit.
  */
@@ -316,23 +324,50 @@ export interface ComponentGroup extends FixItem {
   component: string;
   close: boolean;
   team: Team | null;
+  /** Other stack items with exactly the same CVEs, team and edge tag, shown in this row as written in the feed. */
+  also: string[];
   /** 1-based position in the fix-first order. */
   rank: number;
   results: Result[];
 }
 
-/** The fix-first list with each item's results attached, in the server's order. */
+/**
+ * The fix-first list with each item's results attached, in the server's order.
+ * Items with exactly the same CVEs share a row, led by an exact item if there is
+ * one: usually they are close matches of one vague name ("Windows Server"), and
+ * a row each would repeat the same list.
+ */
 export function componentGroups(fixFirst: FixItem[], results: Result[]): ComponentGroup[] {
   const byId = new Map(results.map((r) => [r.id, r]));
-  return fixFirst.map((f, i) => {
-    const { name, close, team } = itemMarks(f.item);
+  const rows = new Map<string, FixItem[]>();
+  for (const f of fixFirst) {
+    const { team, edge } = itemMarks(f.item);
+    const key = JSON.stringify([team, edge, [...f.vulns].sort()]);
+    rows.set(key, [...(rows.get(key) ?? []), f]);
+  }
+  return [...rows.values()].map((members, i) => {
+    const lead = members.find((m) => !itemMarks(m.item).close) ?? members[0]!;
+    const { name, close, team } = itemMarks(lead.item);
     return {
-      ...f,
+      ...lead,
       component: name,
       close,
       team,
+      also: members.filter((m) => m !== lead).map((m) => m.item),
       rank: i + 1,
-      results: f.vulns.flatMap((id) => byId.get(id) ?? []),
+      results: lead.vulns.flatMap((id) => byId.get(id) ?? []),
     };
   });
+}
+
+/**
+ * Splits a group's results into those not shown yet and those an earlier group
+ * already showed, and records the new ones as shown. Windows SKUs, for one,
+ * share most of their CVEs, so the later rows point back rather than repeat them.
+ */
+export function splitShown(results: Result[], shown: Set<string>): { fresh: Result[]; repeated: Result[] } {
+  const fresh = results.filter((r) => !shown.has(r.id));
+  const repeated = results.filter((r) => shown.has(r.id));
+  for (const r of fresh) shown.add(r.id);
+  return { fresh, repeated };
 }

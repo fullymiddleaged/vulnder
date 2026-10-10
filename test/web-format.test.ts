@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result } from '../web/api';
-import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, stackSummary, withItemMarks } from '../web/format';
+import { ago, byPriority, changeCounts, countdown, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -220,6 +220,38 @@ describe('componentGroups', () => {
     ]);
     expect(componentGroups([], results)).toEqual([]);
   });
+
+  it('puts items with exactly the same CVEs in one row, led by an exact item', () => {
+    const results = [result('CVE-1', 'exploited'), result('CVE-2', 'backlog')];
+    const counts = { act: 1, attend: 0, watch: 0, track: 1 };
+    const fix = (item: string, vulns: string[]) => ({ item, score: 50, counts, vulns, fixable: 2 });
+    const groups = componentGroups(
+      [
+        fix('?p:microsoft/windows_server_2019', ['CVE-1', 'CVE-2']),
+        fix('p:microsoft/windows_server_2022', ['CVE-2', 'CVE-1']),
+        fix('?p:microsoft/windows_11_version_24h2', ['CVE-1']),
+        fix('?p:microsoft/windows_server_2019_server_core_installation', ['CVE-1', 'CVE-2']),
+        // Same CVEs, another team: its own row, so By team still has it.
+        fix('?p:microsoft/windows_server_2016;endpoints', ['CVE-1', 'CVE-2']),
+      ],
+      results,
+    );
+    expect(groups.map((g) => [g.rank, g.component, g.close, g.also])).toEqual([
+      [1, 'p:microsoft/windows_server_2022', false, ['?p:microsoft/windows_server_2019', '?p:microsoft/windows_server_2019_server_core_installation']],
+      [2, 'p:microsoft/windows_11_version_24h2', true, []],
+      [3, 'p:microsoft/windows_server_2016', true, []],
+    ]);
+  });
+});
+
+describe('splitShown', () => {
+  it('returns the results not shown yet, then those an earlier group showed', () => {
+    const shown = new Set<string>();
+    const [a, b, c] = [result('CVE-1', 'exploited'), result('CVE-2', 'backlog'), result('CVE-3', 'backlog')];
+    expect(splitShown([a, b], shown)).toEqual({ fresh: [a, b], repeated: [] });
+    expect(splitShown([c, a, b], shown)).toEqual({ fresh: [c], repeated: [a, b] });
+    expect([...shown]).toEqual(['CVE-1', 'CVE-2', 'CVE-3']);
+  });
 });
 
 describe('item marks', () => {
@@ -301,6 +333,15 @@ describe('describeLength', () => {
 
   it('never limits a manifest', () => {
     expect(describeLength('x'.repeat(100_000), true, 500)).toEqual({ label: 'Manifest detected', over: false });
+  });
+});
+
+describe('turnstileSize', () => {
+  it('uses the 300px widget only when it fits, and the compact one otherwise', () => {
+    expect(turnstileSize(328)).toBe('normal');
+    expect(turnstileSize(300)).toBe('normal');
+    expect(turnstileSize(299)).toBe('compact');
+    expect(turnstileSize(0)).toBe('compact');
   });
 });
 

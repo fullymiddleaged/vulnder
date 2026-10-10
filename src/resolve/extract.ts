@@ -111,6 +111,12 @@ export function keepMentioned(extraction: Extraction, text: string): Extraction 
   return { ...extraction, candidates };
 }
 
+/**
+ * A stuck model call gives up after this and the request falls back to adding
+ * items by hand, like an outage. Measured 3.3-5.4 s in October 2026.
+ */
+export const EXTRACT_TIMEOUT_MS = 12_000;
+
 export async function extractCandidates(ai: Ai, model: string, text: string): Promise<Extraction> {
   const input = fenceInput(text);
   let raw: unknown;
@@ -124,7 +130,7 @@ export async function extractCandidates(ai: Ai, model: string, text: string): Pr
       chat_template_kwargs: { enable_thinking: false },
       max_completion_tokens: 1500,
       temperature: 0,
-    } as never);
+    } as never, { signal: AbortSignal.timeout(EXTRACT_TIMEOUT_MS) });
   } catch (err) {
     // Quota exhaustion and outages both mean "use the manual path".
     throw new ExtractionUnavailable(err instanceof Error ? err.message : String(err));

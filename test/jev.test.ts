@@ -86,9 +86,16 @@ describe('screen', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const ai = { run: vi.fn(async () => Promise.reject(new Error('3040: Capacity temporarily exceeded'))) } as unknown as Ai;
     expect(await screenText(ai, 'Redis')).toBeNull();
-    expect(ai.run).toHaveBeenCalledWith(JEV_MODEL, screenRequest('Redis'));
+    expect(ai.run).toHaveBeenCalledWith(JEV_MODEL, screenRequest('Redis'), { signal: expect.any(AbortSignal) });
     // Only the error's name is logged, never a message that could echo the text.
     expect(logged).toHaveBeenCalledWith('jev call failed: Error');
+  });
+
+  it('fails open when the model times out', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ai = { run: vi.fn(async () => Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))) } as unknown as Ai;
+    expect(await screenText(ai, 'Redis')).toBeNull();
+    expect(logged).toHaveBeenCalledWith('jev call failed: TimeoutError');
   });
 });
 

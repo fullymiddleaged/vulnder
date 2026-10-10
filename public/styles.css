@@ -88,7 +88,8 @@ header.site { padding-top: 1.75rem; display: flex; flex-wrap: wrap; align-items:
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--fg); text-decoration: none; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
 .logo { width: 2.1rem; height: 2.1rem; color: var(--accent); align-self: center; }
 .tagline { flex-basis: 100%; color: var(--muted); margin: 0; font: inherit; }
-main { display: grid; gap: 2.25rem; margin-top: 2.5rem; }
+/* minmax(0, 1fr): no single unbreakable item can make the column, and so the page, wider than the screen. */
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.25rem; margin-top: 2.5rem; }
 footer.site { margin: 4rem auto 2rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
 
 /* Sections sit on the page, divided by a rule; only individual results get a container. */
@@ -147,7 +148,7 @@ button.icon:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8
 button.link { border: none; background: none; padding: 0; min-height: auto; font-size: inherit; text-align: left; }
 
 /* Input: the question is the page's headline. */
-.compose { display: grid; gap: 0.6rem; }
+.compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
 .compose-label { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.4rem; }
 .compose .row p { margin: 0; }
 .compose button.primary { justify-self: start; }
@@ -161,7 +162,8 @@ button.link { border: none; background: none; padding: 0; min-height: auto; font
 .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
 .chips { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.chip { display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.4rem 0.2rem 0.75rem; background: var(--card); max-width: 100%; }
+/* Wraps so the Edit page's name, Edge device box, team picker and remove button go to a second line rather than past the screen edge. */
+.chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.4rem 0.2rem 0.75rem; background: var(--card); max-width: 100%; }
 /* A close match says so in words; the dashed amber edge only backs that up. */
 .chip.close { border-style: dashed; border-color: var(--likely); }
 .close-mark { color: var(--likely); font-weight: 700; }
@@ -209,7 +211,8 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 .pill { display: inline-block; font-size: 0.8rem; font-weight: 700; border-radius: 3px; padding: 0.05rem 0.45rem; background: var(--light); color: var(--on-light); white-space: nowrap; }
 
 /* The match: a big headline, a strip in proportion to each priority, then a ledger of the four. */
-.headline h2 { font-size: clamp(2.1rem, 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 0.6rem; }
+/* The floor shrinks only below about 300px, so "Unfortunately." still fits on one line. */
+.headline h2 { font-size: clamp(min(2.1rem, 11vw), 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 0.6rem; }
 .headline p { margin: 0; font-size: 1.1rem; }
 .share-bar { margin-top: 1rem; gap: 0.4rem; }
 .risk { display: grid; gap: 1rem; margin-top: -1rem; }
@@ -272,6 +275,8 @@ details[open] > summary .when-open { display: inline; }
 .team h2 .tally { display: flex; gap: 0.3rem; flex-wrap: wrap; font-weight: 400; }
 .summary .expand { font-weight: 600; white-space: nowrap; }
 .results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+/* CVE text carries long identifiers, paths and URLs; break them rather than widen the page. */
+.result, .change, .brief { overflow-wrap: anywhere; }
 .result { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--light); border-radius: var(--radius); padding: 0.75rem 1rem; }
 .result h3 a, .brief strong a, .change h3 a { font-family: var(--mono); }
 
@@ -356,12 +361,18 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
   .fix-item .tally { margin-left: 0; }
   .briefs { padding-left: 0.25rem; }
 }
+/* A phone with a large font setting gets this narrow: unwrapped labels would push the page wider and Chrome would zoom out. */
+@media (max-width: 20rem) {
+  .badge, .pill, .score, .expand, .counter { white-space: normal; }
+}
 
 /* Loading: the logo scans. Fades in late so a fast response never flashes it. */
 main[aria-busy='true'] > :not(.loader) { display: none; }
 /* The status line still announces the wait to screen readers; the loader already says it on screen. */
 main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.loader { display: flex; align-items: center; gap: 1.5rem; padding: 2.5rem 0; animation: appear 0.25s 0.15s both; }
+/* Wraps so the logo sits above the text on narrow screens: wider than the screen, Chrome on Android zooms out and stays zoomed out on the results. */
+.loader { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; padding: 2.5rem 0; animation: appear 0.25s 0.15s both; }
+.loader > div { flex: 1 1 12rem; }
 .loader svg { width: 5rem; height: 5rem; flex: none; color: var(--accent); overflow: visible; }
 .loader h2 { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
 .loader p { margin: 0.3rem 0 0; }
@@ -376,8 +387,9 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .loader .step[data-state='active'] { color: var(--fg); opacity: 1; font-weight: 700; }
 .loader .step[data-state='active']::before { border-color: var(--accent); border-top-color: transparent; animation: spin 0.8s linear infinite; }
 .loader .step[data-state='done'] { color: var(--fg); opacity: 1; }
-.loader .step[data-state='done']::before { content: '✓'; border: none; color: var(--ok); font-weight: 800; width: 0.85rem; height: auto; line-height: 1; text-align: center; }
+.loader .step[data-state='done']::before { content: '✓'; border: none; color: var(--ok); font-weight: 800; width: 0.85rem; height: auto; line-height: 1; text-align: center; animation: tick 0.3s cubic-bezier(0.2, 0.7, 0.2, 1.4) both; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tick { from { transform: scale(0.3); opacity: 0; } }
 @keyframes appear { from { opacity: 0; } }
 @keyframes sweep {
   from { transform: rotate(0deg) translateX(3px) rotate(0deg); }
@@ -453,5 +465,6 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
   .loader, .loader .lens, .loader .heart { animation: none; }
   .loader .step { transition: none; }
   .loader .step[data-state='active']::before { animation: none; border-top-color: var(--accent); }
+  .loader .step[data-state='done']::before { animation: none; }
   .notice.nudge { animation: none; outline: 2px solid var(--exploited); outline-offset: 2px; }
 }

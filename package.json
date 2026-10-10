@@ -17,6 +17,7 @@
     "deploy:free": "tsx scripts/production-config.ts && wrangler deploy --config wrangler.production.jsonc",
     "deploy:paid": "tsx scripts/production-config.ts && wrangler deploy --env paid --config wrangler.production.jsonc",
     "backfill": "tsx scripts/backfill.ts",
+    "check:names": "tsx scripts/check-names.ts",
     "ingest": "tsx scripts/ingest.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
     "seed:remote": "tsx scripts/seed-remote.ts",
