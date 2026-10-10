@@ -14,8 +14,8 @@ Evidence of exploitation beats prediction, and prediction beats severity.
 
 | Priority | Means | Respond |
 |---|---|---|
-| **Act now** | On CISA KEV, or CISA reports active exploitation | 24 hours |
-| **Attend** | Likely to be exploited: high EPSS or LEV, a similar CVE exploited, or a critical bug reachable without a login | 7 days |
+| **Act now** | On CISA KEV, or CISA reports active exploitation; or not yet, but a critical with high EPSS, EPSS of 50% or more, or an edge device that can be taken over automatically | 24 hours if exploited, else 3 days |
+| **Attend** | Likely to be exploited, or critical: high EPSS or LEV, a similar CVE exploited, or CVSS 9.0 or more | 7 days |
 | **Watch** | Serious but less pressing: CVSS 8+, or a public proof of concept | 30 days |
 | **Track** | Affects you, nothing urgent | Next routine update |
 

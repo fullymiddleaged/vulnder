@@ -8,24 +8,26 @@ Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stak
 
 | Priority | When |
 |---|---|
-| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. |
-| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more that an attacker can reach, or a proof-of-concept exploit that is automatable or gives total control. |
-| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, or automatable with total technical impact. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it critical or high (Red Hat's "important" counts as high). |
+| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, or an edge device that CISA rates automatable with total technical impact. Exploited results always sort first. |
+| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, or an edge device with a bug CISA rates automatable or total technical impact. |
+| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable, or any bug CISA has assessed on an edge device. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it high (Red Hat's "important" counts as high). |
 | **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
 
 EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that it has happened. LEV (NIST CSWP 41) adds up a CVE's daily EPSS scores into the chance it has *already* been exploited, so a CVE that was hot for weeks and has since cooled stays visible. It's an estimate, and a lower bound, because Vulnder counts only the EPSS history it has seen since it first ingested the CVE.
 
 ## Reachability
 
-A CVSS score says how bad a bug is, not whether anyone can get at it. A critical goes to Attend only when its CVSS vector says it's reachable over the network with no login and no user action, or CISA judges it automatable. Criticals that need local access, a login or someone's help go to Watch. A critical with no CVSS 3 or 4 vector stays in Attend. From CVSS 7.0 up, each result says which applies ("Reachable over the network without a login", "Needs a login and user action").
+Every critical goes to Attend, whatever its EPSS: EPSS is often near zero in a CVE's first days, and a login is a thin barrier when accounts can be signed up for, bought or guessed. What an attacker needs only orders criticals within Attend. One reachable over the network with no login and no user action, or that CISA judges automatable, ranks above one that needs local access, a login or someone's help. A critical with no CVSS 3 or 4 vector gets the benefit of the doubt and ranks as reachable. From CVSS 7.0 up, each result says which applies ("Reachable over the network without a login", "Needs a login and user action").
 
-Vulnder doesn't know which of your systems face the internet, and doesn't guess: a guess would sometimes miss one and quietly rank real risk lower. Every result is ranked as if it could be reached, so every Act now result asks for a response within 24 hours. If something is air-gapped or internal only, that's your call to make when you plan the fix.
+Vulnder doesn't know which of your systems face the internet, and doesn't guess: a guess would sometimes miss one and quietly rank real risk lower. Every result is ranked as if it could be reached, so every exploited result asks for a response within 24 hours. Act now results not yet exploited get 3 days, the window CISA's [BOD 26-04](https://certcc.github.io/SSVC/howto/cisa_response/) gives an internet-facing system with an automatable, total-impact bug that isn't on KEV. If something is air-gapped or internal only, that's your call to make when you plan the fix.
+
+BOD 26-04 itself turns on whether a system is publicly exposed: the same automatable, total-impact bug gets 3 days exposed and 60 days not. Vulnder treats edge devices as exposed, the one place it knows a system faces the internet, and everything else as not, and never gives a result longer than BOD 26-04 would. So an automatable bug is at least Watch (BOD: 60 days), and on an edge device an automatable or total-impact bug is at least Attend (14 days) and any bug CISA has assessed at least Watch (60 days). Treating everything as exposed would put about 37 times as many results in Act now as KEV does, which would bury the exploited ones. Each result lifted by one of these rules says so, for example "Edge device with an automatable bug: CISA gives internet-facing systems 14 days".
 
 ## Edge devices
 
 Some products face the internet by what they are: VPN and remote-access gateways, edge firewalls, ADCs and load balancers, web application firewalls and mail gateways (FortiGate, PAN-OS, Cisco ASA, NetScaler, BIG-IP, Ivanti Connect Secure and the like). They make up much of CISA KEV. Fixed code recognises them by product name, leaving out their management consoles and client apps, and labels them "Edge device".
 
-Their CVEs get × 1.25 on the risk score, so they rank ahead of similar results **within the same priority**, and their item rises in Fix first. Nothing else changes: an edge device never changes a priority or a response window, and no other result's score goes down. A wrong guess can only lift a result slightly inside its own priority.
+Their CVEs get × 1.25 on the risk score, so they rank ahead of similar results **within the same priority**, and their item rises in Fix first. BOD 26-04's deadlines for an internet-facing system also raise their priority: automatable with total technical impact goes to Act now with 3 days, automatable or total impact to at least Attend, and anything else CISA has assessed to at least Watch (see Reachability). Being an edge device never lowers a priority, a response window or another result's score, so a wrong guess can only lift a result.
 
 ## Teams
 
@@ -37,7 +39,7 @@ Teams only group results ("By team") and label the export. They never change a p
 
 Within a priority, results are ordered by a 0–100 score:
 
-- **threat**: 1 for KEV, otherwise the higher of EPSS and LEV; at least 0.2 with a proof-of-concept exploit, at least 0.3 when a similar CVE is exploited, 0.01 before EPSS has scored it
+- **threat**: 1 for KEV, otherwise the higher of EPSS and LEV; at least 0.01, at least 0.1 for a critical (the EPSS that earns Attend; 0.05 when it needs a login, a user's help or local access), at least 0.2 with a proof-of-concept exploit, at least 0.3 when a similar CVE is exploited
 - × **impact**: CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS
 - × 1.25 if automatable, × 1.25 on an edge device, × 1.2 if used in ransomware
 - capped at 100

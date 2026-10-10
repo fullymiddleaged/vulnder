@@ -133,8 +133,8 @@ Lavender-tinted neutrals with one violet accent and a four-step traffic-light sc
 
 ### Tertiary
 The priority scale. Each tier sets a `--light` (fills, left borders, strip segments) and an `--ink` (text in that colour).
-- **Act Red** (light #b3261e, dark #ff8a80): Act now. Exploited: on CISA KEV, or CISA reports active exploitation. Also blocking problems: form errors, the spent-pass notice and the over-length counter.
-- **Attend Amber** (light #b45309, dark #ffb74d): Attend. Likely to be exploited, or critical and within reach. Also "check this" states: close-match (`?`) chips and badges, lookup notes, and stale-data warnings.
+- **Act Red** (light #b3261e, dark #ff8a80): Act now. Exploited (on CISA KEV, or CISA reports active exploitation), or about to be. Also blocking problems: form errors, the spent-pass notice and the over-length counter.
+- **Attend Amber** (light #b45309, dark #ffb74d): Attend. Likely to be exploited, or critical. Also "check this" states: close-match (`?`) chips and badges, lookup notes, and stale-data warnings.
 - **Watch Yellow** (light #ca8a04, dark #fde047): Watch. High severity or a public exploit. As text on light paper it uses **Watch Ink** (#854d0e), and fills carry dark text.
 - **Track Slate** (light #545a66, dark #b0b6c3): Track. Affects the stack, nothing more applies.
 - **Fixed Green** (light #2e7d32, dark #81c784): good news only: a fix released, a version confirmed, a finished loader step.

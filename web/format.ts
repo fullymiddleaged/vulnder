@@ -194,23 +194,23 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
   act: {
     label: 'Act now',
     light: 'red',
-    brief: 'Being exploited now.',
-    window: 'Within 24 hours',
-    note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation.',
+    brief: 'Being exploited now, or about to be.',
+    window: 'Within 24 hours to 3 days',
+    note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
   },
   attend: {
     label: 'Attend',
     light: 'amber',
     brief: 'Likely to be exploited soon.',
     window: 'Within 7 days',
-    note: 'Likely to be exploited, or critical and within reach: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more with no login or user action needed, or a working exploit that is easy to use or gives full control.',
+    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, or an edge device with a bug that is automatable or gives full control.',
   },
   watch: {
     label: 'Watch',
     light: 'yellow',
     brief: 'Serious, but less pressing.',
     window: 'Within 30 days',
-    note: 'High severity or a public exploit: CVSS 8.0 or more, or a proof-of-concept exploit.',
+    note: 'High severity, a public exploit, or easy to attack at scale: CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable, or any bug CISA has assessed on an edge device.',
   },
   track: {
     label: 'Track',

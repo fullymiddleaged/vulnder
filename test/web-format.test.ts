@@ -168,7 +168,7 @@ describe('priority display', () => {
 
   it('gives each priority a response window matching the server and How it works', () => {
     expect(Object.values(RISK).map((r) => r.window)).toEqual([
-      'Within 24 hours',
+      'Within 24 hours to 3 days',
       'Within 7 days',
       'Within 30 days',
       'In your next routine update',
