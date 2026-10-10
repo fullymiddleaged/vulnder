@@ -63,6 +63,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Fixed
 
+- **New CVEs no longer stop arriving when GitHub's API rate limit runs out.** CVE ingest finds the CVE Program's hourly files through the GitHub API; when that is rate limited (for example on shared Cloudflare IPs without a `GITHUB_TOKEN`), it now downloads them directly by release name instead of waiting, sometimes for hours, with CVE records marked stale.
 - A manifest with more than 5,000 entries, such as a large monorepo lockfile, no longer fails with "invalid request": the first 5,000 are checked, direct dependencies first, and the results say how many were left out.
 - A focus outline no longer frames the whole page after loading or changing view.
 - Large stacks no longer fail on the free plan's 50 database queries per request: the feed now reads the biggest stacks in 15.

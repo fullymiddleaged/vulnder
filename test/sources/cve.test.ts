@@ -213,11 +213,68 @@ describe('cveSource', () => {
     expect(f.calls).toHaveLength(1);
   });
 
-  it('turns GitHub rate limiting into RateLimited', async () => {
-    const f = new FakeFetch().on(RELEASES_URL, () =>
-      jsonResponse({ message: 'rate limited' }, { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1791112003' } }),
-    );
+  it('turns GitHub rate limiting of downloads too into RateLimited', async () => {
+    const f = new FakeFetch().on(/github\.com\//, () => rateLimited());
     const cursor = cveSource.initialCursor(NOW);
     await expect(cveSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).rejects.toThrow(/rate limited/);
+  });
+});
+
+function rateLimited(): Response {
+  return jsonResponse({ message: 'API rate limit exceeded' }, { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1791112003' } });
+}
+
+/** A rate-limited releases API, with zips downloadable by tag (404 for the rest). */
+function byTag(zips: Record<string, CveRecordJson[]>): FakeFetch {
+  return new FakeFetch().on(RELEASES_URL, () => rateLimited()).on(DOWNLOAD, (req) => {
+    const [tag, name] = req.url.slice(DOWNLOAD.length).split('/') as [string, string];
+    const records = zips[name];
+    // The asset must be asked for under its own release's tag.
+    const ownTag = `cve_${name.replace(/\.zip$/, '').replace('_delta_CVEs_at_end_of_day', '_at_end_of_day').replace('_delta_CVEs_at_', '_')}`;
+    if (!records || tag !== ownTag) return new Response('Not Found', { status: 404 });
+    return zipResponse(records);
+  });
+}
+
+describe('cveSource without the releases API', () => {
+  const day3 = [cveRecords['CVE-2026-100148']!, cveRecords['CVE-2026-104910']!];
+
+  it('downloads the end-of-day zip of a finished day by tag, then moves on', async () => {
+    const f = byTag({ '2026-10-03_delta_CVEs_at_end_of_day.zip': day3 });
+    const ctx = sourceContext(f.fetch, NOW);
+    const first = await cveSource.fetchChanges({ day: '2026-10-03', ts: '2026-10-03T00:00:00.000Z', id: '' }, ctx);
+    expect(first.records.map((r) => r.id)).toEqual(['CVE-2026-100148', 'CVE-2026-104910']);
+    const second = await cveSource.fetchChanges(first.nextCursor, ctx);
+    expect(second.nextCursor).toEqual({ day: '2026-10-04', ts: '2026-10-03T15:52:56.095Z', id: '' });
+    // The API is asked once; the zip is downloaded once and cached for the run.
+    expect(f.urls().filter((u) => u.startsWith(RELEASES_URL))).toHaveLength(1);
+    expect(f.urls()).toEqual([RELEASES_URL, `${DOWNLOAD}cve_2026-10-03_at_end_of_day/2026-10-03_delta_CVEs_at_end_of_day.zip`]);
+  });
+
+  it("reads today's latest hourly zip, walking back from the current hour", async () => {
+    const f = byTag({ '2026-10-04_delta_CVEs_at_1700Z.zip': [withMeta(cveRecords['CVE-2026-104910']!, { dateUpdated: '2026-10-04T16:00:00.000Z' })] });
+    const ctx = sourceContext(f.fetch, NOW);
+    const res = await cveSource.fetchChanges({ day: '2026-10-04', ts: '2026-10-04T00:00:00.000Z', id: '' }, ctx);
+    expect(res.records.map((r) => r.id)).toEqual(['CVE-2026-104910']);
+    // 18:00 has no release yet; 17:00 does. No end-of-day zip is tried for today.
+    expect(f.urls().slice(1).map((u) => u.split('/').pop())).toEqual(['2026-10-04_delta_CVEs_at_1800Z.zip', '2026-10-04_delta_CVEs_at_1700Z.zip']);
+    expect(await cveSource.fetchChanges(res.nextCursor, ctx)).toMatchObject({ records: [], done: true });
+  });
+
+  it('waits on the latest hourly zip until a finished day has its end-of-day zip', async () => {
+    const f = byTag({ '2026-10-03_delta_CVEs_at_2300Z.zip': [] });
+    const cursor: CveCursor = { day: '2026-10-03', ts: '2026-10-03T20:00:00.000Z', id: 'CVE-2026-1' };
+    expect(await cveSource.fetchChanges(cursor, sourceContext(f.fetch, NOW))).toEqual({ records: [], nextCursor: cursor, done: true });
+  });
+
+  it('is done when today has no release yet, and fails loudly for a past day with none', async () => {
+    const early = new Date('2026-10-05T00:30:00Z');
+    const today: CveCursor = { day: '2026-10-05', ts: '2026-10-04T23:00:00.000Z', id: '' };
+    expect(await cveSource.fetchChanges(today, sourceContext(byTag({}).fetch, early))).toMatchObject({ done: true, records: [] });
+    const past: CveCursor = { day: '2026-10-01', ts: '2026-10-01T00:00:00.000Z', id: '' };
+    const f = byTag({});
+    await expect(cveSource.fetchChanges(past, sourceContext(f.fetch, NOW))).rejects.toThrow(/re-run the backfill/);
+    // The end-of-day release and all 24 hourly ones were tried.
+    expect(f.urls().filter((u) => u.startsWith(DOWNLOAD))).toHaveLength(25);
   });
 });

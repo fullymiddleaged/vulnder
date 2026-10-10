@@ -2,6 +2,7 @@ import { strFromU8, unzipSync } from 'fflate';
 import { USER_AGENT } from '../../config';
 import { CVE_ID } from '../../lib/normalize';
 import { utcDay, nextDay } from '../../lib/time';
+import { RateLimited } from '../budget';
 import type { FetchResult, Source, SourceContext, VulnPatch } from '../types';
 import { githubError, githubFetch, githubGet, nextLink } from './github';
 import { parseCveRecord } from './cve-record';
@@ -19,6 +20,12 @@ import { parseCveRecord } from './cve-record';
  * records after the cursor in (dateUpdated, id) order. It only moves on to the
  * next day once that day's end-of-day zip has been read in full, so nothing
  * committed late in the day is skipped.
+ *
+ * Zips are found through the GitHub releases API. When that is rate limited
+ * (Workers share egress IPs, so an unauthenticated quota can be spent by
+ * others), they are downloaded by release tag instead: each delta zip sits in
+ * a release tagged `cve_YYYY-MM-DD_HHMMZ` or `cve_YYYY-MM-DD_at_end_of_day`, and
+ * downloads don't count against the API quota.
  */
 
 export interface CveCursor {
@@ -32,6 +39,7 @@ export interface CveCursor {
 
 export const RELEASES_URL = 'https://api.github.com/repos/CVEProject/cvelistV5/releases?per_page=100';
 export const RAW_BASE = 'https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves';
+export const DOWNLOAD_BASE = 'https://github.com/CVEProject/cvelistV5/releases/download';
 
 const PAGE_SIZE = 250;
 /**
@@ -53,16 +61,31 @@ interface ZipEntry {
   id: string;
 }
 
+/** The zip to read for a day; final when it is the end-of-day zip. */
+interface DayZip {
+  url: string;
+  final: boolean;
+}
+
+interface LoadedZip {
+  bytes: Uint8Array;
+  entries: ZipEntry[];
+}
+
 interface RunCache {
   releases?: { index: Map<string, DayAssets>; oldestDay: string | null; nextUrl: string | null; pages: number };
-  zips: Map<string, { bytes: Uint8Array; entries: ZipEntry[] }>;
+  /** Set once the releases API is rate limited; the rest of the run downloads by tag. */
+  listingLimited: boolean;
+  /** Days already looked up by tag in this run. */
+  byTag: Map<string, DayZip | null>;
+  zips: Map<string, LoadedZip>;
 }
 
 const caches = new WeakMap<SourceContext, RunCache>();
 function cacheFor(ctx: SourceContext): RunCache {
   let c = caches.get(ctx);
   if (!c) {
-    c = { zips: new Map() };
+    c = { listingLimited: false, byTag: new Map(), zips: new Map() };
     caches.set(ctx, c);
   }
   return c;
@@ -81,16 +104,12 @@ export const cveSource: Source<CveCursor> = {
     const day = cursor.day;
     if (day > today) return { records: [], nextCursor: cursor, done: true };
 
-    const assets = await findDayAssets(ctx, day);
-    if (!assets) {
+    const found = await findDayZip(ctx, day, today);
+    if (!found) {
       if (day === today) return { records: [], nextCursor: cursor, done: true };
       throw new Error(`no cvelistV5 delta release found for ${day}; re-run the backfill`);
     }
-
-    const hourly = [...assets.hourly].sort((a, b) => b[0].localeCompare(a[0]));
-    const url = assets.endOfDay ?? hourly[0]?.[1];
-    if (!url) return { records: [], nextCursor: cursor, done: true };
-    const final = assets.endOfDay !== null;
+    const { url, final } = found;
 
     const zip = await loadZip(ctx, url);
     const pending = zip.entries.filter((e) => after(e, cursor));
@@ -133,6 +152,54 @@ function parseRecordBytes(data: Uint8Array): VulnPatch | null {
   }
 }
 
+/**
+ * The zip to read for a day: the end-of-day zip if there is one, otherwise the
+ * latest hourly zip. Null when the day has none yet.
+ */
+async function findDayZip(ctx: SourceContext, day: string, today: string): Promise<DayZip | null> {
+  const cache = cacheFor(ctx);
+  if (!cache.listingLimited) {
+    try {
+      const assets = await findDayAssets(ctx, day);
+      if (!assets) return null;
+      if (assets.endOfDay) return { url: assets.endOfDay, final: true };
+      const latest = [...assets.hourly].sort((a, b) => b[0].localeCompare(a[0]))[0];
+      return latest ? { url: latest[1], final: false } : null;
+    } catch (err) {
+      if (!(err instanceof RateLimited)) throw err;
+      ctx.log(`cve: ${err.message}; downloading zips by release tag instead`);
+      cache.listingLimited = true;
+    }
+  }
+  return findDayZipByTag(ctx, day, today);
+}
+
+/**
+ * Finds a day's zip without the releases API, by trying the end-of-day release
+ * (for a finished day) and then each hourly release from the latest hour back.
+ * A zip that exists is downloaded by the probe and kept for loadZip.
+ */
+async function findDayZipByTag(ctx: SourceContext, day: string, today: string): Promise<DayZip | null> {
+  const cache = cacheFor(ctx);
+  const known = cache.byTag.get(day);
+  if (known !== undefined) return known;
+  const candidates: DayZip[] = [];
+  if (day < today) candidates.push({ url: `${DOWNLOAD_BASE}/cve_${day}_at_end_of_day/${day}_delta_CVEs_at_end_of_day.zip`, final: true });
+  for (let h = day === today ? ctx.now().getUTCHours() : 23; h >= 0; h--) {
+    const at = `${String(h).padStart(2, '0')}00Z`;
+    candidates.push({ url: `${DOWNLOAD_BASE}/cve_${day}_${at}/${day}_delta_CVEs_at_${at}.zip`, final: false });
+  }
+  let found: DayZip | null = null;
+  for (const c of candidates) {
+    if (await tryLoadZip(ctx, c.url)) {
+      found = c;
+      break;
+    }
+  }
+  cache.byTag.set(day, found);
+  return found;
+}
+
 /** Finds the delta zips for a day, paging back through releases as needed. */
 async function findDayAssets(ctx: SourceContext, day: string): Promise<DayAssets | null> {
   const cache = cacheFor(ctx);
@@ -171,11 +238,22 @@ async function findDayAssets(ctx: SourceContext, day: string): Promise<DayAssets
   return r.index.get(day) ?? null;
 }
 
-async function loadZip(ctx: SourceContext, url: string): Promise<{ bytes: Uint8Array; entries: ZipEntry[] }> {
+async function loadZip(ctx: SourceContext, url: string): Promise<LoadedZip> {
+  const zip = await tryLoadZip(ctx, url);
+  if (!zip) throw new Error(`cvelistV5 zip ${url}: HTTP 404`);
+  return zip;
+}
+
+/** Downloads and indexes a delta zip, or returns null when it doesn't exist. */
+async function tryLoadZip(ctx: SourceContext, url: string): Promise<LoadedZip | null> {
   const cache = cacheFor(ctx);
   const hit = cache.zips.get(url);
   if (hit) return hit;
   const res = await githubFetch(ctx, url, { headers: { 'User-Agent': USER_AGENT } }, 'cve');
+  if (res.status === 404) {
+    await res.body?.cancel();
+    return null;
+  }
   if (!res.ok) throw new Error(`cvelistV5 zip ${url}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   const entries = indexZip(bytes);
