@@ -350,6 +350,8 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .badge.ransomware { color: var(--fg); font-weight: 700; }
 .facts { gap: 0.35rem 0.5rem; margin: 0.4rem 0; }
 .badge.muted { color: var(--muted); border-style: dashed; }
+/* From before the chosen window, shown by the year-long safety net. */
+.badge.older { color: var(--muted); }
 @media (max-width: 36rem) {
   .fix-item .tally { margin-left: 0; }
   .briefs { padding-left: 0.25rem; }

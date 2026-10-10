@@ -1,19 +1,23 @@
 /**
- * Populates D1 with the last 90 days, then leaves every source's cursor where
- * regular ingest picks up.
+ * Populates D1 with the last 90 days, and the safety net's year
+ * (src/ingest/retention.ts: known-exploited, likely-exploited and CVSS 9.9+),
+ * then leaves every source's cursor where regular ingest picks up. Safe to
+ * re-run on a live database: unchanged records aren't rewritten.
  *
  *   npm run backfill                       # local D1
  *   npm run backfill -- --remote           # remote D1 (run `npm run db:migrate:remote` first)
  *   npm run backfill -- --cvelist ../cvelistV5 --no-update
  *
  * Steps:
- *   1. KEV: entries added inside the window, filled in from their CVE records.
+ *   1. KEV: entries added inside the year, filled in from their CVE records.
  *   2. CVE: a shallow clone of cvelistV5 (in .cache/ by default); every record
- *      published inside the window. The CVE cursor is set to the clone's newest
- *      dateUpdated, so the release zips continue from there.
- *   3. GitHub advisories modified inside the window, and EPSS for everything
- *      stored. EPSS scores become the baseline, so the backfill raises no
- *      epss_crossed events.
+ *      published inside the window, and those inside the year that qualify.
+ *      The CVE cursor is set to the clone's newest dateUpdated, so the release
+ *      zips continue from there.
+ *   3. GitHub advisories modified inside the year, EPSS for everything stored,
+ *      then this and last year's CVEs with EPSS of 10% or more
+ *      (src/ingest/epss-net.ts). EPSS scores become the baseline, so the
+ *      backfill raises no epss_crossed events.
  *
  * GITHUB_TOKEN, if set, raises the GitHub API limit.
  */
@@ -30,6 +34,7 @@ import { parseCveRecord } from '../src/ingest/sources/cve-record';
 import type { CveCursor } from '../src/ingest/sources/cve';
 import type { GhsaCursor } from '../src/ingest/sources/ghsa';
 import type { VulnPatch } from '../src/ingest/types';
+import { keepStart } from '../src/ingest/retention';
 import { utcDay, windowStart } from '../src/lib/time';
 import { parseArgs, parseTarget } from './lib/args';
 import { cveFiles, ensureClone, readMeta } from './lib/cvelist-clone';
@@ -50,6 +55,7 @@ const target = parseTarget(values);
 const log = (m: string) => console.log(`[backfill] ${m}`);
 const now = new Date();
 const cutoff = windowStart(now, RETENTION_DAYS);
+const yearStart = keepStart(now);
 const store = new WranglerStore({ target, flushBytes: 8_000_000, config: target === 'remote' ? productionConfig() : undefined });
 const githubToken = process.env.GITHUB_TOKEN || undefined;
 const SCAN_CONCURRENCY = 256;
@@ -80,7 +86,7 @@ async function migrate(): Promise<void> {
 
 async function backfillCve(): Promise<void> {
   await ensureClone(values.cvelist!, !values['no-update'], log);
-  log(`scanning ${values.cvelist} for records published since ${cutoff.slice(0, 10)}`);
+  log(`scanning ${values.cvelist} for records published since ${cutoff.slice(0, 10)}, and qualifying ones since ${yearStart.slice(0, 10)}`);
 
   let scanned = 0;
   let maxTs = '';
@@ -92,7 +98,7 @@ async function backfillCve(): Promise<void> {
       final && maxTs
         ? [setMetaStatement(cursorKey('cve'), { day: utcDay(new Date(maxTs)), ts: maxTs, id: maxId } satisfies CveCursor, now)]
         : [];
-    const stats = await applyPatches(store, batch, { now, windowStart: cutoff, epssEvents: false, extraStatements: extra });
+    const stats = await applyPatches(store, batch, { now, windowStart: cutoff, keepStart: yearStart, epssEvents: false, extraStatements: extra });
     stored += stats.written;
     batch = [];
   };
@@ -113,7 +119,8 @@ async function backfillCve(): Promise<void> {
         maxId = meta.cveId;
       }
     }
-    if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < cutoff) return null;
+    // The year's records all go to merge, which keeps those before the window only when they qualify.
+    if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < yearStart) return null;
     return parseCveRecord(JSON.parse(await readFile(file, 'utf8')));
   };
 
@@ -139,9 +146,9 @@ summarize(await runIngest({ store, fetch, budget: unlimited(), runtime: 'node', 
 // 2. CVE records from the clone.
 if (!values['skip-cve']) await backfillCve();
 
-// 3. GitHub advisories over the whole window, then EPSS as the baseline.
+// 3. GitHub advisories over the whole year, then EPSS as the baseline (and the high-EPSS catch-up).
 await store.batch([
-  setMetaStatement(cursorKey('ghsa'), { since: cutoff, next: null, maxSeen: null } satisfies GhsaCursor, now),
+  setMetaStatement(cursorKey('ghsa'), { since: yearStart, next: null, maxSeen: null } satisfies GhsaCursor, now),
   setMetaStatement(cursorKey('epss'), { scoreDate: null, lastId: null }, now),
 ]);
 summarize(

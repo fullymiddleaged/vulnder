@@ -1,12 +1,14 @@
 import { RETENTION_DAYS } from '../config';
 import { prunePassesStatement } from '../lib/pass';
 import { windowStart } from '../lib/time';
+import { KEEP_PARAMS, KEEP_SQL, keepStart } from './retention';
 import { stmt, type Statement } from './store';
 
 /**
  * Daily housekeeping, as one batch:
  * - prune vulns outside the retention window: published before it and no event
- *   inside it (an old CVE that lands on KEV this week stays);
+ *   inside it (an old CVE that lands on KEV this week stays), except the
+ *   safety net, kept for a year (src/ingest/retention.ts);
  * - drop events older than the window, and orphaned rows (family leaders too:
  *   their members keep the family id, but nothing new can join);
  * - drop feed passes older than a day;
@@ -14,16 +16,18 @@ import { stmt, type Statement } from './store';
  */
 export function maintenanceStatements(now: Date): Statement[] {
   const cutoff = windowStart(now, RETENTION_DAYS);
+  const params = [cutoff, keepStart(now), ...KEEP_PARAMS];
   const stale = `SELECT id FROM vulns
     WHERE (published_at IS NULL OR published_at < ?1)
       AND (last_event_at IS NULL OR last_event_at < ?1)
-      AND (kev_added_at IS NULL OR kev_added_at < ?1)`;
+      AND (kev_added_at IS NULL OR kev_added_at < ?1)
+      AND NOT ${KEEP_SQL}`;
   return [
-    stmt(`DELETE FROM families WHERE leader IN (${stale})`, cutoff),
-    stmt(`DELETE FROM affected WHERE vuln_id IN (${stale})`, cutoff),
-    stmt(`DELETE FROM events WHERE vuln_id IN (${stale})`, cutoff),
-    stmt(`DELETE FROM aliases WHERE vuln_id IN (${stale})`, cutoff),
-    stmt(`DELETE FROM vulns WHERE id IN (${stale})`, cutoff),
+    stmt(`DELETE FROM families WHERE leader IN (${stale})`, ...params),
+    stmt(`DELETE FROM affected WHERE vuln_id IN (${stale})`, ...params),
+    stmt(`DELETE FROM events WHERE vuln_id IN (${stale})`, ...params),
+    stmt(`DELETE FROM aliases WHERE vuln_id IN (${stale})`, ...params),
+    stmt(`DELETE FROM vulns WHERE id IN (${stale})`, ...params),
     stmt('DELETE FROM events WHERE occurred_at < ?', cutoff),
     prunePassesStatement(now),
     stmt(`UPDATE catalog SET count = c.n

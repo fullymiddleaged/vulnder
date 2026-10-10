@@ -23,6 +23,15 @@ Vulnder doesn't know which of your systems face the internet, and doesn't guess:
 
 BOD 26-04 itself turns on whether a system is publicly exposed: the same automatable, total-impact bug gets 3 days exposed and 60 days not. Vulnder treats edge devices as exposed, the one place it knows a system faces the internet, and everything else as not, and never gives a result longer than BOD 26-04 would. So an automatable bug is at least Watch (BOD: 60 days), and on an edge device an automatable or total-impact bug is at least Attend (14 days) and any bug CISA has assessed at least Watch (60 days). Treating everything as exposed would put about 37 times as many results in Act now as KEV does, which would bury the exploited ones. Each result lifted by one of these rules says so, for example "Edge device with an automatable bug: CISA gives internet-facing systems 14 days".
 
+## Safety net
+
+Results come from the time window you pick (7, 30 or 90 days). Whatever the window, these CVEs from the last year show too, marked "Older":
+
+- added to CISA KEV in the last year, or published in it and reported by CISA as actively exploited;
+- published in the last year with EPSS of 10% or more, a NIST LEV estimate of 20% or more, or CVSS 9.9 or more.
+
+An exploited bug from six months ago that's still unpatched is exactly what shouldn't drop out of view. Ingest keeps these for a year instead of 90 days. EPSS only scores CVEs Vulnder already holds, so once a day ingest also asks FIRST for this and last year's CVEs with EPSS of 10% or more and fetches any it doesn't have; one that was dropped at 90 days and has since turned hot comes back.
+
 ## Edge devices
 
 Some products face the internet by what they are: VPN and remote-access gateways, edge firewalls, ADCs and load balancers, web application firewalls and mail gateways (FortiGate, PAN-OS, Cisco ASA, NetScaler, BIG-IP, Ivanti Connect Secure and the like). They make up much of CISA KEV. Fixed code recognises them by product name, leaving out their management consoles and client apps, and labels them "Edge device".

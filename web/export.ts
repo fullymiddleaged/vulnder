@@ -94,6 +94,7 @@ function mdResult(r: Result): string[] {
   };
   add('Priority', `${RISK[r.priority].label}, risk score ${formatScore(r.score)}/100${r.respondWithinHours !== null ? `, respond within ${describeHours(r.respondWithinHours)}` : ''}`);
   add('Affects', `${r.matched.map((m) => stackLine(m)).join(', ')}; ${r.match === 'exact' ? 'exact match' : 'close match'}, ${r.confidence === 'version_confirmed' ? 'version confirmed' : 'version not confirmed'}`);
+  add('Older than the window', r.beforeWindow ? `published ${r.publishedAt?.slice(0, 10) ?? 'unknown'}; shown because it is exploited, likely to be, or CVSS 9.9+ in the last year` : null);
   add('Decided by', r.why.decisive ? `${mdText(r.why.decisive.text)} (${KIND[r.why.decisive.kind]})` : null);
   add('Other reasons', r.why.others.length > 0 ? r.why.others.map((o) => mdText(o.text)).join('; ') : null);
   add('Not available', r.why.missing.length > 0 ? r.why.missing.map(mdText).join('; ') : null);
@@ -117,7 +118,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
     '',
     `- **From:** ${mdText(name)}, ${mdLink(feed.links.page) ?? ''}`,
     `- **Generated:** ${feed.generatedAt}`,
-    `- **Window:** CVEs from the last ${feed.days} days`,
+    `- **Window:** CVEs from the last ${feed.days} days, plus known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year`,
     `- **Priorities:** ${counts}`,
     `- **Stack:** ${feed.stack.split(',').filter(Boolean).map(stackLine).join(', ')}`,
   ];

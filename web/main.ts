@@ -626,7 +626,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
 
   // The answer first: the headline with ways to share and follow it, the stack it answers for, priorities
   // at a glance, what to fix first, the week's changes, every result, then share and follow again in full.
-  const headline = matchHeadline(feed.results.length, feed.days, unmatched);
+  const headline = matchHeadline(feed.results.length, feed.days, unmatched, feed.results.filter((r) => r.beforeWindow).length);
   app.append(
     h(
       'section',
@@ -696,6 +696,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
     'section',
     { class: 'block stack', 'aria-labelledby': 'stack-title' },
     h('div', { class: 'row wrap' }, h('h2', { id: 'stack-title', class: 'stack-title' }, 'Your stack'), h('span', { class: 'muted' }, stackSummary(items)), h('span', { class: 'stack-actions' }, daySelect, editButton)),
+    h('p', { class: 'muted small' }, 'Whatever the window, known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show too, as a safety net.'),
     editNotice,
     allNotes.length > 0 ? h('ul', { class: 'notice notes', 'aria-label': 'About this lookup' }, allNotes.map((n) => h('li', {}, n))) : null,
     h(
@@ -1135,6 +1136,17 @@ function renderSummary(text: string | null): HTMLElement | null {
   return h('p', { class: 'small summary' }, body, ' ', toggle);
 }
 
+/** From before the chosen window, kept in view because it's exploited, likely to be, or CVSS 9.9+. */
+function olderBadge(r: Result): HTMLElement {
+  const when = r.evidence.kevAddedAt ?? r.publishedAt;
+  const month = when ? new Date(when).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : null;
+  return h(
+    'span',
+    { class: 'badge older', title: 'Older than your time window. Exploited, likely to be, or CVSS 9.9+ CVEs from the last year always show, in case they were missed.' },
+    month ? `Older: ${r.evidence.kevAddedAt ? 'on KEV since' : 'from'} ${month}` : 'Older than your window',
+  );
+}
+
 function renderResult(r: Result): HTMLElement {
   const advisory = safeHref(r.links.advisory);
   const patch = safeHref(r.links.patch);
@@ -1157,6 +1169,7 @@ function renderResult(r: Result): HTMLElement {
           )
         : null,
       h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
+      r.beforeWindow ? olderBadge(r) : null,
     ),
     r.title ? h('p', { class: 'title' }, r.title) : null,
     renderSummary(r.summary),

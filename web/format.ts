@@ -22,7 +22,8 @@ export function describeChange(c: Change): string {
  * With no matches it says so only for what was recognised: `unmatched` names
  * that resolved to nothing were never checked, so "nobody's been into it" would overclaim.
  */
-export function matchHeadline(count: number, days: number, unmatched = 0): { title: string; subtitle: string } {
+/** `older` of the `count` are from before the window, shown by the year-long safety net. */
+export function matchHeadline(count: number, days: number, unmatched = 0, older = 0): { title: string; subtitle: string } {
   if (count === 0 && unmatched > 0) {
     const names = unmatched === 1 ? '1 name' : `${unmatched} names`;
     return { title: 'No matches.', subtitle: `Nothing in the last ${days} days for the items we recognised, but ${names} couldn't be matched and weren't checked. Add them with Edit stack.` };
@@ -30,10 +31,15 @@ export function matchHeadline(count: number, days: number, unmatched = 0): { tit
   if (count === 0) {
     return { title: 'No matches.', subtitle: `Nobody's been into your stack in the last ${days} days. Keep it that way.` };
   }
-  return {
-    title: "It's a match. Unfortunately.",
-    subtitle: `${count} ${count === 1 ? 'CVE is' : 'CVEs are'} into your stack from the last ${days} days. Red flags, ranked:`,
-  };
+  const recent = count - older;
+  const cves = (n: number) => `${n} ${n === 1 ? 'CVE' : 'CVEs'}`;
+  const from =
+    older === 0
+      ? `${cves(count)} ${count === 1 ? 'is' : 'are'} into your stack from the last ${days} days.`
+      : recent === 0
+        ? `${cves(older)} from the last year ${older === 1 ? 'is' : 'are'} still into your stack: exploited, likely to be, or critical.`
+        : `${cves(recent)} ${recent === 1 ? 'is' : 'are'} into your stack from the last ${days} days, plus ${older} older ${older === 1 ? 'one' : 'ones'} from the last year that ${older === 1 ? 'is' : 'are'} exploited, likely to be, or critical.`;
+  return { title: "It's a match. Unfortunately.", subtitle: `${from} Red flags, ranked:` };
 }
 
 export function pct(v: number): string {

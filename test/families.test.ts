@@ -253,8 +253,8 @@ describe('families in the feed', () => {
       ...[
         ['CVE-2026-0001', '2026-10-01T00:00:00.000Z', null],
         ['CVE-2026-0002', '2026-10-02T00:00:00.000Z', null],
-        // Exploited, and outside the 30-day window: still counts as evidence.
-        ['CVE-2026-0003', '2026-01-02T00:00:00.000Z', '2026-01-05T00:00:00.000Z'],
+        // Exploited, and outside the window and the year-long safety net: still counts as evidence.
+        ['CVE-2026-0003', '2025-01-02T00:00:00.000Z', '2025-01-05T00:00:00.000Z'],
         ['CVE-2026-0004', '2026-10-03T00:00:00.000Z', null],
       ].flatMap(([id, published, kev]) => [
         env.DB.prepare(`INSERT INTO vulns (id, title, published_at, kev_added_at, cvss_score, family_id, updated_at) VALUES (?, ?, ?, ?, 5.0, ?, ?)`).bind(

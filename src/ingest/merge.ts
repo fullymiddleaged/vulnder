@@ -1,5 +1,6 @@
 import { EPSS_HIGH, EPSS_RISE } from '../config';
 import { daysBetween, levTerm } from '../lib/lev';
+import { keptLonger } from './retention';
 import type { Ref, SeverityLabel, SourceName, Ssvc, VulnPatch } from './types';
 
 /** A stored vulnerability, with JSON columns parsed. */
@@ -44,6 +45,12 @@ export interface EventInput {
 export interface MergeOptions {
   /** Start of the retention window (ISO). New records outside it are skipped. */
   windowStart: string;
+  /**
+   * Start of the safety net's year (src/ingest/retention.ts): a new record
+   * before windowStart is still stored when it qualifies. Without it, nothing
+   * outside windowStart is.
+   */
+  keepStart?: string;
   /** False during backfill: EPSS values are recorded as the baseline without events. */
   epssEvents: boolean;
 }
@@ -106,7 +113,20 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
     if (patch.source === 'epss') return { record: null, events: [], changed: false };
     const inWindow =
       (f.publishedAt != null && f.publishedAt >= opts.windowStart) ||
-      (f.kevAddedAt != null && f.kevAddedAt >= opts.windowStart);
+      (f.kevAddedAt != null && f.kevAddedAt >= opts.windowStart) ||
+      (opts.keepStart !== undefined &&
+        keptLonger(
+          {
+            publishedAt: f.publishedAt ?? null,
+            kevAddedAt: f.kevAddedAt ?? null,
+            exploitation: f.ssvc?.exploitation ?? null,
+            cvssScore: f.cvssScore ?? null,
+            // Set when a CVE record arrives with the score that brought it back (src/ingest/epss-net.ts).
+            epss: f.epss ?? null,
+            levLog: 0,
+          },
+          opts.keepStart,
+        ));
     if (!inWindow) return { record: null, events: [], changed: false };
   }
 

@@ -67,6 +67,8 @@ export interface Result {
   respondWithinHours: number | null;
   /** For urgent CVEs with no fixed version known: what to do meanwhile. */
   mitigation: { action: string | null; advisory: string | null } | null;
+  /** Older than the chosen window, shown because it's exploited, likely to be, or CVSS 9.9+ in the last year. */
+  beforeWindow?: boolean;
 }
 
 export interface Reason {

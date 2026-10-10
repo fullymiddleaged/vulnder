@@ -1,6 +1,14 @@
 /** How long ingest keeps a vulnerability after its last publication or event. */
 export const RETENTION_DAYS = 90;
 
+/**
+ * The safety net: known-exploited, likely-exploited and CVSS 9.9+ CVEs are
+ * kept, and shown whatever time window is picked, for this long instead
+ * (src/ingest/retention.ts).
+ */
+export const KEEP_DAYS = 365;
+export const KEEP_CVSS = 9.9;
+
 /** EPSS at or above this is the "Likely" tier, and crossing it upward is an event. */
 export const EPSS_HIGH = 0.1;
 

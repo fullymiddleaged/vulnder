@@ -1,6 +1,7 @@
 import { EPSS_HIGH } from '../config';
 import { lev } from '../lib/lev';
 import { addDays } from '../lib/time';
+import { keepStart, keptLonger } from '../ingest/retention';
 import { allForKeys, type Store } from '../ingest/store';
 import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
 import { formatItem, type StackItem } from '../stack/format';
@@ -80,6 +81,11 @@ export interface MatchedVuln {
    * (CISA's required action, when on KEV) and where to read more. Null otherwise.
    */
   mitigation: { action: string | null; advisory: string | null } | null;
+  /**
+   * Older than the chosen window, shown by the safety net: known exploited,
+   * likely exploited or CVSS 9.9+ in the last year (src/ingest/retention.ts).
+   */
+  beforeWindow: boolean;
 }
 
 export interface ChangeEvent {
@@ -124,8 +130,23 @@ const ROWS_PER_EVENT_LOOKUP = 4;
 
 const inWindow = (v: VulnRow, since: string) => (v.published_at !== null && v.published_at >= since) || (v.last_event_at !== null && v.last_event_at >= since);
 
+/** The safety net (src/ingest/retention.ts): shown whatever the window. */
+const inSafetyNet = (v: VulnRow, start: string) =>
+  keptLonger(
+    {
+      publishedAt: v.published_at,
+      kevAddedAt: v.kev_added_at,
+      exploitation: parseJson<Ssvc | null>(v.ssvc ?? 'null', null)?.exploitation ?? null,
+      cvssScore: v.cvss_score,
+      epss: v.epss,
+      levLog: v.lev_log ?? 0,
+    },
+    start,
+  );
+
 export async function matchStack(store: Store, items: StackItem[], opts: MatchOptions): Promise<MatchResult> {
   const since = addDays(opts.now, -opts.days).toISOString();
+  const netStart = keepStart(opts.now);
   const byKey = new Map<string, StackItem[]>();
   for (const item of items) {
     const k = itemKey(item);
@@ -137,7 +158,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
   // 2. the vulns among those that are inside the window.
   const components = await loadComponents(store, items, opts.components);
   const affected = components.flatMap((d) => d.affected);
-  const vulns = new Map(components.flatMap((d) => d.vulns.filter((v) => inWindow(v, since)).map((v) => [v.id, v] as const)));
+  const vulns = new Map(components.flatMap((d) => d.vulns.filter((v) => inWindow(v, since) || inSafetyNet(v, netStart)).map((v) => [v.id, v] as const)));
   const rowsByVuln = new Map<string, AffectedRow[]>();
   for (const a of affected) {
     if (!vulns.has(a.vuln_id)) continue;
@@ -211,7 +232,7 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
     results.push(
-      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), edge, opts.now, exploitedSibling(v)),
+      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), edge, opts.now, exploitedSibling(v), !inWindow(v, since)),
     );
   }
 
@@ -253,6 +274,7 @@ function toResult(
   edge: boolean,
   now: Date,
   exploitedSibling: string | null,
+  beforeWindow: boolean,
 ): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
   const links = pickLinks(v.id, refs);
@@ -304,6 +326,7 @@ function toResult(
     why,
     respondWithinHours,
     mitigation: mitigationFor(priority, fixedVersions, v.kev_required_action, links.advisory),
+    beforeWindow,
   };
 }
 

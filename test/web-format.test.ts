@@ -57,6 +57,11 @@ describe('UI formatting', () => {
     expect(matchHeadline(0, 30)).toEqual({ title: 'No matches.', subtitle: "Nobody's been into your stack in the last 30 days. Keep it that way." });
     expect(matchHeadline(1, 7).subtitle).toBe('1 CVE is into your stack from the last 7 days. Red flags, ranked:');
     expect(matchHeadline(3, 30)).toEqual({ title: "It's a match. Unfortunately.", subtitle: '3 CVEs are into your stack from the last 30 days. Red flags, ranked:' });
+    // Older results from the safety net are counted apart, so the window isn't misstated.
+    expect(matchHeadline(3, 30, 0, 1).subtitle).toBe(
+      '2 CVEs are into your stack from the last 30 days, plus 1 older one from the last year that is exploited, likely to be, or critical. Red flags, ranked:',
+    );
+    expect(matchHeadline(2, 7, 0, 2).subtitle).toBe('2 CVEs from the last year are still into your stack: exploited, likely to be, or critical. Red flags, ranked:');
   });
 
   it("doesn't call a stack clear when some of its names were never checked", () => {

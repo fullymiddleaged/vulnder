@@ -2,8 +2,10 @@ import { RETENTION_DAYS } from '../config';
 import { utcDay, windowStart } from '../lib/time';
 import { applyPatches, type ApplyStats } from './apply';
 import { Budget, BudgetExhausted, RateLimited } from './budget';
+import { catchUpHighEpss } from './epss-net';
 import { assignFamilies, type Embedder, type FamilyReport } from './families';
 import { maintenanceStatements } from './maintenance';
+import { keepStart } from './retention';
 import {
   bumpDataVersionStatement,
   cursorKey,
@@ -126,6 +128,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
         const stats = await applyPatches(store, res.records, {
           now: now(),
           windowStart: windowStart(now(), RETENTION_DAYS),
+          keepStart: keepStart(now()),
           epssEvents: opts.epssEvents ?? true,
           extraStatements: [setMetaStatement(cursorKey(name), res.nextCursor, now())],
         });
@@ -166,6 +169,17 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
       `${name}: ${report.status}, ${report.pages} page(s), ${report.received} received, ${report.written} written, ` +
         `${report.events} event(s), ${report.skipped} skipped, ${report.deleted} deleted`,
     );
+  }
+
+  // After an EPSS pass: bring back CVEs from the last year whose EPSS has passed 10%.
+  if (order.includes('epss')) {
+    try {
+      const net = await catchUpHighEpss(ctx, opts.epssEvents ?? true);
+      if (net.candidates > 0 || net.fetched > 0) log(`epss net: ${net.candidates} candidate(s), ${net.fetched} record(s) fetched, ${net.stored} stored`);
+      if (net.stats && (net.stats.written > 0 || net.stats.events > 0)) anyWrites = true;
+    } catch (err) {
+      log(`epss net: error: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   let families: FamilyReport | undefined;
@@ -220,6 +234,7 @@ async function enrichFromCveRecords(
   const stats = await applyPatches(ctx.store, patches, {
     now: now(),
     windowStart: windowStart(now(), RETENTION_DAYS),
+    keepStart: keepStart(now()),
     epssEvents: opts.epssEvents ?? true,
   });
   // These records were counted when KEV received them.
