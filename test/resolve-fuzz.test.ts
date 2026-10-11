@@ -1,16 +1,18 @@
 import { env } from 'cloudflare:workers';
+import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
 import { resolveCandidates } from '../src/resolve/catalog';
 import { SITEVERIFY_URL } from '../src/resolve/turnstile';
 import type { Candidate } from '../src/resolve/types';
-import { parseStack, serializeStack } from '../src/stack/format';
+import { parseStack, serializeStack, StackFormatError } from '../src/stack/format';
 import { resetDb, store } from './helpers/db';
 
 /**
  * People type anything, and the model passes it on. Whatever comes in, the
  * resolver must not throw, and every chip it returns must be a valid stack
- * item that the feed accepts.
+ * item that the feed accepts. Property-based with fast-check: a failure prints
+ * its seed and the smallest input that still fails, so it reproduces.
  */
 
 const PIECES = [
@@ -21,30 +23,44 @@ const PIECES = [
 const VERSIONS = [null, '1.0', '16', '1.0 beta', '^1.2', '~2', 'v2', '1.0,2', 'x@y', '..', '1:2', '%', '1'.repeat(64), '1'.repeat(65), ' 1.0 ', '\n'];
 const ECOSYSTEMS = ['npm', 'PyPI', 'crates.io', 'Go', 'Maven', 'NuGet', 'Packagist', 'RubyGems', 'Hex', 'Pub'] as const;
 
-/** A small seeded PRNG (mulberry32), so a failure reproduces. */
-function rng(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/** Mostly the hand-picked hostile pieces, sometimes any Unicode at all. */
+const piece = fc.oneof({ weight: 4, arbitrary: fc.constantFrom(...PIECES) }, { weight: 1, arbitrary: fc.string({ unit: 'binary', maxLength: 24 }) });
+const version = fc.oneof({ weight: 4, arbitrary: fc.constantFrom(...VERSIONS) }, { weight: 1, arbitrary: fc.string({ unit: 'binary', maxLength: 70 }) });
+const name = fc
+  .tuple(fc.array(piece, { minLength: 1, maxLength: 3 }), fc.constantFrom(' ', '', '/', '-', '.', ','))
+  .map(([parts, sep]) => parts.join(sep).slice(0, 214) || 'x');
 
-function candidates(seed: number, n: number): Candidate[] {
-  const r = rng(seed);
-  const pick = <T>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)]!;
-  const name = () =>
-    Array.from({ length: 1 + Math.floor(r() * 3) }, () => pick(PIECES))
-      .join(pick([' ', '', '/', '-', '.', ',']))
-      .slice(0, 214) || 'x';
-  return Array.from({ length: n }, (): Candidate => {
-    const version = pick(VERSIONS);
-    const direct = r() < 0.8;
-    if (r() < 0.5) return { kind: 'package', ecosystem: pick(ECOSYSTEMS), name: name(), version, direct };
-    return { kind: 'product', name: name().slice(0, 100), vendor: r() < 0.5 ? null : pick(PIECES).slice(0, 100), version, direct };
-  });
-}
+const candidate: fc.Arbitrary<Candidate> = fc.oneof(
+  fc.record({
+    kind: fc.constant('package' as const),
+    ecosystem: fc.constantFrom(...ECOSYSTEMS),
+    name,
+    version,
+    direct: fc.boolean(),
+  }),
+  fc.record({
+    kind: fc.constant('product' as const),
+    name: name.map((n) => n.slice(0, 100)),
+    vendor: fc.option(piece.map((p) => p.slice(0, 100)), { nil: null }),
+    version,
+    direct: fc.boolean(),
+  }),
+);
+const candidates = (max: number) => fc.array(candidate, { minLength: 1, maxLength: max });
+
+/** Hand-edited `s` values: real prefixes, junk prefixes, pieces, versions and separators. */
+const stackParam = fc
+  .array(
+    fc
+      .tuple(
+        fc.constantFrom('npm:', 'pypi:', 'p:', '?p:', 'constructor:', '__proto__:', 'toString:', '~', '', 'gem:', 'P:', '?'),
+        piece,
+        fc.option(version.map((v) => `@${v ?? ''}`), { nil: '' }),
+      )
+      .map(([prefix, p, v]) => prefix + p + v),
+    { minLength: 1, maxLength: 4 },
+  )
+  .chain((parts) => fc.constantFrom(',', ',,', ' , ').map((sep) => parts.join(sep)));
 
 async function seedCatalog(): Promise<void> {
   const rows: [string, string, string | null, string | null, string | null, string | null, string, string][] = [
@@ -72,28 +88,42 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('resolver under hostile input', () => {
   it('never throws, and every chip item is a valid stack item', async () => {
-    for (let seed = 1; seed <= 60; seed++) {
-      const input = candidates(seed, 8);
-      let chips;
-      try {
-        chips = (await resolveCandidates(store(), input)).chips;
-      } catch (err) {
-        throw new Error(`seed ${seed} threw ${String(err)} on ${JSON.stringify(input)}`, { cause: err });
-      }
-      for (const chip of chips) {
-        for (const { item } of chip.items) {
-          let parsed;
-          try {
-            parsed = parseStack(item);
-          } catch (err) {
-            throw new Error(`seed ${seed}: chip item ${JSON.stringify(item)} is invalid (${String(err)}) for input ${JSON.stringify(chip.input)}`, { cause: err });
+    await fc.assert(
+      fc.asyncProperty(candidates(8), async (input) => {
+        const { chips } = await resolveCandidates(store(), input);
+        for (const chip of chips) {
+          for (const { item } of chip.items) {
+            const parsed = parseStack(item);
+            expect(parsed, `chip item ${JSON.stringify(item)} for ${JSON.stringify(chip.input)}`).toHaveLength(1);
+            // Round trip: the item is already canonical.
+            expect(serializeStack(parsed)).toBe(item);
           }
-          expect(parsed).toHaveLength(1);
-          // Round trip: the item is already canonical.
-          expect(serializeStack(parsed)).toBe(item);
         }
-      }
-    }
+      }),
+      { numRuns: 60 },
+    );
+  });
+
+  it('parses any stack parameter or rejects it with a StackFormatError, and round-trips what it accepts', () => {
+    const anyParam = fc.oneof(
+      stackParam,
+      fc.string({ unit: 'binary', maxLength: 300 }),
+      fc.stringMatching(/^~[A-Za-z0-9_-]{0,200}$/),
+    );
+    fc.assert(
+      fc.property(anyParam, (s) => {
+        let items;
+        try {
+          items = parseStack(s);
+        } catch (err) {
+          if (err instanceof StackFormatError) return;
+          throw err;
+        }
+        expect(items.length).toBeGreaterThan(0);
+        expect(parseStack(serializeStack(items))).toEqual(items);
+      }),
+      { numRuns: 1000 },
+    );
   });
 
   it('treats names that are also object properties as plain names', async () => {
@@ -111,16 +141,16 @@ describe('resolver under hostile input', () => {
 
   it('answers hand-edited stack links with 200 or 400, never a 500', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ results: [] }));
-    const r = rng(7);
-    const pick = <T>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)]!;
-    const prefixes = ['npm:', 'pypi:', 'p:', '?p:', 'constructor:', '__proto__:', 'toString:', '~', '', 'gem:', 'P:', '?'];
-    for (let i = 0; i < 80; i++) {
-      const s = Array.from({ length: 1 + Math.floor(r() * 4) }, () => pick(prefixes) + pick(PIECES) + (r() < 0.3 ? `@${pick(VERSIONS) ?? ''}` : '')).join(pick([',', ',,', ' , ']));
-      for (const path of ['/api/feed', '/feed.xml', '/badge.svg']) {
-        const res = await app.request(`${path}?s=${encodeURIComponent(s)}${r() < 0.2 ? '&days=' + pick(['7', '0', '-1', 'x', '90', '1e3']) : ''}`, {}, env);
-        expect([200, 400], `${path} for ${JSON.stringify(s)}`).toContain(res.status);
-      }
-    }
+    const days = fc.option(fc.constantFrom('7', '0', '-1', 'x', '90', '1e3'), { nil: null, freq: 4 });
+    await fc.assert(
+      fc.asyncProperty(stackParam, days, async (s, d) => {
+        for (const path of ['/api/feed', '/feed.xml', '/badge.svg']) {
+          const res = await app.request(`${path}?s=${encodeURIComponent(s)}${d === null ? '' : `&days=${d}`}`, {}, env);
+          expect([200, 400], `${path} for ${JSON.stringify(s)}`).toContain(res.status);
+        }
+      }),
+      { numRuns: 80 },
+    );
   });
 
   it('returns 200 or a 4xx from the API, never a 500, and the feed accepts what it returns', async () => {
@@ -131,19 +161,22 @@ describe('resolver under hostile input', () => {
       return Response.json({ results: [] });
     });
     const e = { ...env, TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA' };
-    for (let seed = 100; seed <= 130; seed++) {
-      const res = await app.request(
-        '/api/resolve',
-        { method: 'POST', body: JSON.stringify({ turnstileToken: 't', candidates: candidates(seed, 10) }), headers: { 'content-type': 'application/json' } },
-        e,
-      );
-      expect(res.status, `seed ${seed}`).toBeLessThan(500);
-      if (res.status !== 200) continue;
-      const body = (await res.json()) as { chips: { items: { item: string }[] }[] };
-      const items = [...new Set(body.chips.flatMap((c) => c.items.map((i) => i.item)))];
-      if (items.length === 0) continue;
-      const feed = await app.request(`/api/feed?s=${encodeURIComponent(items.join(','))}`, {}, e);
-      expect(feed.status, `seed ${seed}: feed for ${items.join(',')}`).toBe(200);
-    }
+    await fc.assert(
+      fc.asyncProperty(candidates(10), async (input) => {
+        const res = await app.request(
+          '/api/resolve',
+          { method: 'POST', body: JSON.stringify({ turnstileToken: 't', candidates: input }), headers: { 'content-type': 'application/json' } },
+          e,
+        );
+        expect(res.status).toBeLessThan(500);
+        if (res.status !== 200) return;
+        const body = (await res.json()) as { chips: { items: { item: string }[] }[] };
+        const items = [...new Set(body.chips.flatMap((c) => c.items.map((i) => i.item)))];
+        if (items.length === 0) return;
+        const feed = await app.request(`/api/feed?s=${encodeURIComponent(items.join(','))}`, {}, e);
+        expect(feed.status, `feed for ${items.join(',')}`).toBe(200);
+      }),
+      { numRuns: 31 },
+    );
   });
 });
