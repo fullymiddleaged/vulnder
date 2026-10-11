@@ -6,11 +6,11 @@ import { Budget } from '../src/ingest/budget';
 import { D1BindingStore } from '../src/ingest/d1-store';
 import { runIngest } from '../src/ingest/run';
 import { RAW_BASE, RELEASES_URL } from '../src/ingest/sources/cve';
-import { EPSS_URL } from '../src/ingest/sources/epss';
+import { EPSS_URL, epssFileUrl } from '../src/ingest/sources/epss';
 import { ADVISORIES_URL } from '../src/ingest/sources/ghsa';
 import { KEV_URL } from '../src/ingest/sources/kev';
 import { HEALTH_CACHE, HEALTH_CACHE_SECONDS, healthCacheKey, sourceHealth } from '../src/routes/health';
-import { FakeFetch, jsonResponse } from './helpers/fake-fetch';
+import { FakeFetch, gzipResponse, jsonResponse } from './helpers/fake-fetch';
 import { cveRecords, deltaZip, eolFull, epssLatest, ghsaPage, kevFeed, releases, withMeta } from './helpers/fixtures';
 import { EOL_URL } from '../src/ingest/eol';
 import { resetDb, rows, unlimitedBudget } from './helpers/db';
@@ -38,16 +38,12 @@ function upstreams(): FakeFetch {
       const record = cveRecords[id];
       return record ? jsonResponse(record) : new Response('not found', { status: 404 });
     })
-    .on(EPSS_URL, (req) => {
-      const u = new URL(req.url);
-      if (!u.searchParams.has('cve')) return jsonResponse(epssLatest);
-      const date = u.searchParams.get('date')!;
-      const data = u.searchParams
-        .get('cve')!
-        .split(',')
-        // KEV entries score high, everything else low.
-        .map((cve) => ({ cve, epss: cve.startsWith('CVE-2026-102') ? '0.450000000' : '0.002000000', percentile: '0.500000000', date }));
-      return jsonResponse({ status: 'OK', data });
+    .on(EPSS_URL, () => jsonResponse(epssLatest))
+    .on(epssFileUrl(epssLatest.data[0]!.date), async () => {
+      // Scores every stored CVE: KEV entries high, everything else low.
+      const ids = await rows<{ id: string }>("SELECT id FROM vulns WHERE id LIKE 'CVE-%'");
+      const lines = ids.map(({ id }) => `${id},${id.startsWith('CVE-2026-102') ? '0.45000' : '0.00200'},0.50000`);
+      return gzipResponse(['#model_version:v2026.06.15,score_date:2026-10-04T12:00:00Z', 'cve,epss,percentile', ...lines].join('\n'));
     })
     .on(EOL_URL, (req) => (req.headers.get('if-none-match') === '"eol-1"' ? new Response(null, { status: 304 }) : jsonResponse(eolFull, { headers: { etag: '"eol-1"' } })));
 }

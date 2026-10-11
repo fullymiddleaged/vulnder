@@ -33,6 +33,11 @@ export class FakeFetch {
   }
 }
 
+/** A gzipped body, served like a plain file (no Content-Encoding). */
+export function gzipResponse(text: string): Response {
+  return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')));
+}
+
 export function jsonResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}): Response {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,

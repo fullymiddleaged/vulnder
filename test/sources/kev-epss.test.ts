@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyPatches } from '../../src/ingest/apply';
 import { RateLimited } from '../../src/ingest/budget';
-import { EPSS_URL, epssSource, parseEpssResponse } from '../../src/ingest/sources/epss';
+import { EPSS_URL, epssFileUrl, epssSource, parseEpssLine, parseEpssResponse } from '../../src/ingest/sources/epss';
 import { KEV_URL, kevSource, parseKevEntry } from '../../src/ingest/sources/kev';
 import type { VulnPatch } from '../../src/ingest/types';
-import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
+import { FakeFetch, gzipResponse, jsonResponse } from '../helpers/fake-fetch';
 import { epssLatest, epssScores, kevFeed } from '../helpers/fixtures';
 import { resetDb, sourceContext, store } from '../helpers/db';
 
@@ -79,44 +79,77 @@ describe('EPSS', () => {
     await applyPatches(store(), patches, { now: NOW, windowStart: '2026-07-06T00:00:00.000Z', epssEvents: true });
   }
 
-  function epssApi(): FakeFetch {
-    return new FakeFetch().on(EPSS_URL, (req) => {
-      const u = new URL(req.url);
-      if (u.searchParams.get('limit') === '1' && !u.searchParams.has('cve')) return jsonResponse(epssLatest);
-      const ids = (u.searchParams.get('cve') ?? '').split(',');
-      const date = u.searchParams.get('date')!;
-      return jsonResponse({ status: 'OK', data: ids.map((cve) => ({ cve, epss: '0.010000000', percentile: '0.500000000', date })) });
-    });
+  const LATEST = epssLatest.data[0]!.date;
+  const csv = (rows: string[]) => ['#model_version:v2026.06.15,score_date:2026-10-04T12:00:00Z', 'cve,epss,percentile', ...rows].join('\n');
+
+  function epssApi(file: () => Response): FakeFetch {
+    return new FakeFetch().on(EPSS_URL, () => jsonResponse(epssLatest)).on(epssFileUrl(LATEST), file);
   }
 
+  async function pass(f: FakeFetch, cursor = epssSource.initialCursor(NOW)) {
+    const ctx = sourceContext(f.fetch, NOW);
+    const pages: string[][] = [];
+    for (let i = 0; i < 20; i++) {
+      const res = await epssSource.fetchChanges(cursor, ctx);
+      pages.push(res.records.map((r) => r.id));
+      cursor = res.nextCursor;
+      if (res.done) break;
+    }
+    return { pages, cursor };
+  }
+
+  it('parses file lines and drops headers and bad values', () => {
+    expect(parseEpssLine('CVE-2026-1,0.10000,0.95000')).toEqual({ cve: 'CVE-2026-1', epss: 0.1, percentile: 0.95 });
+    expect(parseEpssLine('CVE-2026-1,0.10000,0.95000\r')).toEqual({ cve: 'CVE-2026-1', epss: 0.1, percentile: 0.95 });
+    for (const bad of ['#model_version:v2026.06.15,score_date:2026-10-04T12:00:00Z', 'cve,epss,percentile', 'CVE-2026-2,1.5,0.5', 'CVE-2026-3,NaN,0.5', 'CVE-2026-4,,0.5', 'CVE-2026-5,0.1', ''])
+      expect(parseEpssLine(bad)).toBeNull();
+  });
+
   it('skips the pass when the score date has not moved', async () => {
-    const f = epssApi();
-    const latest = epssLatest.data[0]!.date;
-    const res = await epssSource.fetchChanges({ scoreDate: latest, lastId: null }, sourceContext(f.fetch, NOW));
+    const f = epssApi(() => gzipResponse(csv([])));
+    const res = await epssSource.fetchChanges({ scoreDate: LATEST, lastId: null }, sourceContext(f.fetch, NOW));
     expect(res).toMatchObject({ records: [], done: true });
     expect(f.calls).toHaveLength(1);
   });
 
-  it('walks every stored CVE in batches that fit the cve= limit', async () => {
-    const ids = Array.from({ length: 300 }, (_, i) => `CVE-2026-${String(100000 + i)}`);
+  it('downloads the file once and pages through stored CVEs only, in ID order', async () => {
+    const ids = Array.from({ length: 900 }, (_, i) => `CVE-2026-${String(100000 + i)}`);
     await seed(ids);
-    const f = epssApi();
-    const ctx = sourceContext(f.fetch, NOW);
+    // Unsorted, with CVEs we don't hold.
+    const f = epssApi(() => gzipResponse(csv([...ids].reverse().map((id) => `${id},0.01000,0.50000`).concat('CVE-1999-0001,0.5,0.9'))));
+    const { pages, cursor } = await pass(f);
+    expect(pages.map((p) => p.length)).toEqual([400, 400, 100]);
+    expect(pages.flat()).toEqual(ids);
+    expect(cursor).toEqual({ scoreDate: LATEST, lastId: null });
+    expect(f.urls().filter((u) => u.endsWith('.csv.gz'))).toHaveLength(1);
+  });
 
-    let cursor = epssSource.initialCursor(NOW);
-    const seen: string[] = [];
-    for (let i = 0; i < 10; i++) {
-      const res = await epssSource.fetchChanges(cursor, ctx);
-      seen.push(...res.records.map((r) => r.id));
-      cursor = res.nextCursor;
-      if (res.done) break;
-    }
-    expect(seen).toEqual(ids);
-    expect(cursor).toEqual({ scoreDate: epssLatest.data[0]!.date, lastId: null });
-    for (const req of f.calls) {
-      const cve = new URL(req.url).searchParams.get('cve');
-      if (cve) expect(cve.length).toBeLessThanOrEqual(2000);
-    }
+  it('leaves out scores that have not moved enough to write', async () => {
+    await seed(['CVE-2026-1', 'CVE-2026-2', 'CVE-2026-3']);
+    await applyPatches(
+      store(),
+      ['CVE-2026-1', 'CVE-2026-2', 'CVE-2026-3'].map((id) => ({ source: 'epss' as const, id, aliases: [], fields: { epss: 0.01, epssPercentile: 0.5, epssDate: '2026-10-03' } })),
+      { now: NOW, windowStart: '2026-07-06T00:00:00.000Z', epssEvents: true },
+    );
+    const f = epssApi(() => gzipResponse(csv(['CVE-2026-1,0.01050,0.50500', 'CVE-2026-2,0.02000,0.50000', 'CVE-2026-3,0.01000,0.52000'])));
+    const { pages } = await pass(f);
+    expect(pages.flat()).toEqual(['CVE-2026-2', 'CVE-2026-3']);
+  });
+
+  it('resumes after the cursor in a new run', async () => {
+    const ids = ['CVE-2026-1', 'CVE-2026-2', 'CVE-2026-3'];
+    await seed(ids);
+    const f = epssApi(() => gzipResponse(csv(ids.map((id) => `${id},0.01000,0.50000`))));
+    const { pages } = await pass(f, { scoreDate: LATEST, lastId: 'CVE-2026-1' });
+    expect(pages.flat()).toEqual(['CVE-2026-2', 'CVE-2026-3']);
+  });
+
+  it('waits for a file that is not published yet', async () => {
+    await seed(['CVE-2026-1']);
+    const f = epssApi(() => new Response('<Error>AccessDenied</Error>', { status: 403 }));
+    const cursor = { scoreDate: '2026-10-03', lastId: null };
+    const res = await epssSource.fetchChanges(cursor, sourceContext(f.fetch, NOW));
+    expect(res).toEqual({ records: [], nextCursor: cursor, done: true });
   });
 
   it('turns HTTP 429 into RateLimited', async () => {

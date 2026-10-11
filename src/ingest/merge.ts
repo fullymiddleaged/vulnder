@@ -245,21 +245,48 @@ function mergeEpss(
   events: EventInput[],
 ): void {
   const old = before.epss;
+  const d = epssDecision(before, value, percentile, emitEvents);
+  if (d.event) {
+    events.push({
+      vulnId: rec.id,
+      type: 'epss_crossed',
+      occurredAt: `${date}T00:00:00.000Z`,
+      dedupeKey: date,
+      detail: { from: old, to: value, percentile, date, reason: d.event },
+    });
+  }
+  if (d.write) {
+    // The old score held every day from its date until this one: fold those days into LEV.
+    if (old !== null && before.epssDate) rec.levLog = before.levLog + levTerm(old, daysBetween(before.epssDate, date));
+    rec.epss = value;
+    rec.epssPercentile = percentile;
+    rec.epssDate = date;
+    rec.epssBaseline = d.baseline;
+  }
+}
+
+export type StoredEpss = Pick<VulnRecord, 'epss' | 'epssPercentile' | 'epssBaseline'>;
+
+/**
+ * What a new score does to a stored one: the event it fires, if any, the new
+ * baseline, and whether it is worth a write. The EPSS source uses it to skip
+ * CVEs whose score has not moved before loading them.
+ */
+export function epssDecision(
+  before: StoredEpss,
+  value: number,
+  percentile: number,
+  emitEvents: boolean,
+): { event: 'threshold' | 'rise' | null; baseline: number; write: boolean } {
+  const old = before.epss;
   let baseline = before.epssBaseline ?? old;
-  let fired = false;
+  let event: 'threshold' | 'rise' | null = null;
 
   if (emitEvents) {
     const crossed = value >= EPSS_HIGH - FLOAT_EPSILON && (old === null || old < EPSS_HIGH - FLOAT_EPSILON);
     const rose = baseline !== null && value - baseline >= EPSS_RISE - FLOAT_EPSILON;
     if (crossed || rose) {
-      fired = true;
-      events.push({
-        vulnId: rec.id,
-        type: 'epss_crossed',
-        occurredAt: `${date}T00:00:00.000Z`,
-        dedupeKey: date,
-        detail: { from: old, to: value, percentile, date, reason: crossed ? 'threshold' : 'rise' },
-      });
+      event = crossed ? 'threshold' : 'rise';
       baseline = value;
     }
   } else {
@@ -267,20 +294,13 @@ function mergeEpss(
   }
   if (baseline === null || value < baseline) baseline = value;
 
-  const meaningful =
-    fired ||
+  const write =
+    event !== null ||
     old === null ||
     Math.abs(value - old) >= 0.001 ||
     Math.abs(percentile - (before.epssPercentile ?? 0)) >= 0.01 ||
     baseline !== before.epssBaseline;
-  if (meaningful) {
-    // The old score held every day from its date until this one: fold those days into LEV.
-    if (old !== null && before.epssDate) rec.levLog = before.levLog + levTerm(old, daysBetween(before.epssDate, date));
-    rec.epss = value;
-    rec.epssPercentile = percentile;
-    rec.epssDate = date;
-    rec.epssBaseline = baseline;
-  }
+  return { event, baseline, write };
 }
 
 function unionStrings(a: string[], b: string[]): string[] {

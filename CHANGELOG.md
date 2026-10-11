@@ -24,6 +24,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - The **privacy notes** now say that free text sent to Cloudflare Workers AI can be logged by Cloudflare's AI Gateway in the account running the site. Vulnder itself still stores and logs none of it.
 - New tagline: "Someone could be into your stack."
 - **About and How it works are shorter and roomier**: tighter copy, short bullets in place of long paragraphs, and more space between sections.
+- **The daily EPSS refresh downloads FIRST's scores file once** (`epss.empiricalsecurity.com`, about 2.7 MB) instead of about 300 API calls, and reads from D1 only the CVEs whose score moved enough to store. Self-hosters whose ingest has restricted outbound access need to allow that host.
 - **Accessibility:** field and button borders now meet 3:1 contrast in both themes. Keyboard focus on "choose a file" is visible. Empty priorities and pending loader steps keep readable contrast. CVE links in the priority tiles and the remove buttons are easier to tap. Start over and Start again move focus and reset the page title. "+N more below" respects reduced motion and moves focus to the results. The How it works diagram scrolls sideways on phones rather than shrinking its labels.
 
 ### Added

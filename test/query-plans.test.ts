@@ -7,6 +7,7 @@ import { KEY_RANGE_SQL, KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL,
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
 import { CLEAR_UNSUPPORTED, UPDATE_EPSS } from '../src/ingest/apply';
+import { STORED_EPSS_SQL } from '../src/ingest/sources/epss';
 
 /**
  * D1 bills every row a query reads, and a full scan reads the whole table on
@@ -46,6 +47,7 @@ describe('request-path query plans', () => {
     ['feed stack size', STACK_SIZE_SQL, ['["npm:next","linux/linux"]']],
     // Ingest's daily EPSS pass.
     ['EPSS update', UPDATE_EPSS, ['[{"id":"CVE-2026-0001","epss":0.1}]']],
+    ['EPSS stored scores', STORED_EPSS_SQL, ['CVE-', 10000]],
     // Vendor support: the feed's reads, and the CVE tag's per-page clear.
     ['support dates', EOL_RELEASES_SQL, ['["windows","ubuntu"]']],
     ['unsupported tag', EOL_CVE_SQL, ['["trendnet/tew_827dru"]']],
