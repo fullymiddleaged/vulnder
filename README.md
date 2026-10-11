@@ -66,10 +66,10 @@ Deploying, bindings and secrets: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). D
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). New data sources and manifest parsers help most. A star helps other people find it.
+See [CONTRIBUTING.md](CONTRIBUTING.md). New data sources and manifest parsers help most. Working with an AI coding agent? Point it at [AGENTS.md](AGENTS.md). A star helps other people find it.
 
 ## Licence
 
 [Apache 2.0](LICENSE). Copyright 2026 Pete Salmond ([@fullymiddleaged](https://github.com/fullymiddleaged)). Keep the [NOTICE](NOTICE) file with any redistribution.
 
-The licence covers the code, not the name. Please give a fork or public deployment its own name; [AGENTS.md](AGENTS.md) explains what a fork needs.
+The licence covers the code, not the name. Please give a fork or public deployment its own name; [docs/FORKING.md](docs/FORKING.md) explains what a fork needs. Found a security problem? See [SECURITY.md](SECURITY.md).
