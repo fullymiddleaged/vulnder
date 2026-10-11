@@ -12,7 +12,7 @@
     <meta property="og:site_name" content="Vulnder" />
     <meta property="og:url" content="https://vulnder.com/about" />
     <meta property="og:title" content="About Vulnder: CVE triage for the AI era" />
-    <meta property="og:description" content="Too many CVEs, fewer scores, faster exploits. Why I built a free feed that shows only what affects your stack, ranked by real-world exploitation." />
+    <meta property="og:description" content="CVE volume has doubled, NIST scores fewer of them, and exploits arrive faster. Why I built a free feed that shows only what affects your stack, ranked by real-world exploitation." />
     <meta name="twitter:card" content="summary" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
@@ -41,6 +41,7 @@
 
     <main id="main" class="prose" tabindex="-1">
       <h1>Why I built Vulnder</h1>
+      <p class="byline small muted">By <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond</a></p>
       <p class="lede">
         2025 set a record with 48,185 CVEs.<a href="#s1"><sup>1</sup></a> Then 2026 doubled the monthly rate, from 5,045 in January to 10,740 in August.<a href="#s2"><sup>2</sup></a>
         Most of them don't touch what you run, and only a few of those are being exploited.
@@ -63,7 +64,7 @@
       </section>
 
       <section class="block" aria-labelledby="ai">
-        <h2 id="ai">AI cuts both ways</h2>
+        <h2 id="ai">AI helps attackers as well as defenders</h2>
         <p>
           AI is finding serious bugs: half of those in Google's 2026 study lead to remote code execution, against about a quarter of CVEs overall.<a href="#s2"><sup>2</sup></a>
         </p>
@@ -79,7 +80,7 @@
           <li><strong>Volume has outrun patching.</strong> Twice the CVEs doesn't bring twice the people or change windows.</li>
           <li><strong>Severity no longer sorts.</strong> When half of AI-found bugs are remote code execution, "critical" stops telling you where to start.</li>
           <li><strong>The window has shrunk.</strong> Bugs are weaponised within days, sometimes before disclosure.<sup><a href="#s2">2</a>, <a href="#s5">5</a></sup> A monthly review is too slow.</li>
-          <li><strong>Your fixers are faster too.</strong> A coding agent given a ranked list starts where an attacker would, not wherever a raw feed begins.</li>
+          <li><strong>Your fixers are faster too.</strong> A coding agent given a ranked list starts with the bugs attackers are most likely to use.</li>
         </ul>
       </section>
 
@@ -94,17 +95,21 @@
       <section class="block" aria-labelledby="principles">
         <h2 id="principles">What I wanted it to be</h2>
         <ul>
-          <li><strong>Fast.</strong> A sentence, lockfile or SBOM in, a ranked answer out.</li>
-          <li><strong>No account.</strong> Your stack lives in the link, which also gives you a JSON feed, an Atom feed and a badge.</li>
-          <li><strong>Keeps nothing.</strong> Your text and stack are never stored or logged, and lockfiles stay in your browser. Cloudflare's AI gateway can log free-text requests. <a href="/how-it-works#privacy">Details</a></li>
-          <li><strong>Honest.</strong> It never hides a match, says how sure each one is, and suggests response times, not deadlines.</li>
-          <li><strong>AI only where it helps.</strong> A model reads your description; code does the ranking. <a href="/how-it-works#ai">Where AI is used</a></li>
-          <li><strong>Free and open.</strong> Apache 2.0, so you can run your own copy.</li>
+          <li>Quick to use: describe your stack in a sentence, or drop in a lockfile or SBOM, and get a ranked list back.</li>
+          <li>No account. Your stack lives in the link, which also gives you a JSON feed, an Atom feed and a badge.</li>
+          <li>Your text and stack are never stored or logged, and lockfiles stay in your browser. Cloudflare's AI gateway can log free-text requests. <a href="/how-it-works#privacy">Details</a></li>
+          <li>It never hides a match, says how sure it is of each one, and suggests response times rather than deadlines.</li>
+          <li>A model reads your description, and code does the ranking. <a href="/how-it-works#ai">Where AI is used</a></li>
+          <li>Free and Apache 2.0, so you can check our code first, or even host your own version.</li>
         </ul>
         <p class="sign">
           Pete Salmond (<a href="https://github.com/fullymiddleaged" rel="noreferrer">@fullymiddleaged</a>). Bugs and ideas go to the
           <a href="https://github.com/fullymiddleaged/vulnder/issues" rel="noreferrer">issue tracker</a>. If Vulnder is useful to you, a star on
           <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">GitHub</a> helps other people find it.
+        </p>
+        <p>
+          If you'd like to get in touch, or want help building your own customised version, add me on
+          <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">LinkedIn</a>.
         </p>
       </section>
 

@@ -420,6 +420,8 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose { display: block; }
 .prose h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 1rem; }
 .prose .lede { font-size: 1.15rem; margin-bottom: 1.5rem; }
+/* Sits under the h1 as part of the title, not as the first paragraph. */
+.prose .byline { margin-top: -0.5rem; margin-bottom: 1.25rem; }
 /* Room between sections and a short measure, so the pages read as a few calm blocks, not a wall. */
 .prose section { margin-top: 3.5rem; }
 .prose .block { padding-top: 1.75rem; }

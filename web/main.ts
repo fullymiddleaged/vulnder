@@ -282,7 +282,7 @@ function renderInput(prefill = ''): void {
     // The countdown goes first, so it's seen before anything is typed.
     lockControls([submitButton, drop], updateCounter),
     textarea,
-    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe your entire stack in your own words, include versions if you know them.'), counter),
+    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe your whole stack in your own words. Include versions if you know them.'), counter),
     h(
       'div',
       { class: 'examples' },
@@ -934,7 +934,7 @@ function jumpToResults(): void {
 /** The terms the results use, in plain words, one click away rather than only in tooltips. */
 function glossary(): HTMLElement {
   const terms: [string, string][] = [
-    ['KEV', 'CISA’s Known Exploited Vulnerabilities catalog: bugs with evidence of real attacks. The strongest signal there is.'],
+    ['KEV', 'CISA’s Known Exploited Vulnerabilities catalog: bugs with evidence of real attacks. It outranks every other signal.'],
     ['EPSS', 'FIRST’s predicted chance that a bug is exploited in the next 30 days. A forecast, not evidence. The percentile compares it with every other CVE.'],
     ['LEV', 'NIST’s estimate, from a bug’s EPSS history, of the chance it has already been exploited. A lower bound, not evidence.'],
     ['CVSS', 'A 0–10 severity score: how bad a bug would be if used, not whether anyone is using it.'],

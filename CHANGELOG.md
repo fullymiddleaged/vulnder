@@ -32,6 +32,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - **Export for AI matches the page.** Fix first rows of merged close matches go by their shared name, and a CVE an earlier row listed is marked "also in a row above" instead of repeated. Similar CVEs in a product sit together. Out of support items are listed first in the instructions, with edge devices marked and the source named (endoflife.date, or the CVE whose vendor called it unsupported). They no longer also show under "Still watched".
 - **The daily EPSS refresh downloads FIRST's scores file once** (`epss.empiricalsecurity.com`, about 2.7 MB) instead of about 300 API calls, and reads from D1 only the CVEs whose score moved enough to store. Self-hosters whose ingest has restricted outbound access need to allow that host.
 - **Accessibility:** field and button borders now meet 3:1 contrast in both themes. Keyboard focus on "choose a file" is visible. Empty priorities and pending loader steps keep readable contrast. CVE links in the priority tiles and the remove buttons are easier to tap. Start over and Start again move focus and reset the page title. "+N more below" respects reduced motion and moves focus to the results. The How it works diagram scrolls sideways on phones rather than shrinking its labels.
+- **Plainer copy on About and How it works**, with fewer slogan labels and staged lines. How it works now links the full ranking rules in RANKING.md; its old README link pointed at a heading that no longer exists.
 
 ### Added
 
