@@ -1,7 +1,20 @@
 import { describeHours } from '../src/lib/time';
 import type { Feed, Priority, Reason, Result } from './api';
 import { safeHref } from './url';
-import { componentGroups, cvssSeverity, formatScore, itemMarks, ordinal, pct, RISK, supportLines, supportPriority } from './format';
+import {
+  componentGroups,
+  cvssSeverity,
+  foldFamilies,
+  formatScore,
+  itemMarks,
+  ordinal,
+  pct,
+  RISK,
+  supportByItem,
+  supportLines,
+  supportPriority,
+  type ComponentGroup,
+} from './format';
 import { TEAM } from './teams';
 
 /**
@@ -16,7 +29,8 @@ const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
 /** How to work through an export; first in the file, so an assistant reads it before the findings. */
 export const EXPORT_INSTRUCTIONS = [
-  'Work through "Fix first" from the top: it orders the components by what fixing each one removes, most urgent first.',
+  'Start with "Out of support", if present: each item there needs an upgrade to a supported release (or replacement, for hardware), since patching its listed CVEs leaves every future one open.',
+  'Then work through "Fix first" from the top: it orders the components by what fixing each one removes, most urgent first.',
   'Before changing anything, confirm each finding applies. "Version not confirmed" means only the product matched: compare the installed version with "Fixed in". "Close match" means the component was inferred from a vague name: confirm it is actually in use.',
   'Remediate by upgrading to a version listed under "Fixed in" (or later on the same release line). With no fixed version, apply the mitigation and check the advisory for a workaround.',
   'Aim to finish within "Respond within". It is guidance based on how quickly bugs like this are exploited, not a deadline.',
@@ -76,6 +90,12 @@ function stackLine(item: string): string {
   return `${code(name)}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
 }
 
+/** A Fix first row's items. Close matches merged into one row go by their shared name, as on the page. */
+function groupLine(g: ComponentGroup): string {
+  if (g.family) return `${code(g.family)} (${g.also.length + 1} close matches: ${[g.component, ...g.also.map((i) => itemMarks(i).name)].map(code).join(', ')})`;
+  return [g.item, ...g.also].map(stackLine).join(', ');
+}
+
 function evidenceLine(r: Result): string | null {
   const e = r.evidence;
   const parts = [
@@ -130,7 +150,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   if (support.length > 0) {
     out.push(
       '',
-      '## Out of support',
+      support.some((s) => s.state === 'eol') ? '## Out of support' : '## Vendor support',
       '',
       'These get no more security fixes from their vendor (or stop within 90 days). Upgrade them to a supported release: out of support ranks with Act now, and support ending soon with Attend, whatever their CVEs.',
       '',
@@ -138,27 +158,41 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
     for (const s of support) {
       const p = supportPriority(s.state);
       const lines = supportLines(s).map((l) => l.replace('tick Has ESU under Edit stack', 'add ;esu to the item in the stack'));
-      out.push(`- **${mdText(s.name)}** (${p ? RISK[p].label : 'Covered'}): ${lines.map(mdText).join(' ')}${s.cve ? ` Source: ${s.cve}.` : ''} Stack: ${s.items.map(stackLine).join(', ')}`);
+      const source = s.cve ? `Source: ${s.cve}, whose vendor marks the product unsupported.` : 'Dates: endoflife.date.';
+      out.push(`- **${mdText(s.name)}** (${p ? RISK[p].label : 'Covered'}${s.edge ? ', edge device' : ''}): ${lines.map(mdText).join(' ')} ${source} Stack: ${s.items.map(stackLine).join(', ')}`);
     }
   }
 
   if (n > 0) {
     out.push('', '## Fix first', '');
+    // As on the page: a CVE an earlier row listed is named as such, so it's worked on once.
+    const listed = new Set<string>();
     for (const g of componentGroups(feed.fixFirst, feed.results)) {
       const tally = PRIORITIES.filter((p) => g.counts[p] > 0).map((p) => `${g.counts[p]} ${RISK[p].label}`).join(', ');
       const unsupported = g.support === 'eol' ? '; out of support' : g.support === 'ending' ? '; support ending' : '';
-      out.push(`${g.rank}. ${[g.item, ...g.also].map(stackLine).join(', ')}: ${tally}${unsupported}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. CVEs: ${g.vulns.join(', ')}`);
+      const fresh = g.vulns.filter((id) => !listed.has(id));
+      const repeated = g.vulns.filter((id) => listed.has(id));
+      for (const id of fresh) listed.add(id);
+      const cves = [fresh.length > 0 ? `CVEs: ${fresh.join(', ')}` : '', repeated.length > 0 ? `also in a row above: ${repeated.join(', ')}` : ''].filter(Boolean).join('; ');
+      out.push(`${g.rank}. ${groupLine(g)}: ${tally}${unsupported}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. ${cves}`);
     }
     out.push('', '## Vulnerabilities', '');
     for (const p of PRIORITIES) {
       const group = feed.results.filter((r) => r.priority === p);
       if (group.length === 0) continue;
       out.push(`### ${RISK[p].label} (${group.length})`, '');
-      for (const r of group) out.push(...mdResult(r));
+      // Similar CVEs in the same product sit together, under the highest-ranked one, as on the page.
+      for (const { lead, related } of foldFamilies(group)) for (const r of [lead, ...related]) out.push(...mdResult(r));
     }
   }
-  if (feed.watching.length > 0) {
-    out.push('## No CVEs in this window', '', `Still watched: ${feed.watching.map(stackLine).join(', ')}`, '');
+  // Items out of support or losing it are listed above, not as quietly watched.
+  const flagged = supportByItem(support);
+  const watching = feed.watching.filter((w) => {
+    const state = flagged.get(itemMarks(w).name)?.state;
+    return state !== 'eol' && state !== 'ending';
+  });
+  if (watching.length > 0) {
+    out.push('## No CVEs in this window', '', `Still watched: ${watching.map(stackLine).join(', ')}`, '');
   }
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }

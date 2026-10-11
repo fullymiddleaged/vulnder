@@ -149,10 +149,63 @@ describe('exportMarkdown', () => {
     });
     expect(withSupport.indexOf('## Out of support')).toBeLessThan(withSupport.indexOf('## Fix first'));
     expect(withSupport).toContain(
-      '- **Windows Server 2012 R2** (Act now): Out of support since 2023-10-10: it gets no more security updates. Upgrade to a supported release urgently. Paid extended security updates run until 2026-10-13. If you have them, add ;esu to the item in the stack. Stack: `p:microsoft/windows_server_2012_r2`',
+      '- **Windows Server 2012 R2** (Act now): Out of support since 2023-10-10: it gets no more security updates. Upgrade to a supported release urgently. Paid extended security updates run until 2026-10-13. If you have them, add ;esu to the item in the stack. Dates: endoflife.date. Stack: `p:microsoft/windows_server_2012_r2`',
     );
     expect(withSupport).toContain('1. `npm:express@4.18.2`: 1 Act now; out of support; total risk 92');
     expect(exportMarkdown(feed)).not.toContain('## Out of support');
+  });
+
+  it('marks unsupported edge hardware, names the CVE that said so, and leaves it out of Still watched', () => {
+    const md = exportMarkdown({
+      ...feed,
+      stack: `${feed.stack},p:trendnet/tew_827dru`,
+      watching: ['pypi:django', 'p:trendnet/tew_827dru'],
+      support: [{ state: 'eol', name: 'TRENDnet TEW-827DRU', date: null, esuUntil: null, esu: false, edge: true, source: 'cve', cve: 'CVE-2026-0009', items: ['p:trendnet/tew_827dru'] }],
+    });
+    expect(md).toContain('- **TRENDnet TEW-827DRU** (Act now, edge device): Out of support: it gets no more security updates.');
+    expect(md).toContain('Source: CVE-2026-0009, whose vendor marks the product unsupported.');
+    expect(md).toContain('Still watched: `pypi:django`\n');
+  });
+
+  it('heads a support list with nothing past support yet as Vendor support', () => {
+    const md = exportMarkdown({
+      ...feed,
+      support: [{ state: 'ending', name: 'Ubuntu 22.04', date: '2027-01-01', esuUntil: null, esu: false, edge: false, source: 'endoflife', cve: null, items: ['p:canonical/ubuntu_linux@22.04'] }],
+    });
+    expect(md).toContain('## Vendor support');
+    expect(md).toContain('(Attend): Support ends 2027-01-01.');
+  });
+
+  it('heads merged close matches by their shared name and lists a CVE in full only in its first row', () => {
+    const shared = result('CVE-2026-0100', { priority: 'attend', matched: ['?p:microsoft/windows_server_2025@2025', '?p:microsoft/windows_server_2025_server_core_installation@2025', 'p:microsoft/edge'] });
+    const own = result('CVE-2026-0101', { priority: 'attend', matched: ['p:microsoft/edge'] });
+    const counts = { act: 0, attend: 2, watch: 0, track: 0 };
+    const md = exportMarkdown({
+      ...feed,
+      stack: 'p:microsoft/edge,?p:microsoft/windows_server_2025@2025,?p:microsoft/windows_server_2025_server_core_installation@2025',
+      fixFirst: [
+        { item: 'p:microsoft/edge', score: 40, counts, vulns: ['CVE-2026-0100', 'CVE-2026-0101'], fixable: 0 },
+        { item: '?p:microsoft/windows_server_2025@2025', score: 20, counts: { ...counts, attend: 1 }, vulns: ['CVE-2026-0100'], fixable: 0 },
+        { item: '?p:microsoft/windows_server_2025_server_core_installation@2025', score: 20, counts: { ...counts, attend: 1 }, vulns: ['CVE-2026-0100'], fixable: 0 },
+      ],
+      results: [shared, own],
+      watching: [],
+    });
+    expect(md).toContain('1. `p:microsoft/edge`: 2 Attend; total risk 40; a fix for 0 of 2. CVEs: CVE-2026-0100, CVE-2026-0101');
+    expect(md).toContain(
+      '2. `p:microsoft/windows_server_2025` (2 close matches: `p:microsoft/windows_server_2025@2025`, `p:microsoft/windows_server_2025_server_core_installation@2025`): 1 Attend; total risk 20; a fix for 0 of 1. also in a row above: CVE-2026-0100',
+    );
+  });
+
+  it('keeps similar CVEs in a product together under the highest-ranked one', () => {
+    const fam = { family: 'F1', related: ['CVE-2026-0203'] };
+    const a = result('CVE-2026-0201', { ...fam, score: 30, related: ['CVE-2026-0203'] });
+    const b = result('CVE-2026-0202', { score: 20 });
+    const c = result('CVE-2026-0203', { ...fam, score: 10, related: ['CVE-2026-0201'] });
+    const md = exportMarkdown({ ...feed, priorities: { act: 0, attend: 0, watch: 0, track: 3 }, fixFirst: [], results: [a, b, c] });
+    const at = ['#### CVE-2026-0201', '#### CVE-2026-0203', '#### CVE-2026-0202'].map((s) => md.indexOf(s));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
   });
 });
 
