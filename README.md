@@ -72,4 +72,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). New data sources and manifest parsers he
 
 [Apache 2.0](LICENSE). Copyright 2026 Pete Salmond ([@fullymiddleaged](https://github.com/fullymiddleaged)). Keep the [NOTICE](NOTICE) file with any redistribution.
 
-The licence covers the code, not the name. Please give a fork or public deployment its own name; [docs/FORKING.md](docs/FORKING.md) explains what a fork needs. Found a security problem? See [SECURITY.md](SECURITY.md).
+The licence covers the code, not the name. Please give a fork or public deployment its own name; [docs/FORKING.md](docs/FORKING.md) explains what a fork needs. Found a security problem? See [SECURITY.md](SECURITY.md). Pete Salmond is the maintainer and security contact.

@@ -1,0 +1,6 @@
+# Vulnder security contact (RFC 9116). Self-hosting? Replace these with your own.
+Contact: https://github.com/fullymiddleaged/vulnder/security/advisories/new
+Policy: https://github.com/fullymiddleaged/vulnder/blob/main/SECURITY.md
+Canonical: https://vulnder.com/.well-known/security.txt
+Preferred-Languages: en
+Expires: 2027-10-11T00:00:00.000Z

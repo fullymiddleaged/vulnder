@@ -1,5 +1,9 @@
 # Security policy
 
+## Security maintainer
+
+Vulnder's security is maintained by **Pete Salmond** ([@fullymiddleaged](https://github.com/fullymiddleaged), [LinkedIn](https://www.linkedin.com/in/pete-salmond/)), who triages reports, fixes vulnerabilities, publishes advisories and runs the deployment at vulnder.com.
+
 ## Reporting a vulnerability
 
 Please report security problems privately through GitHub: [open a private advisory](https://github.com/fullymiddleaged/vulnder/security/advisories/new) (Security tab → Report a vulnerability). Don't open a public issue or pull request for them.
