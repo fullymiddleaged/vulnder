@@ -24,6 +24,8 @@ export const cursorKey = (source: SourceName) => `cursor:${source}`;
 export const statusKey = (source: SourceName) => `status:${source}`;
 export const DATA_VERSION_KEY = 'data_version';
 export const LAST_MAINTENANCE_KEY = 'last_maintenance';
+/** How many stack checks (successful /api/feed replies) have been served: one number, nothing about who or what. */
+export const CHECKS_SERVED_KEY = 'checks_served';
 /** Present while scripts/seed-remote.ts is copying a snapshot in; ingest waits until it's gone. */
 export const SEEDING_KEY = 'seeding';
 

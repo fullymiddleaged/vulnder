@@ -4,6 +4,11 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ## [Unreleased]
 
+### Added
+
+- **The footer shows how many stack checks Vulnder has served.** Every results load counts, from the site, a shared link or the JSON feed. Atom feed and badge requests don't count. It's one running total, with nothing about the stack or who asked, and it updates every 15 minutes or so. `/api/health` returns it as `checksServed`.
+- **A tidier footer.** Each data source is listed once, linked, with when it last updated beside it. "Support dates" are now called "End-of-life dates".
+
 ### Changed
 
 - **Fix first no longer repeats the same CVEs for every close match.** A broad name like "Windows" brings in many close matches that share most of their CVEs. Items with exactly the same CVEs now share one row ("+2 more"). When a row holds only close matches, it is headed by the name they share, such as `p:microsoft/windows_server_2025` with "2 close matches", rather than by one of them, so it doesn't read as just Server Core; opening it lists every item it covers. A CVE an earlier row already showed is listed by its linked ID instead of in full. Counts and total risk stay complete. The same applies to the By component and By team views. A note offers Edit stack to remove close matches you don't run. In the stack itself, a close match of a product you also named exactly, at any version, is dropped, since it only repeated that item's CVEs.

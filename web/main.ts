@@ -26,7 +26,8 @@ import { exportFileName, exportMarkdown, remediationSteps } from './export';
 import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
 import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
 import {
-  ago,
+  checksServedText,
+  sourceAge,
   byPriority,
   foldFamilies,
   CHANGE_LABEL,
@@ -1499,21 +1500,25 @@ function exportButtons(feed: Feed): HTMLElement {
 
 // ---------- Footer ----------
 
-async function renderFreshness(): Promise<void> {
-  const el = document.getElementById('freshness');
-  if (!el) return;
+/** Fills in the footer's checks served and each source's age; the source links are static. */
+async function renderFooter(): Promise<void> {
+  let health: Awaited<ReturnType<typeof getHealth>>;
   try {
-    const health = await getHealth();
-    const names: Record<string, string> = { cve: 'CVE records', ghsa: 'GitHub advisories', kev: 'CISA KEV', epss: 'EPSS', eol: 'support dates' };
-    el.replaceChildren(
-      'Data freshness: ',
-      ...Object.entries(health.sources).flatMap(([k, s], i) => [
-        i > 0 ? ', ' : '',
-        h('span', { class: s.health === 'ok' ? '' : 'stale' }, `${names[k] ?? k} ${s.lastSuccessAt ? ago(s.lastSuccessAt) : 'never'}${s.health === 'stale' ? ' (stale)' : ''}`),
-      ]),
-    );
+    health = await getHealth();
   } catch {
-    el.textContent = 'Data freshness unavailable.';
+    return; // the links still stand without ages
+  }
+  const checks = checksServedText(health.checksServed);
+  const checksEl = document.getElementById('checks');
+  if (checksEl && checks) {
+    checksEl.textContent = checks;
+    checksEl.hidden = false;
+  }
+  for (const el of document.querySelectorAll<HTMLElement>('[data-source]')) {
+    const s = health.sources[el.dataset.source ?? ''];
+    if (!s) continue;
+    el.textContent = sourceAge(s);
+    el.classList.toggle('stale', s.health !== 'ok');
   }
 }
 
@@ -1552,4 +1557,4 @@ window.addEventListener('popstate', () => void route());
 config = await getConfig().catch(() => null);
 if (config) document.querySelectorAll('[data-name]').forEach((n) => (n.textContent = config!.displayName));
 await route();
-void renderFreshness();
+void renderFooter();

@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { D1BindingStore } from '../ingest/d1-store';
-import { DATA_VERSION_KEY, getMeta } from '../ingest/meta';
+import { CHECKS_SERVED_KEY, DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
 import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult, type SupportNotice } from '../match/match';
 import { supportText } from '../match/support';
@@ -171,6 +171,29 @@ async function runMatch(c: Context<AppEnv>, req: StackRequest, now: Date, dataVe
   });
 }
 
+export const COUNT_CHECK_SQL = `INSERT INTO meta (key, value, updated_at) VALUES ('${CHECKS_SERVED_KEY}', '1', ?)
+  ON CONFLICT (key) DO UPDATE SET value = CAST(value AS INTEGER) + 1, updated_at = excluded.updated_at`;
+
+/**
+ * Adds one to the stack checks served (shown in the footer via /api/health),
+ * cache hits included. One row write, after the reply; a failure is ignored.
+ * Atom and badge requests aren't counted: feed readers and READMEs poll them.
+ */
+async function countCheck(c: Context<AppEnv>): Promise<void> {
+  const write = c.env.DB.prepare(COUNT_CHECK_SQL)
+    .bind(new Date().toISOString())
+    .run()
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+  try {
+    c.executionCtx.waitUntil(write);
+  } catch {
+    await write; // no execution context (tests)
+  }
+}
+
 export const COMPONENT_CACHE = 'vulnder-components';
 
 /**
@@ -202,7 +225,7 @@ export const feeds = new Hono<AppEnv>()
   .get('/api/feed', async (c) => {
     const req = readParams(c);
     if (req instanceof Response) return req;
-    return cached(c, 'feed', req, async (dataVersion) => {
+    const res = await cached(c, 'feed', req, async (dataVersion) => {
       const now = new Date();
       const match = await runMatch(c, req, now, dataVersion);
       const byId = new Map(match.results.map((r) => [r.id, r]));
@@ -232,6 +255,8 @@ export const feeds = new Hono<AppEnv>()
         watching: match.watching,
       });
     });
+    if (res.status === 200) await countCheck(c);
+    return res;
   })
   .get('/feed.xml', async (c) => {
     const req = readParams(c);

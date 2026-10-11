@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { STALE_AFTER_HOURS } from '../config';
 import { D1BindingStore } from '../ingest/d1-store';
-import { DATA_VERSION_KEY, EMPTY_STATUS, statusKey, type SourceStatus } from '../ingest/meta';
+import { CHECKS_SERVED_KEY, DATA_VERSION_KEY, EMPTY_STATUS, statusKey, type SourceStatus } from '../ingest/meta';
 import { EOL_STATUS_KEY } from '../ingest/eol';
 import { SOURCE_ORDER } from '../ingest/run';
 import type { AppEnv } from '../types';
@@ -31,7 +31,7 @@ export const HEALTH_CACHE = 'vulnder-health';
 export const HEALTH_META_SQL = 'SELECT key, value FROM meta WHERE key IN (SELECT value FROM json_each(?))';
 /** Each source's status row, plus the daily support dates (src/ingest/eol.ts), shown like one. */
 const STATUS_KEYS: [string, string][] = [...SOURCE_ORDER.map((s) => [s, statusKey(s)] as [string, string]), ['eol', EOL_STATUS_KEY]];
-const HEALTH_KEYS = [...STATUS_KEYS.map(([, k]) => k), DATA_VERSION_KEY];
+const HEALTH_KEYS = [...STATUS_KEYS.map(([, k]) => k), DATA_VERSION_KEY, CHECKS_SERVED_KEY];
 export const healthCacheKey = (env: Env) => new Request(`${baseUrl(env)}/__cache/health`);
 
 export const health = new Hono<AppEnv>().get('/', async (c) => {
@@ -76,6 +76,7 @@ export const health = new Hono<AppEnv>().get('/', async (c) => {
       status: overall,
       sources,
       dataVersion: Number(meta.get(DATA_VERSION_KEY) ?? 0),
+      checksServed: Number(meta.get(CHECKS_SERVED_KEY) ?? 0),
       ingestRuntime: c.env.INGEST_RUNTIME,
     },
     200,

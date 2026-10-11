@@ -137,6 +137,8 @@ export interface Feed {
 
 export interface Health {
   sources: Record<string, { health: 'ok' | 'stale' | 'error' | 'never'; lastSuccessAt: string | null }>;
+  /** Successful /api/feed replies so far, up to 15 minutes behind. */
+  checksServed?: number;
 }
 
 /** This browser's allowance of different stacks an hour (src/lib/pass.ts). */

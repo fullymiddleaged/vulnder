@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -94,6 +94,20 @@ describe('UI formatting', () => {
     expect(ago('2026-10-05T11:15:00Z', now)).toBe('45 min ago');
     expect(ago('2026-10-05T07:00:00Z', now)).toBe('5 h ago');
     expect(ago('2026-10-01T12:00:00Z', now)).toBe('4 days ago');
+  });
+
+  it('writes each source’s age for the footer, flagging stale ones', () => {
+    const now = Date.parse('2026-10-05T12:00:00Z');
+    expect(sourceAge({ health: 'ok', lastSuccessAt: '2026-10-05T11:15:00Z' }, now)).toBe('45 min ago');
+    expect(sourceAge({ health: 'stale', lastSuccessAt: '2026-10-01T12:00:00Z' }, now)).toBe('4 days ago, stale');
+    expect(sourceAge({ health: 'never', lastSuccessAt: null }, now)).toBe('not yet');
+  });
+
+  it('writes the checks served, and nothing before the first', () => {
+    expect(checksServedText(undefined)).toBeNull();
+    expect(checksServedText(0)).toBeNull();
+    expect(checksServedText(1)).toBe('1 stack check served');
+    expect(checksServedText(12345)).toBe('12,345 stack checks served');
   });
 
   it('never calls an EPSS change exploitation', () => {

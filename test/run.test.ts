@@ -278,6 +278,14 @@ describe('health', () => {
     expect(body.dataVersion).toBe(1);
   });
 
+  it('reports the stack checks served, 0 before the first', async () => {
+    const checks = async () => ((await (await app.request('/api/health', {}, env)).json()) as { checksServed: number }).checksServed;
+    expect(await checks()).toBe(0);
+    await (await caches.open(HEALTH_CACHE)).delete(healthCacheKey(env));
+    await env.DB.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('checks_served', '1234', ?)").bind(NOW.toISOString()).run();
+    expect(await checks()).toBe(1234);
+  });
+
   it('serves repeat requests from the edge cache without reaching D1', async () => {
     const first = await (await app.request('/api/health', {}, env)).json();
     // A database that would fail every query proves the second reply never touched it.

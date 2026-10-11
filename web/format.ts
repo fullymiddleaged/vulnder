@@ -1,5 +1,5 @@
 import { isTeam, parseStack, type Team } from '../src/stack/format';
-import type { Change, FixItem, PassStatus, Priority, Result, SupportNotice, SupportState } from './api';
+import type { Change, FixItem, Health, PassStatus, Priority, Result, SupportNotice, SupportState } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
 
@@ -57,6 +57,19 @@ export function ago(iso: string, now = Date.now()): string {
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+/** A data source's age for the footer: when it last updated, flagged when stale. */
+export function sourceAge(s: Health['sources'][string], now = Date.now()): string {
+  if (!s.lastSuccessAt) return 'not yet';
+  const age = ago(s.lastSuccessAt, now);
+  return s.health === 'stale' ? `${age}, stale` : age;
+}
+
+/** The footer's running total, or null before the first check. */
+export function checksServedText(count: number | undefined): string | null {
+  if (!count || count < 1) return null;
+  return `${count.toLocaleString('en')} stack ${count === 1 ? 'check' : 'checks'} served`;
 }
 
 /** The text box's placeholder: one of the examples, picked at random on each visit. */

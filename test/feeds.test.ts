@@ -286,6 +286,21 @@ describe('GET /api/feed', () => {
     }
   });
 
+  it('counts each served check, cache hits included, but not errors, Atom or badge requests', async () => {
+    stubOsvFetch();
+    const served = async () =>
+      ((await env.DB.prepare("SELECT value FROM meta WHERE key = 'checks_served'").first<{ value: string }>())?.value ?? null);
+    const url = `/api/feed?s=${encodeURIComponent('npm:next@14.2.3')}`;
+    expect(await served()).toBeNull();
+    expect((await app.request(url, {}, env)).status).toBe(200);
+    expect((await app.request(url, {}, env)).status).toBe(200); // edge cache hit
+    expect(await served()).toBe('2');
+    expect((await app.request('/api/feed?s=bogus:x', {}, env)).status).toBe(400);
+    await app.request(`/feed.xml?s=${encodeURIComponent('npm:next@14.2.3')}`, {}, env);
+    await app.request(`/badge.svg?s=${encodeURIComponent('npm:next@14.2.3')}`, {}, env);
+    expect(await served()).toBe('2');
+  });
+
   it('caches by canonical stack and invalidates when the data version changes', async () => {
     const fetchSpy = stubOsvFetch();
     const url = `/api/feed?s=${encodeURIComponent('npm:next@14.2.3')}`;

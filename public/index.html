@@ -68,7 +68,20 @@
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
     <footer class="site">
-      <p id="freshness" class="small muted">Checking data freshness…</p>
+      <p id="checks" class="small" hidden></p>
+      <!-- Ages come from /api/health (web/main.ts, renderFooter); without it the links still stand. -->
+      <ul class="data-sources small muted" aria-label="Data sources, with when each was last updated">
+        <li><a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records</a> <span data-source="cve"></span></li>
+        <li><a href="https://github.com/advisories" rel="noreferrer">GitHub advisories</a> <span data-source="ghsa"></span></li>
+        <li><a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a> <span data-source="kev"></span></li>
+        <li><a href="https://www.first.org/epss" rel="noreferrer">EPSS</a> <span data-source="epss"></span></li>
+        <li><a href="https://endoflife.date" rel="noreferrer">End-of-life dates</a> <span data-source="eol"></span></li>
+        <li><a href="https://osv.dev" rel="noreferrer">OSV</a> <span>live, for version checks</span></li>
+      </ul>
+      <p class="small muted">
+        CVE records from MITRE, EPSS scores courtesy of FIRST, end-of-life dates from endoflife.date. EPSS is a predicted probability of
+        exploitation in the next 30 days, not evidence of exploitation.
+      </p>
       <details id="privacy">
         <summary>Privacy</summary>
         <p class="small">
@@ -76,18 +89,9 @@
           Cloudflare's AI Gateway can keep a log of that request, including your text, in the Cloudflare account that runs this site. Vulnder
           caches the parsed result under a hash of the text, never the text itself. Manifest files are read in your browser, and only package
           names and versions are sent. Stack links are not written to logs. Vulnder is hosted on Cloudflare, which processes every request to
-          run the service, including the stack in the page address. Treat a stack link like a list of what you run and share it with care. No analytics or tracking scripts are used.
+          run the service, including the stack in the page address. Treat a stack link like a list of what you run and share it with care. The count of stack checks in the footer is a single running total, with nothing about the stack or who asked. No analytics or tracking scripts are used.
         </p>
       </details>
-      <p class="small muted">
-        Data: <a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records (MITRE)</a>,
-        <a href="https://github.com/advisories" rel="noreferrer">GitHub Advisory Database</a>,
-        <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a>,
-        <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
-<a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks,
-        and support dates from <a href="https://endoflife.date" rel="noreferrer">endoflife.date</a>.
-        EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.
-      </p>
       <p class="small muted">
         Open source under the Apache License 2.0: <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">source on GitHub</a>.
       </p>
