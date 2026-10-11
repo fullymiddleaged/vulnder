@@ -1,5 +1,8 @@
 # Vulnder
 
+[![CI](https://github.com/fullymiddleaged/vulnder/actions/workflows/ci.yml/badge.svg)](https://github.com/fullymiddleaged/vulnder/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/fullymiddleaged/vulnder/badge)](https://scorecard.dev/viewer/?uri=github.com/fullymiddleaged/vulnder)
+
 **CVE alerts for your stack, ranked by real-world exploitation.**
 
 Describe what you run, or drop in a lockfile or SBOM. Vulnder shows the recent CVEs that affect it, in the order to fix them. No account: your stack lives in the URL, and the same link is a JSON feed, an Atom feed and a README badge.
