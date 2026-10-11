@@ -1,0 +1,41 @@
+name: Wrong or missing match
+description: A CVE shows for something it doesn't affect, a CVE that should show is missing, or a name resolved to the wrong product.
+labels: [matching]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the CVE record itself is wrong (wrong product, wrong versions), it needs fixing upstream with the CVE's assigner or the GitHub advisory. This form is for mistakes Vulnder makes.
+
+        Issues are public: use a made-up stack if your real one is sensitive.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What's wrong
+      options:
+        - A CVE shows that doesn't affect the item
+        - A CVE that affects the item is missing
+        - A name resolved to the wrong product
+        - The priority (Act / Attend / Watch / Track) looks wrong
+        - Out-of-support status looks wrong
+    validations:
+      required: true
+  - type: input
+    id: item
+    attributes:
+      label: Stack item
+      description: As it appears in the stack, e.g. `npm:next@14.2.3` or `p:postgresql/postgresql@16`, or the text you typed.
+    validations:
+      required: true
+  - type: input
+    id: cve
+    attributes:
+      label: CVE or advisory ID
+      placeholder: CVE-2026-12345 or GHSA-xxxx-xxxx-xxxx
+  - type: textarea
+    id: why
+    attributes:
+      label: Why you think it's wrong
+      description: For example, the fixed version, the vendor's advisory, or what you actually run.
+    validations:
+      required: true

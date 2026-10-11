@@ -1,6 +1,21 @@
 # Contributing to Vulnder
 
-Thanks for helping. Two kinds of contribution are especially useful: a new **data source** and a new **manifest parser**. Both have a small, fixed interface.
+Thanks for helping. Two kinds of contribution are especially useful: a new **data source** and a new **manifest parser**. Both have a small, fixed interface. A wrong or missing match is the most useful kind of bug report; there's an issue form for it.
+
+Security problems go through [SECURITY.md](SECURITY.md), never a public issue.
+
+## Getting started
+
+Needs Node.js 22 or newer.
+
+```sh
+npm ci
+cp .dev.vars.example .dev.vars
+npm run db:migrate:local
+npm run dev           # http://localhost:8787
+```
+
+`npm run backfill` loads 90 days of real CVEs into local D1 (it clones about 2 GB into `.cache/`); without it the app runs on an empty database. More in [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). If you work with an AI coding agent, [AGENTS.md](AGENTS.md) has the project's rules and the principles not to undo; they apply to people too.
 
 Before opening a pull request, run:
 

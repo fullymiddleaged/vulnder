@@ -1,0 +1,30 @@
+name: Bug report
+description: Something on the site, the feeds or the badge doesn't work.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A stack link shows what someone runs. If your real stack is sensitive, reproduce the bug with a made-up one before pasting a link here: issues are public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Link that shows it
+      description: A vulnder.com link (or /api/feed, /feed.xml, /badge.svg) that reproduces the bug, if there is one.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: e.g. Firefox 140 on Windows 11, Safari on iPhone
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, console errors, or whether it happens every time.
