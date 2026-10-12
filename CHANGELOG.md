@@ -8,6 +8,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 - **The footer shows how many stack checks Vulnder has served.** Every results load counts, from the site, a shared link or the JSON feed. Atom feed and badge requests don't count. It's one running total, with nothing about the stack or who asked, and it updates every 15 minutes or so. `/api/health` returns it as `checksServed`.
 - **A tidier footer.** Each data source is listed once, linked, with when it last updated beside it. "Support dates" are now called "End-of-life dates".
+- **For self-hosters: an index of every CVE ever assigned** (migration 0009, table `cve_index`), groundwork for ranking a pasted list of CVEs whatever their age. It holds about 404,000 slim rows. Ingest keeps it current with a few thousand row writes a day, and no table reads beyond one per changed record. On an existing deployment, apply the migration, then run `npm run backfill -- --index-only --remote` once (add `--max-rows 80000` and repeat daily on Workers Free). Without the migration, ingest runs exactly as before and skips the index.
 
 ### Changed
 

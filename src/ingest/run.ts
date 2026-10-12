@@ -2,6 +2,7 @@ import { RETENTION_DAYS } from '../config';
 import { utcDay, windowStart } from '../lib/time';
 import { applyPatches, type ApplyStats } from './apply';
 import { Budget, BudgetExhausted, RateLimited } from './budget';
+import { openIndex, refreshEpssIndex, type EpssIndexReport, type IndexWriter } from './cve-index';
 import { catchUpHighEpss } from './epss-net';
 import { EOL_CURSOR_KEY, EOL_LAST_KEY, EOL_STATUS_KEY, EOL_STORED_SQL, eolStatements, fetchEol, type EolCursor, type EolRow } from './eol';
 import { assignFamilies, type Embedder, type FamilyReport } from './families';
@@ -56,6 +57,11 @@ export interface RunOptions {
   embed?: Embedder;
   /** Most vulns to assign families in a UTC day (FREE_PLAN_FAMILY_DAILY on Free); no cap when left out. */
   familyDailyVulns?: number;
+  /**
+   * Lets the first EPSS pass into cve_index write every scored CVE (about
+   * 400,000 rows). Only the backfill sets it; without it, ingest waits for one.
+   */
+  epssIndexBaseline?: boolean;
 }
 
 export interface SourceReport {
@@ -81,6 +87,8 @@ export interface RunReport {
   families?: FamilyReport;
   /** The daily support-dates fetch, when this run made it. */
   eol?: EolReport;
+  /** Rows sent to cve_index beside the sources (src/ingest/cve-index.ts); undefined when the table is missing. */
+  cveIndex?: { rows: number; epss?: EpssIndexReport };
 }
 
 export interface EolReport {
@@ -117,6 +125,9 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   };
   const reports: SourceReport[] = [];
   let anyWrites = false;
+  // Opened before anything is written, so a missing table is found while nothing is buffered.
+  const cveIndex = await openIndex(store, budget, log);
+  let indexRows = 0;
 
   // Once a UTC day: vendor support dates. One subrequest and a few D1
   // statements, taken first: the sources and families spend whatever budget
@@ -159,8 +170,10 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
         });
         report.pages++;
         add(report, stats);
+        // Beside the page, after it: an index write that fails or is skipped never holds the source back.
+        if (cveIndex && (name === 'cve' || name === 'kev')) indexRows += await cveIndex.write(res.records);
         if (name === 'kev' && stats.inserted.length > 0) {
-          add(report, await enrichFromCveRecords(ctx, stats.inserted, opts, now));
+          add(report, await enrichFromCveRecords(ctx, stats.inserted, opts, now, cveIndex));
         }
         cursor = res.nextCursor;
         if (res.done) break;
@@ -199,13 +212,25 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   // After an EPSS pass: bring back CVEs from the last year whose EPSS has passed 10%.
   if (order.includes('epss')) {
     try {
-      const net = await catchUpHighEpss(ctx, opts.epssEvents ?? true);
+      const net = await catchUpHighEpss(ctx, opts.epssEvents ?? true, cveIndex);
       if (net.candidates > 0 || net.fetched > 0) log(`epss net: ${net.candidates} candidate(s), ${net.fetched} record(s) fetched, ${net.stored} stored`);
       if (net.stats && (net.stats.written > 0 || net.stats.events > 0)) anyWrites = true;
     } catch (err) {
       log(`epss net: error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // The index's EPSS columns, from the day's file against the last one written.
+  let epssIndex: EpssIndexReport | undefined;
+  if (cveIndex && order.includes('epss')) {
+    try {
+      epssIndex = await refreshEpssIndex(ctx, { baseline: opts.epssIndexBaseline });
+      if (epssIndex.written > 0) log(`cve index: ${epssIndex.written} EPSS score(s) written${epssIndex.done ? '' : ' (more next run)'}`);
+    } catch (err) {
+      log(`cve index: EPSS error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  if (indexRows > 0 || (epssIndex?.written ?? 0) > 0) anyWrites = true;
 
   let families: FamilyReport | undefined;
   if (opts.embed) {
@@ -239,6 +264,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     d1Queries: budget.d1Spent,
     ...(families ? { families } : {}),
     ...(eol ? { eol } : {}),
+    ...(cveIndex ? { cveIndex: { rows: indexRows, ...(epssIndex ? { epss: epssIndex } : {}) } } : {}),
   };
 }
 
@@ -289,6 +315,7 @@ async function enrichFromCveRecords(
   ids: string[],
   opts: RunOptions,
   now: () => Date,
+  index: IndexWriter | null,
 ): Promise<ApplyStats> {
   const patches: VulnPatch[] = [];
   for (const id of ids) {
@@ -307,6 +334,7 @@ async function enrichFromCveRecords(
     keepStart: keepStart(now()),
     epssEvents: opts.epssEvents ?? true,
   });
+  await index?.write(patches);
   // These records were counted when KEV received them.
   return { ...stats, received: 0, inserted: [] };
 }

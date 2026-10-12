@@ -90,6 +90,11 @@ export interface VulnPatch {
   /** CVE REJECTED, or GHSA withdrawn. */
   withdrawn?: boolean;
   /**
+   * CVE records only, when REJECTED: the CVE IDs the rejection points to
+   * instead ("duplicate of CVE-…", "ConsultIDs: …"), empty when it names none.
+   */
+  rejected?: { replacedBy: string[] };
+  /**
    * CVE records only: whether the CNA tagged it "unsupported-when-assigned" (the
    * affected products are out of vendor support). Undefined for other sources.
    */

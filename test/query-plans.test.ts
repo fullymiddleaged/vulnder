@@ -8,6 +8,7 @@ import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
 import { CLEAR_UNSUPPORTED, UPDATE_EPSS } from '../src/ingest/apply';
 import { STORED_EPSS_SQL } from '../src/ingest/sources/epss';
+import { CVE_INDEX_BY_ID_SQL, CVE_INDEX_PROBE_SQL, UPSERT_CVE_INDEX, UPSERT_EPSS_INDEX, UPSERT_KEV_INDEX } from '../src/ingest/cve-index';
 
 /**
  * D1 bills every row a query reads, and a full scan reads the whole table on
@@ -52,6 +53,12 @@ describe('request-path query plans', () => {
     ['support dates', EOL_RELEASES_SQL, ['["windows","ubuntu"]']],
     ['unsupported tag', EOL_CVE_SQL, ['["trendnet/tew_827dru"]']],
     ['unsupported clear', CLEAR_UNSUPPORTED, ['[{"key":"trendnet/tew_827dru","cve":"CVE-2026-0001","published":"2026-10-01"}]']],
+    // cve_index: a pasted list's lookup, and the upserts beside ingest.
+    ['cve index by id', CVE_INDEX_BY_ID_SQL, ['["CVE-2020-0001"]']],
+    ['cve index probe', CVE_INDEX_PROBE_SQL, []],
+    ['cve index record upsert', UPSERT_CVE_INDEX, ['[{"id":"CVE-2020-0001","state":"published"}]']],
+    ['cve index KEV upsert', UPSERT_KEV_INDEX, ['[{"id":"CVE-2020-0001","kev_added_at":"2021-11-03"}]']],
+    ['cve index EPSS upsert', UPSERT_EPSS_INDEX, ['[{"id":"CVE-2020-0001","epss":0.1}]']],
   ] as const)('%s searches an index', async (_name, sql, params) => {
     expect(await scans(sql, [...params])).toEqual([]);
   });

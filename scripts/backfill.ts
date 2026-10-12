@@ -19,21 +19,37 @@
  *      (src/ingest/epss-net.ts). EPSS scores become the baseline, so the
  *      backfill raises no epss_crossed events.
  *
+ * Along the way it fills cve_index (src/ingest/cve-index.ts) with every
+ * record in the clone, every KEV entry and the day's EPSS file, whatever their
+ * age: what a pasted list of CVEs is ranked from.
+ *
+ * --index-only fills just cve_index, on a database that already has the rest
+ * (a deployment from before migration 0009). It writes about 800,000 rows:
+ * under 2% of Workers Paid's monthly allowance, several days of Free's
+ * 100,000 a day. On Free, add --max-rows (e.g. 80000) and run it once a day;
+ * each run resumes where the last stopped (.cache/index-progress.json).
+ *
+ *   npm run backfill -- --index-only --remote
+ *   npm run backfill -- --index-only --remote --max-rows 80000
+ *
  * GITHUB_TOKEN, if set, raises the GitHub API limit.
  */
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { RETENTION_DAYS } from '../src/config';
 import { applyPatches } from '../src/ingest/apply';
 import { Budget } from '../src/ingest/budget';
+import { indexStatements, refreshEpssIndex } from '../src/ingest/cve-index';
 import { cursorKey, setMetaStatement } from '../src/ingest/meta';
 import { runIngest, type RunReport } from '../src/ingest/run';
 import { parseCveRecord } from '../src/ingest/sources/cve-record';
 import type { CveCursor } from '../src/ingest/sources/cve';
 import type { GhsaCursor } from '../src/ingest/sources/ghsa';
-import type { VulnPatch } from '../src/ingest/types';
+import { kevSource } from '../src/ingest/sources/kev';
+import type { SourceContext, VulnPatch } from '../src/ingest/types';
 import { keepStart } from '../src/ingest/retention';
 import { utcDay, windowStart } from '../src/lib/time';
 import { parseArgs, parseTarget } from './lib/args';
@@ -48,8 +64,14 @@ const { values } = parseArgs({
     cvelist: { type: 'string', default: path.join('.cache', 'cvelistV5') },
     'no-update': { type: 'boolean' },
     'skip-cve': { type: 'boolean' },
+    'index-only': { type: 'boolean' },
+    'max-rows': { type: 'string' },
   },
 });
+const maxRows = values['max-rows'] === undefined ? Infinity : Number(values['max-rows']);
+// Below this a run can stop before writing anything (records go in steps of SCAN_CONCURRENCY, scores a statement at a time).
+if (!(maxRows >= 10_000)) throw new Error('--max-rows must be at least 10000');
+if (Number.isFinite(maxRows) && !values['index-only']) throw new Error('--max-rows works with --index-only');
 
 const target = parseTarget(values);
 const log = (m: string) => console.log(`[backfill] ${m}`);
@@ -84,34 +106,56 @@ async function migrate(): Promise<void> {
   }
 }
 
-async function backfillCve(): Promise<void> {
+/**
+ * Scans the clone. Every record goes to cve_index; with `vulns`, the year's
+ * also go to merge, which keeps those before the window only when they
+ * qualify. In ID order, so an index-only run stopped by --max-rows resumes
+ * after the last ID it wrote.
+ */
+async function backfillCve(opts: { vulns: boolean; after: string | null; maxRows: number }): Promise<{ last: string | null; done: boolean; rows: number }> {
   await ensureClone(values.cvelist!, !values['no-update'], log);
-  log(`scanning ${values.cvelist} for records published since ${cutoff.slice(0, 10)}, and qualifying ones since ${yearStart.slice(0, 10)}`);
+  log(
+    opts.vulns
+      ? `scanning ${values.cvelist} for records published since ${cutoff.slice(0, 10)}, and qualifying ones since ${yearStart.slice(0, 10)}; every record goes to cve_index`
+      : `scanning ${values.cvelist} for cve_index${opts.after ? `, after ${opts.after}` : ''}`,
+  );
 
   let scanned = 0;
   let maxTs = '';
   let maxId = '';
   let stored = 0;
+  let indexed = 0;
+  let last = opts.after;
   let batch: VulnPatch[] = [];
+  let toIndex: VulnPatch[] = [];
   const flush = async (final: boolean) => {
-    const extra =
-      final && maxTs
-        ? [setMetaStatement(cursorKey('cve'), { day: utcDay(new Date(maxTs)), ts: maxTs, id: maxId } satisfies CveCursor, now)]
-        : [];
-    const stats = await applyPatches(store, batch, { now, windowStart: cutoff, keepStart: yearStart, epssEvents: false, extraStatements: extra });
-    stored += stats.written;
+    if (opts.vulns) {
+      const extra =
+        final && maxTs
+          ? [setMetaStatement(cursorKey('cve'), { day: utcDay(new Date(maxTs)), ts: maxTs, id: maxId } satisfies CveCursor, now)]
+          : [];
+      const stats = await applyPatches(store, batch, { now, windowStart: cutoff, keepStart: yearStart, epssEvents: false, extraStatements: extra });
+      stored += stats.written;
+    }
+    await store.batch(indexStatements(toIndex));
+    indexed += toIndex.length;
+    if (toIndex.length > 0) last = toIndex[toIndex.length - 1]!.id;
     batch = [];
+    toIndex = [];
   };
 
   // Reading ~400k small files one at a time is slow (especially on Windows),
   // so files are read SCAN_CONCURRENCY at a time.
   const files: string[] = [];
   for await (const file of cveFiles(values.cvelist!)) files.push(file);
-  log(`  ${files.length} record files found`);
+  const id = (file: string) => path.basename(file, '.json');
+  files.sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
+  const todo = opts.after ? files.filter((f) => id(f) > opts.after!) : files;
+  log(`  ${files.length} record files found${todo.length < files.length ? `, ${todo.length} after ${opts.after}` : ''}`);
 
-  const scanOne = async (file: string): Promise<VulnPatch | null> => {
+  const scanOne = async (file: string): Promise<{ patch: VulnPatch | null; inYear: boolean }> => {
     const meta = await readMeta(file);
-    if (!meta) return null;
+    if (!meta) return { patch: null, inYear: false };
     if (meta.dateUpdated) {
       const ts = new Date(meta.dateUpdated).toISOString();
       if (ts > maxTs || (ts === maxTs && meta.cveId > maxId)) {
@@ -119,24 +163,87 @@ async function backfillCve(): Promise<void> {
         maxId = meta.cveId;
       }
     }
-    // The year's records all go to merge, which keeps those before the window only when they qualify.
-    if (meta.state !== 'PUBLISHED' || !meta.datePublished || new Date(meta.datePublished).toISOString() < yearStart) return null;
-    return parseCveRecord(JSON.parse(await readFile(file, 'utf8')));
+    const inYear = meta.state === 'PUBLISHED' && !!meta.datePublished && new Date(meta.datePublished).toISOString() >= yearStart;
+    return { patch: parseCveRecord(JSON.parse(await readFile(file, 'utf8'))), inYear };
   };
 
-  for (let i = 0; i < files.length; i += SCAN_CONCURRENCY) {
-    const patches = await Promise.all(files.slice(i, i + SCAN_CONCURRENCY).map(scanOne));
-    for (const p of patches) if (p) batch.push(p);
-    scanned += Math.min(SCAN_CONCURRENCY, files.length - i);
-    if (scanned % 25_600 < SCAN_CONCURRENCY) log(`  ${scanned} records scanned, ${stored} stored`);
-    if (batch.length >= 2000) await flush(false);
+  for (let i = 0; i < todo.length; i += SCAN_CONCURRENCY) {
+    const slice = todo.slice(i, i + SCAN_CONCURRENCY);
+    if (indexed + toIndex.length + slice.length > opts.maxRows) {
+      await flush(false);
+      await store.flush();
+      log(`cve: stopped at --max-rows after ${indexed} index rows; the next run resumes after ${last}`);
+      return { last, done: false, rows: indexed };
+    }
+    for (const { patch, inYear } of await Promise.all(slice.map(scanOne))) {
+      if (!patch) continue;
+      toIndex.push(patch);
+      if (inYear) batch.push(patch);
+    }
+    scanned += slice.length;
+    if (scanned % 25_600 < SCAN_CONCURRENCY) log(`  ${scanned} records scanned, ${stored} stored, ${indexed + toIndex.length} indexed`);
+    if (toIndex.length >= 2000) await flush(false);
   }
   await flush(true);
   await store.flush();
-  log(`cve: ${scanned} records scanned, ${stored} stored; cursor at ${maxTs} (${maxId})`);
+  log(`cve: ${scanned} records scanned, ${stored} stored, ${indexed} indexed${opts.vulns ? `; cursor at ${maxTs} (${maxId})` : ''}`);
+  return { last, done: true, rows: indexed };
+}
+
+/** Where an index-only run stopped. */
+interface IndexProgress {
+  /** Last CVE record indexed from the clone; null before the first. */
+  cveAfter: string | null;
+  cveDone: boolean;
+}
+const PROGRESS_FILE = path.join('.cache', 'index-progress.json');
+
+async function backfillIndexOnly(): Promise<void> {
+  const progress: IndexProgress = existsSync(PROGRESS_FILE)
+    ? (JSON.parse(await readFile(PROGRESS_FILE, 'utf8')) as IndexProgress)
+    : { cveAfter: null, cveDone: false };
+  const save = async () => {
+    await mkdir(path.dirname(PROGRESS_FILE), { recursive: true });
+    await writeFile(PROGRESS_FILE, `${JSON.stringify(progress, null, 2)}\n`);
+  };
+  let left = maxRows;
+
+  // 1. Every record in the clone.
+  if (!progress.cveDone) {
+    const res = await backfillCve({ vulns: false, after: progress.cveAfter, maxRows: left });
+    progress.cveAfter = res.last;
+    progress.cveDone = res.done;
+    left -= res.rows;
+    await save();
+    if (!res.done) return;
+  }
+
+  // 2. Every KEV entry: the whole catalog, whatever its cursor says.
+  const budget = unlimited();
+  const ctx: SourceContext = { fetch: budget.wrapFetch(fetch), store, budget, now: () => now, log, runtime: 'node' };
+  const kev = await kevSource.fetchChanges(kevSource.initialCursor(now), ctx);
+  await store.batch(indexStatements(kev.records));
+  await store.flush();
+  left -= kev.records.length;
+  log(`kev: ${kev.records.length} entries indexed`);
+
+  // 3. EPSS: the day's file as the baseline, then whatever moved since (resumable on its own).
+  const epss = await refreshEpssIndex(ctx, { baseline: true, maxRows: Math.max(0, left) });
+  await store.flush();
+  log(`epss: ${epss.written} scores indexed${epss.done ? '' : '; stopped at --max-rows, run again to continue'}`);
+  if (epss.done && epss.date === null) log('epss: no finished EPSS pass in this database yet; run the full backfill (or let ingest run), then this again');
+  if (epss.done && epss.date !== null) {
+    await rm(PROGRESS_FILE, { force: true });
+    log('cve_index is complete; ingest keeps it current from here');
+  }
 }
 
 await migrate();
+
+if (values['index-only']) {
+  await backfillIndexOnly();
+  process.exit(0);
+}
 
 // 1. KEV first, so old CVEs that were added to KEV inside the window exist
 //    before anything else refers to them.
@@ -144,7 +251,7 @@ await store.batch([setMetaStatement(cursorKey('kev'), { etag: null, lastModified
 summarize(await runIngest({ store, fetch, budget: unlimited(), runtime: 'node', githubToken, sources: ['kev'], epssEvents: false, maintenance: false, log }));
 
 // 2. CVE records from the clone.
-if (!values['skip-cve']) await backfillCve();
+if (!values['skip-cve']) await backfillCve({ vulns: true, after: null, maxRows: Infinity });
 
 // 3. GitHub advisories over the whole year, then EPSS as the baseline (and the high-EPSS catch-up).
 await store.batch([
@@ -152,11 +259,23 @@ await store.batch([
   setMetaStatement(cursorKey('epss'), { scoreDate: null, lastId: null }, now),
 ]);
 summarize(
-  await runIngest({ store, fetch, budget: unlimited(), runtime: 'node', githubToken, sources: ['ghsa', 'epss'], epssEvents: false, maintenance: 'force', log }),
+  await runIngest({
+    store,
+    fetch,
+    budget: unlimited(),
+    runtime: 'node',
+    githubToken,
+    sources: ['ghsa', 'epss'],
+    epssEvents: false,
+    epssIndexBaseline: true,
+    maintenance: 'force',
+    log,
+  }),
 );
 
 const [counts] = await store.all<Record<string, number>>(
   `SELECT (SELECT COUNT(*) FROM vulns) AS vulns, (SELECT COUNT(*) FROM affected) AS affected,
-          (SELECT COUNT(*) FROM events) AS events, (SELECT COUNT(*) FROM catalog) AS catalog`,
+          (SELECT COUNT(*) FROM events) AS events, (SELECT COUNT(*) FROM catalog) AS catalog,
+          (SELECT COUNT(*) FROM cve_index) AS cve_index`,
 );
 log(`done: ${JSON.stringify(counts)}`);

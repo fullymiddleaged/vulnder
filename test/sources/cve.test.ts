@@ -73,14 +73,42 @@ describe('parseCveRecord', () => {
     ]);
   });
 
-  it('marks rejected records as withdrawn', () => {
+  it('marks rejected records as withdrawn, with the CVE the rejection points to', () => {
     expect(parseCveRecord(cveRecords['CVE-2026-104886'])).toEqual({
       source: 'cve',
       id: 'CVE-2026-104886',
       aliases: [],
       fields: {},
       withdrawn: true,
+      rejected: { replacedBy: ['CVE-2026-78410'] },
     });
+  });
+
+  it.each([
+    // "…because it is a duplicate of CVE-2024-0193."
+    ['CVE-2024-0228', ['CVE-2024-0193']],
+    // "ConsultIDs: CVE-2022-3759. Reason: This candidate is a reservation duplicate of CVE-2022-3759…"
+    ['CVE-2023-0884', ['CVE-2022-3759']],
+    // "ConsultIDs: CVE-2002-0193, CVE-2002-1564 … Consult CVE-2002-0193 or CVE-2002-1564"
+    ['CVE-2002-0192', ['CVE-2002-0193', 'CVE-2002-1564']],
+    // "…rejected this CVE as it is not a vulnerability": nothing to point to.
+    ['CVE-2025-0020', []],
+  ])('reads where the rejection of %s points', (id, replacedBy) => {
+    const p = parseCveRecord(cveRecords[id])!;
+    expect(p.withdrawn).toBe(true);
+    expect(p.rejected).toEqual({ replacedBy });
+  });
+
+  it("never counts a rejection's own ID, a mention without a redirect, or more than five", () => {
+    const base = structuredClone(cveRecords['CVE-2024-0228']!) as CveRecordJson & { containers: { cna: { rejectedReasons: { lang: string; value: string }[] } } };
+    const reason = (value: string) => {
+      base.containers.cna.rejectedReasons = [{ lang: 'en', value }];
+      return parseCveRecord(base)!.rejected!.replacedBy;
+    };
+    expect(reason('CVE-2024-0228 is a duplicate of CVE-2024-0228 and CVE-2024-0193.')).toEqual(['CVE-2024-0193']);
+    expect(reason('Withdrawn by the CNA. Unrelated to CVE-2024-0193.')).toEqual([]);
+    const many = Array.from({ length: 8 }, (_, i) => `CVE-2024-100${i}`);
+    expect(reason(`Consult ${many.join(', ')}.`)).toEqual(many.slice(0, 5));
   });
 
   it("reads the CNA's unsupported-when-assigned tag: the product is out of vendor support", () => {

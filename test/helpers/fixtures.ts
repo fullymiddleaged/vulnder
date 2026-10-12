@@ -1,6 +1,10 @@
 import { strToU8, zipSync } from 'fflate';
+import cve2002_0192 from '../fixtures/cve/records/CVE-2002-0192.json';
 import cve2022_48816 from '../fixtures/cve/records/CVE-2022-48816.json';
+import cve2023_0884 from '../fixtures/cve/records/CVE-2023-0884.json';
+import cve2024_0228 from '../fixtures/cve/records/CVE-2024-0228.json';
 import cve2024_34393 from '../fixtures/cve/records/CVE-2024-34393.json';
+import cve2025_0020 from '../fixtures/cve/records/CVE-2025-0020.json';
 import cve2025_12828 from '../fixtures/cve/records/CVE-2025-12828.json';
 import cve2026_100107 from '../fixtures/cve/records/CVE-2026-100107.json';
 import cve2026_100148 from '../fixtures/cve/records/CVE-2026-100148.json';
@@ -17,6 +21,11 @@ import eolFull from '../fixtures/eol/full.json';
 export type CveRecordJson = { cveMetadata: { cveId: string; dateUpdated: string; datePublished?: string; state: string } };
 
 export const cveRecords: Record<string, CveRecordJson> = {
+  // Rejected: a duplicate, a reservation duplicate, the old ConsultIDs form with two, and one pointing nowhere.
+  'CVE-2002-0192': cve2002_0192 as CveRecordJson,
+  'CVE-2023-0884': cve2023_0884 as CveRecordJson,
+  'CVE-2024-0228': cve2024_0228 as CveRecordJson,
+  'CVE-2025-0020': cve2025_0020 as CveRecordJson,
   'CVE-2022-48816': cve2022_48816 as CveRecordJson,
   'CVE-2024-34393': cve2024_34393 as CveRecordJson,
   'CVE-2025-12828': cve2025_12828 as CveRecordJson,
