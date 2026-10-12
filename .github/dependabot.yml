@@ -1,18 +1,24 @@
+# Security updates only. A limit of 0 turns off routine version-update PRs;
+# security-update PRs ignore the limit and come from the repository's
+# Dependabot security updates setting.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
-      actions:
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
