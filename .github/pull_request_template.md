@@ -5,6 +5,7 @@
 ## Checks
 
 - [ ] `npm run lint && npm run typecheck && npm test` pass (and `npm run build:web` if `web/` changed)
+- [ ] New behaviour has tests, and a bug fix has a test that fails without it
 - [ ] Tests use recorded fixtures, with no network access
 - [ ] Nothing new logs or stores user text, stacks or stack URLs
 - [ ] New or changed stack prefixes are in docs/STACK_FORMAT.md (existing prefixes are never renamed)

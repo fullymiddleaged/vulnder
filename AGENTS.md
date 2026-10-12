@@ -26,9 +26,10 @@ Before calling work done, run `npm run lint && npm run typecheck && npm test` (v
 
 ## Rules
 
-- Don't deploy, and don't commit unless asked. Keep one commit per feature.
+- Don't deploy, and don't commit unless asked. Keep one commit per feature. Changes reach `main` through a pull request on a branch, squash-merged once CI and CodeQL pass.
 - `wrangler.jsonc` keeps the placeholder `database_id`; never commit a real one. Commands that reach Cloudflare use the git-ignored `wrangler.production.jsonc`, written from `D1_DATABASE_ID` in `.env` by `scripts/lib/production-config.ts`.
 - Treat input as hostile. Anything reaching `parseStack`, the alias tables or the model must be fuzz-safe (`test/resolve-fuzz.test.ts`). Look up input-keyed tables with `ownValue()`.
+- New behaviour comes with tests in the same change; a bug fix comes with a test that fails without it.
 - Tests never touch the network: record fixtures (`npm run record-fixtures`) and serve them with `FakeFetch` (`test/helpers/fake-fetch.ts`).
 - Never log stack URLs, request bodies or free text.
 - Wording: only CISA KEV earns "exploited". EPSS is always a *predicted probability*. Privacy statements in the UI and docs must stay exactly true; don't soften or broaden them.

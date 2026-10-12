@@ -23,7 +23,7 @@ Before opening a pull request, run:
 npm run lint && npm run typecheck && npm test
 ```
 
-Tests must not touch the network: use recorded fixtures (see below). CI runs the same checks on every pull request.
+New behaviour needs tests in the same pull request: a new feature, source or parser comes with tests that cover it, and a bug fix comes with a test that fails without the fix. Tests must not touch the network: use recorded fixtures (see below). CI runs the same checks, plus CodeQL, on every pull request.
 
 ## Adding a manifest parser
 
