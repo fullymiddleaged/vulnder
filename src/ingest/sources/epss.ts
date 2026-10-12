@@ -107,6 +107,20 @@ async function getJson(ctx: SourceContext, url: string): Promise<unknown> {
  */
 async function changedScores(ctx: SourceContext, date: string): Promise<VulnPatch[] | null> {
   const stored = await storedScores(ctx.store);
+  const scores = await scoresFile(ctx, date);
+  if (!scores) return null;
+
+  const patches: VulnPatch[] = [];
+  for await (const score of scores) {
+    const before = stored.get(score.cve);
+    if (!before || !epssDecision(before, score.epss, score.percentile, true).write) continue;
+    patches.push({ source: 'epss', id: score.cve, aliases: [], fields: { epss: score.epss, epssPercentile: score.percentile, epssDate: date } });
+  }
+  return patches.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** Every score in the full file for `date`, streamed; null when that file is not published (yet). */
+export async function scoresFile(ctx: SourceContext, date: string): Promise<AsyncGenerator<{ cve: string; epss: number; percentile: number }> | null> {
   const res = await ctx.fetch(epssFileUrl(date), { headers: { 'User-Agent': USER_AGENT } });
   // The bucket answers 403 for a file that does not exist.
   if (res.status === 403 || res.status === 404) {
@@ -115,17 +129,14 @@ async function changedScores(ctx: SourceContext, date: string): Promise<VulnPatc
   }
   if (res.status === 429) throw new RateLimited('epss', 'HTTP 429');
   if (!res.ok || !res.body) throw new Error(`EPSS file: HTTP ${res.status}`);
+  return parsedLines(res.body.pipeThrough(new DecompressionStream('gzip')).pipeThrough(new TextDecoderStream()));
+}
 
-  const patches: VulnPatch[] = [];
-  const lines = res.body.pipeThrough(new DecompressionStream('gzip')).pipeThrough(new TextDecoderStream());
-  for await (const line of splitLines(lines)) {
+async function* parsedLines(text: ReadableStream<string>): AsyncGenerator<{ cve: string; epss: number; percentile: number }> {
+  for await (const line of splitLines(text)) {
     const score = parseEpssLine(line);
-    if (!score) continue;
-    const before = stored.get(score.cve);
-    if (!before || !epssDecision(before, score.epss, score.percentile, true).write) continue;
-    patches.push({ source: 'epss', id: score.cve, aliases: [], fields: { epss: score.epss, epssPercentile: score.percentile, epssDate: date } });
+    if (score) yield score;
   }
-  return patches.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** A page of stored CVE scores: a primary-key range, so it reads only the rows it returns. */

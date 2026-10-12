@@ -16,6 +16,8 @@ export const SEED_TABLES = [
   { table: 'affected', rowsPerInsert: 4 },
   { table: 'events', rowsPerInsert: 3 },
   { table: 'catalog', rowsPerInsert: 3 },
+  // WITHOUT ROWID: the primary key is the table, so no separate index row.
+  { table: 'cve_index', rowsPerInsert: 1 },
   { table: 'meta', rowsPerInsert: 2 },
 ] as const;
 

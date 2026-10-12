@@ -23,6 +23,11 @@ const NAMED_CVES = [
   'CVE-2024-34393', // npm package via collectionURL, CVSS 3.1
   'CVE-2026-104910', // CPE, CVSS 4.0, CNA SSVC
   'CVE-2022-48816', // Linux kernel: git ranges, many branches, CISA ADP SSVC
+  // Rejected, for where a rejection points (cve_index.replaced_by):
+  'CVE-2024-0228', // duplicate of one CVE
+  'CVE-2023-0884', // reservation duplicate, ConsultIDs form
+  'CVE-2002-0192', // ConsultIDs naming two
+  'CVE-2025-0020', // not a vulnerability: points nowhere
 ];
 
 const gh: Record<string, string> = {

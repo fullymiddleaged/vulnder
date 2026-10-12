@@ -2,6 +2,7 @@ import { EPSS_HIGH, RETENTION_DAYS, USER_AGENT } from '../config';
 import { windowStart } from '../lib/time';
 import { applyPatches, type ApplyStats } from './apply';
 import { BudgetExhausted, RateLimited } from './budget';
+import type { IndexWriter } from './cve-index';
 import { cursorKey, getMeta, setMetaStatement } from './meta';
 import { keepStart } from './retention';
 import { fetchCveRecord } from './sources/cve';
@@ -45,7 +46,11 @@ export interface EpssNetReport {
   stored: number;
 }
 
-export async function catchUpHighEpss(ctx: SourceContext, epssEvents: boolean): Promise<EpssNetReport & { stats: ApplyStats | null }> {
+export async function catchUpHighEpss(
+  ctx: SourceContext,
+  epssEvents: boolean,
+  index: IndexWriter | null = null,
+): Promise<EpssNetReport & { stats: ApplyStats | null }> {
   const report = { candidates: 0, fetched: 0, stored: 0, stats: null as ApplyStats | null };
   // Only once the EPSS source has finished its pass for a score date.
   const cursor = await getMeta<EpssCursor>(ctx.store, cursorKey('epss'));
@@ -91,6 +96,7 @@ export async function catchUpHighEpss(ctx: SourceContext, epssEvents: boolean): 
       // The usual window, so an older CVE coming back raises no "published" event.
       report.stats = await applyPatches(ctx.store, patches, { now, windowStart: windowStart(now, RETENTION_DAYS), keepStart: keepStart(now), epssEvents });
       report.stored = report.stats.inserted.length;
+      await index?.write(patches);
     }
     const inserted = new Set(report.stats?.inserted ?? []);
     state.checked.push(...tried.filter((id) => !inserted.has(id)));
