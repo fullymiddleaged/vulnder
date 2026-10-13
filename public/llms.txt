@@ -6,7 +6,7 @@ Every result has a priority (Act now, Attend, Watch, Track), a 0–100 risk scor
 
 ## Use it
 
-- [Stack URL format](https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md): the versioned `s` parameter, e.g. `npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16`
+- [Stack URL format](https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md): the versioned `s` parameter, e.g. `npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16`. To rank a list of CVEs whatever their age (a scanner's findings), list them as `cve:2021-44228,cve:2014-0160`; the feed's `listed` field names any that were rejected or aren't published
 - `https://vulnder.com/?s=…`: the results page
 - `https://vulnder.com/api/feed?s=…`: JSON feed, with `priority`, `score`, `reasons`, `why` and a `fixFirst` list
 - `https://vulnder.com/feed.xml?s=…`: Atom feed, one entry per change

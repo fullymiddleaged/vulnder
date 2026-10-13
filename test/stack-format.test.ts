@@ -1,6 +1,6 @@
 import { deflateSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { COMPRESS_ABOVE, MAX_ITEMS, parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
+import { COMPRESS_ABOVE, MAX_CVE_ITEMS, MAX_ITEMS, MAX_PARAM_CHARS, parseStack, serializeStack, StackFormatError, type StackItem } from '../src/stack/format';
 
 describe('parseStack', () => {
   it('reads the example from the brief', () => {
@@ -168,6 +168,46 @@ describe('parseStack', () => {
     const list = (n: number) => Array.from({ length: n }, (_, i) => `npm:p${i}`).join(',');
     expect(parseStack(serializeStack(parseStack(list(MAX_ITEMS))))).toHaveLength(MAX_ITEMS);
     expect(() => parseStack(serializeStack(Array.from({ length: MAX_ITEMS + 1 }, (_, i) => ({ kind: 'package', ecosystem: 'npm', name: `p${i}`, version: null }))))).toThrow(/at most 200/);
+  });
+
+  it('reads listed CVEs as cve: items, in any case, with or without CVE-', () => {
+    expect(parseStack('cve:2024-12345,CVE:cve-2021-44228,cve:CVE-2014-0160')).toEqual([
+      { kind: 'cve', id: 'CVE-2014-0160' },
+      { kind: 'cve', id: 'CVE-2021-44228' },
+      { kind: 'cve', id: 'CVE-2024-12345' },
+    ]);
+    expect(serializeStack(parseStack('CVE:CVE-2021-44228,cve:2021-44228'))).toBe('cve:2021-44228');
+    // Mixed with components, in one canonical order.
+    expect(serializeStack(parseStack('p:openssl/openssl,cve:2014-0160,npm:next'))).toBe('cve:2014-0160,npm:next,p:openssl/openssl');
+  });
+
+  it('rejects malformed cve: items and any mark on one', () => {
+    for (const bad of ['cve:abc', 'cve:2024-1', 'cve:2024-123', 'cve:24-12345', 'cve:2024-12345678', 'cve:', 'cve:2024-12345@1.0', '?cve:2024-12345', 'cve:2024-12345;network', 'cve:2024-12345;edge', 'cve:2024-12345;esu', 'cve:2024_12345']) {
+      expect(() => parseStack(bad), bad).toThrow(StackFormatError);
+    }
+  });
+
+  it(`counts listed CVEs apart from components: ${MAX_CVE_ITEMS} of them, beside ${MAX_ITEMS} items`, () => {
+    const cves = (n: number): StackItem[] => Array.from({ length: n }, (_, i) => ({ kind: 'cve', id: `CVE-2024-${String(10000 + i * 7)}` }));
+    const components: StackItem[] = Array.from({ length: MAX_ITEMS }, (_, i) => ({ kind: 'package', ecosystem: 'npm', name: `p${i}`, version: null }));
+    expect(parseStack(serializeStack(cves(MAX_CVE_ITEMS - 1)))).toHaveLength(MAX_CVE_ITEMS - 1);
+    expect(parseStack(serializeStack([...cves(MAX_CVE_ITEMS), ...components.slice(0, 20)]))).toHaveLength(MAX_CVE_ITEMS + 20);
+    expect(() => parseStack(serializeStack(cves(MAX_CVE_ITEMS + 1)))).toThrow(/at most 2000 CVEs/);
+    expect(() => parseStack(serializeStack([...cves(5), ...components, { kind: 'package', ecosystem: 'npm', name: 'one-more', version: null }]))).toThrow(/at most 200 items/);
+  });
+
+  it(`fits ${MAX_CVE_ITEMS} realistic CVE IDs in the URL`, () => {
+    // Spread over the years as a scan report is: a few from the 2000s, most since 2015.
+    let seed = 11;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const ids = new Set<string>();
+    while (ids.size < MAX_CVE_ITEMS) {
+      const year = 1999 + Math.floor(rnd() * 28);
+      ids.add(`CVE-${year}-${String(Math.floor(rnd() * (year >= 2015 ? 60_000 : 9_999))).padStart(4, '0')}`);
+    }
+    const s = serializeStack([...ids].map((id) => ({ kind: 'cve', id })));
+    expect(encodeURIComponent(s).length).toBeLessThan(MAX_PARAM_CHARS * 0.75);
+    expect(parseStack(s)).toHaveLength(MAX_CVE_ITEMS);
   });
 
   it('rejects unknown prefixes and malformed items, naming them', () => {

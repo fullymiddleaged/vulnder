@@ -11,7 +11,7 @@ This format is a public contract: once a feed URL is bookmarked, it has to keep 
 
 ## Items
 
-`s` is a comma-separated list of items. Each item is a package or a product, with an optional version after `@`.
+`s` is a comma-separated list of items. Each item is a package or a product, with an optional version after `@`, or a CVE from a list (see [Listed CVEs](#listed-cves)).
 
 | Item | Meaning |
 |---|---|
@@ -71,6 +71,14 @@ A product ending in `;esu` is **covered by paid extended support**: Microsoft's 
 
 `;` is reserved for the team, the edge tag and `esu`, so an item with any other `;` suffix, with them out of order, or with any one twice, is invalid.
 
+### Listed CVEs
+
+`cve:` names one CVE to rank, from a pasted list or a scanner's report: `cve:2021-44228` is CVE-2021-44228. The prefix and the `CVE-` inside it can be in any case, so `CVE:CVE-2021-44228` is the same item; the canonical form is `cve:` and the year and number. The number has 4 to 7 digits.
+
+A listed CVE is looked up by ID and shown whatever its age: the time window and the safety net don't apply to it. A rejected one is reported as rejected, and a CVE its rejection names as the replacement (rejected as a duplicate) is ranked in its place. An ID that isn't a published CVE is reported as not found. The JSON feed lists both under `listed` (see [RANKING.md](RANKING.md#listed-cves)).
+
+It takes no version and no marks: `?`, a team, `;edge`, `;internal` and `;esu` all make it invalid. Listed CVEs and components can share a stack: `p:openssl/openssl@3.0.2,cve:2014-0160`.
+
 ### Escaping
 
 Inside an item, write `,` as `%2C` and `%` as `%25`. Everything else is handled by normal URL encoding of the query value.
@@ -99,6 +107,7 @@ Vulnder compresses any stack whose plain form is longer than 1,500 characters. E
 ## Limits
 
 - At most **200 items**. For larger stacks, self-host Vulnder.
+- At most **2,000 listed CVEs** (`cve:` items), counted apart from the 200. A list that long only fits compressed: 2,000 IDs come to about 9,500 characters.
 - At most 16,000 characters in `s` itself, and 65,536 characters once decompressed.
 
 Requests over these limits get HTTP 400 with an explanation.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Feed, Result } from '../web/api';
+import { serializeStack } from '../src/stack/format';
 import { EXPORT_INSTRUCTIONS, exportFileName, exportMarkdown, mdText, remediation, remediationSteps } from '../web/export';
 
 function result(id: string, over: Partial<Result> = {}): Result {
@@ -218,5 +219,59 @@ describe('mdText', () => {
 describe('exportFileName', () => {
   it('names the file by the day the feed was made', () => {
     expect(exportFileName(feed)).toBe('vulnder-2026-10-08.md');
+  });
+});
+
+describe('a listed CVE list', () => {
+  const kev = result('CVE-2021-44228', {
+    title: 'Log4Shell',
+    tier: 'exploited',
+    priority: 'act',
+    score: 95,
+    confidence: 'listed',
+    matched: ['cve:2021-44228'],
+    publishedAt: '2021-12-10T00:00:00.000Z',
+    beforeWindow: true,
+    mitigation: { action: 'Apply updates per vendor instructions.', advisory: null },
+  });
+  const replacement = result('CVE-2021-33500', { confidence: 'listed', matched: [], replaces: ['CVE-2021-26940'], beforeWindow: true });
+  const list: Feed = {
+    ...feed,
+    // Compressed, as any long list is: the export must parse it, not split it.
+    stack: serializeStack(Array.from({ length: 300 }, (_, i) => ({ kind: 'cve' as const, id: `CVE-2021-${10000 + i}` }))),
+    priorities: { act: 1, attend: 0, watch: 0, track: 1 },
+    fixFirst: [
+      { item: 'p:apache/log4j', score: 95, counts: { act: 1, attend: 0, watch: 0, track: 0 }, vulns: ['CVE-2021-44228'], fixable: 0, listed: true, label: 'Apache Log4j' },
+      { item: 'cve:2021-33500', score: 5, counts: { act: 0, attend: 0, watch: 0, track: 1 }, vulns: ['CVE-2021-33500'], fixable: 0, listed: true },
+    ],
+    results: [kev, replacement],
+    watching: [],
+    listed: { rejected: [{ id: 'CVE-2021-26940', replacedBy: ['CVE-2021-33500'] }, { id: 'CVE-2023-2004', replacedBy: [] }], notFound: ['CVE-2021-442288'] },
+  };
+
+  it('says to patch where it was found, with CISA’s action meanwhile, and never asks for a version', () => {
+    expect(remediationSteps(kev)).toEqual([
+      "Patch every system it was found on, using the fixed version in the advisory. Until then, CISA's required action: Apply updates per vendor instructions.",
+    ]);
+    expect(remediationSteps(replacement)).toEqual(['Patch every system it was found on, using the fixed version or workaround in the advisory.']);
+  });
+
+  it('exports the list: no window, the rejected and unknown IDs, products in Fix first', () => {
+    const md = exportMarkdown(list);
+    expect(md).toContain('# 2 vulnerabilities from this list, ranked');
+    expect(md).toContain('- **Window:** every listed CVE, whatever its age');
+    expect(md).toContain('- **Listed CVEs:** 300');
+    expect(md).not.toContain('- **Stack:**');
+    expect(md).not.toContain('~');
+    expect(md).toContain('- **Rejected:** CVE-2021-26940, a duplicate of CVE-2021-33500');
+    expect(md).toContain('- **Rejected:** CVE-2023-2004, with no replacement named: nothing to fix under that ID');
+    expect(md).toContain('- **Not published CVEs** (reserved, or mistyped): CVE-2021-442288');
+    expect(md).toContain('1. Apache Log4j (`p:apache/log4j`): 1 Act now; total risk 95. CVEs: CVE-2021-44228');
+    expect(md).toContain('2. `CVE-2021-33500`: 1 Track; total risk 5.0. CVEs: CVE-2021-33500');
+    expect(md).toContain('- **Affects:** from your list');
+    expect(md).toContain('- **Affects:** ranked in place of a listed duplicate');
+    expect(md).toContain('- **Replaces:** CVE-2021-26940, rejected as duplicates of it');
+    expect(md).toContain('- **Published:** 2021-12-10');
+    expect(md).not.toContain('Older than the window');
   });
 });

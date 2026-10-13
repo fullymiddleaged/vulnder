@@ -1,6 +1,6 @@
 import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '../lib/normalize';
 import type { Store } from '../ingest/store';
-import { formatItem, isStackVersion, MAX_ITEMS, parseStack, type StackItem, type Team } from '../stack/format';
+import { formatItem, isStackVersion, MAX_ITEMS, parseComponent, parseStack, type StackItem, type Team } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES, CATEGORIES, vendorFamily, vendorSpellings } from './aliases';
 import { fallbackKey, forVersion, inLine, lineFor, lineRanges, perRelease, type LineMatch } from './lines';
@@ -213,7 +213,7 @@ function forCandidate(chip: Chip, c: ProductCandidate): Chip {
   const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   if (!c.version) return { ...chip, input };
   const items = chip.items.map((i) => {
-    const parsed = parseStack(i.item.replace(/^\?/, ''))[0]!;
+    const parsed = parseComponent(i.item.replace(/^\?/, ''));
     return { ...i, item: formatItem({ ...parsed, version: c.version, close: i.close || undefined }) };
   });
   return { ...chip, input, items };
@@ -249,7 +249,7 @@ function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor
   const key = normalizeKey(c.name);
   if (!key) return { input, status: 'unrecognised', items: [] };
   const make = (item: string, label: string, close: boolean, known: boolean): ChipItem => {
-    const parsed = parseStack(item.replace(/^\?/, ''))[0]!;
+    const parsed = parseComponent(item.replace(/^\?/, ''));
     return { item: formatItem({ ...parsed, version: c.version, close: close || undefined }), label, close, known };
   };
   const resolved = (items: ChipItem[]): Chip => ({ input, status: items.length > 0 ? 'resolved' : 'unrecognised', items });
@@ -455,7 +455,7 @@ interface CatalogKey {
 }
 
 function catalogKey(item: string): CatalogKey {
-  const p = parseStack(item)[0]!;
+  const p = parseComponent(item);
   return p.kind === 'package' ? { kind: 'package', key: `${p.ecosystem}:${p.name}` } : { kind: 'product', key: `${p.vendor}/${p.product}` };
 }
 
@@ -467,7 +467,7 @@ async function knownKeys(store: Store, keys: CatalogKey[]): Promise<Set<string>>
 }
 
 function labelFor(item: string): string {
-  const parsed = parseStack(item)[0]!;
+  const parsed = parseComponent(item);
   return parsed.kind === 'package' ? parsed.name : `${parsed.vendor} ${parsed.product}`.replace(/_/g, ' ');
 }
 

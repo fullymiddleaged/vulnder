@@ -2,7 +2,7 @@ import { stmt, type Statement, type Store } from '../ingest/store';
 
 /**
  * Feed passes: what one browser may look up. A pass is issued after a
- * Turnstile check (POST /api/resolve) and carried in an HttpOnly cookie. Each
+ * Turnstile check (POST /api/resolve, or POST /api/pass for a CVE list) and carried in an HttpOnly cookie. Each
  * hour, starting from its first use, it may load PASS_STACKS different stacks;
  * until the last of them, the same stack again, or over another window, is
  * free. Once all are used the pass is locked until the hour is over: nothing

@@ -7,6 +7,11 @@ import { normalizeKey, normalizePackageName, ownValue, type Ecosystem } from '..
  */
 
 export const MAX_ITEMS = 200;
+/**
+ * CVE IDs a stack can list (`cve:` items), counted apart from MAX_ITEMS. 2,000
+ * sorted IDs compress to about 9,500 characters, inside MAX_PARAM_CHARS.
+ */
+export const MAX_CVE_ITEMS = 2000;
 /** Longest `s` value accepted, in characters (Cloudflare caps URLs at about 16 KB). */
 export const MAX_PARAM_CHARS = 16_000;
 export const MAX_PLAIN_CHARS = 65_536;
@@ -63,9 +68,23 @@ export function isTeam(s: string): s is Team {
 
 /** Separates an item from its tags (team, edge, esu). Names, product keys and versions can't contain it. */
 const TEAM_MARK = ';';
+/**
+ * A `cve:` item is one CVE from a pasted list (a scanner's report), ranked
+ * whatever its age. It names a CVE, not a component, so it takes no marks.
+ */
 export type StackItem =
   | ({ kind: 'package'; ecosystem: Ecosystem; name: string; version: string | null } & Marks)
-  | ({ kind: 'product'; vendor: string; product: string; version: string | null } & Marks);
+  | ({ kind: 'product'; vendor: string; product: string; version: string | null } & Marks)
+  | { kind: 'cve'; id: string; close?: never; team?: never; edge?: never; esu?: never };
+/** A component: a package or product, the items that take marks and versions. */
+export type ComponentItem = Exclude<StackItem, { kind: 'cve' }>;
+export type CveItem = Extract<StackItem, { kind: 'cve' }>;
+
+export const isCveItem = (item: StackItem): item is CveItem => item.kind === 'cve';
+
+/** The prefix for a listed CVE: `cve:2024-12345` is CVE-2024-12345. Never rename it. */
+const CVE_PREFIX = 'cve';
+const CVE_ITEM_RE = /^(?:cve-)?(\d{4})-(\d{4,7})$/i;
 
 /** Marks a close match in the URL: `?p:nginx/nginx`. */
 const CLOSE_MARK = '?';
@@ -106,10 +125,19 @@ export function parseStack(param: string): StackItem[] {
   }
   if (invalid.length > 0) throw new StackFormatError(`unrecognised stack item(s): ${invalid.slice(0, 5).join(', ')}`, invalid);
   const canonical = canonicalize(items);
-  if (canonical.length > MAX_ITEMS) {
+  const cves = canonical.filter(isCveItem).length;
+  if (canonical.length - cves > MAX_ITEMS) {
     throw new StackFormatError(`a stack can have at most ${MAX_ITEMS} items; self-host Vulnder for larger stacks`);
   }
+  if (cves > MAX_CVE_ITEMS) throw new StackFormatError(`a stack can list at most ${MAX_CVE_ITEMS} CVEs`);
   return canonical;
+}
+
+/** One component item (a package or product), as Vulnder writes them; throws for anything else, a listed CVE included. */
+export function parseComponent(item: string): ComponentItem {
+  const [parsed] = parseStack(item);
+  if (!parsed || parsed.kind === 'cve') throw new StackFormatError(`not a component: ${item.slice(0, 40)}`, [item]);
+  return parsed;
 }
 
 /** Serialises items in canonical order; compresses long stacks. */
@@ -120,6 +148,7 @@ export function serializeStack(items: StackItem[]): string {
 }
 
 export function formatItem(item: StackItem): string {
+  if (item.kind === 'cve') return identity(item);
   const edge = item.edge === undefined ? '' : `${TEAM_MARK}${item.edge ? EDGE_TAG : INTERNAL_TAG}`;
   const esu = item.esu ? `${TEAM_MARK}${ESU_TAG}` : '';
   return `${item.close ? CLOSE_MARK : ''}${identity(item)}${item.team ? `${TEAM_MARK}${item.team}` : ''}${edge}${esu}`;
@@ -127,6 +156,7 @@ export function formatItem(item: StackItem): string {
 
 /** The item without its marks. */
 export function identity(item: StackItem): string {
+  if (item.kind === 'cve') return `${CVE_PREFIX}:${item.id.slice(4)}`;
   const base = item.kind === 'package' ? `${PREFIX_FOR[item.ecosystem]}:${escape(item.name)}` : `p:${escape(item.vendor)}/${escape(item.product)}`;
   return item.version ? `${base}@${escape(item.version)}` : base;
 }
@@ -155,14 +185,16 @@ export function canonicalize(items: StackItem[]): StackItem[] {
     .map(([, item]) => item);
 }
 
-const unversioned = (item: StackItem) => identity({ ...item, version: null });
+const unversioned = (item: StackItem) => identity(item.kind === 'cve' ? item : { ...item, version: null });
 
 /**
  * The item with exactly these marks. A false close mark is left out, not
  * stored as false; `edge: false` is kept, since it says "not an edge device".
- * Only products take an edge or ESU tag.
+ * Only products take an edge or ESU tag, and a listed CVE takes none.
  */
+export function withMarks<T extends StackItem>(item: T, marks: Marks): T;
 export function withMarks(item: StackItem, marks: Marks): StackItem {
+  if (item.kind === 'cve') return { kind: 'cve', id: item.id };
   const { close: _close, team: _team, edge: _edge, esu: _esu, ...rest } = item;
   const edge = item.kind === 'product' && marks.edge !== undefined;
   const esu = item.kind === 'product' && !!marks.esu;
@@ -198,6 +230,7 @@ function parseItem(raw: string): StackItem | null {
   }
   const item = parseExactItem(rest);
   if (!item || ((marks.edge !== undefined || marks.esu) && item.kind !== 'product')) return null;
+  if (item.kind === 'cve' && (tags.length > 0 || marks.close)) return null;
   return withMarks(item, marks);
 }
 
@@ -206,6 +239,10 @@ function parseExactItem(text: string): StackItem | null {
   if (colon <= 0) return null;
   const prefix = text.slice(0, colon).toLowerCase();
   const rest = text.slice(colon + 1);
+  if (prefix === CVE_PREFIX) {
+    const m = CVE_ITEM_RE.exec(rest);
+    return m ? { kind: 'cve', id: `CVE-${m[1]}-${m[2]}` } : null;
+  }
   // The version follows the last '@' that is not the first character (npm scopes start with '@').
   const at = rest.lastIndexOf('@');
   const body = at > 0 ? rest.slice(0, at) : rest;

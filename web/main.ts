@@ -1,5 +1,6 @@
 import { parseManifest } from '../src/resolve/manifests';
-import { identity, isTeam, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
+import { extractCveIds, looksLikeCveList, MAX_SCAN_BYTES } from '../src/resolve/cve-list';
+import { identity, isCveItem, isTeam, MAX_CVE_ITEMS, parseStack, serializeStack, StackFormatError, withMarks, type StackItem } from '../src/stack/format';
 import { guessTeam, isEdge, isEdgeDevice } from '../src/stack/teams';
 import { MAX_MANIFEST_BYTES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import { TURNSTILE_ACTION } from '../src/resolve/turnstile';
@@ -9,6 +10,7 @@ import {
   getConfig,
   getFeed,
   getHealth,
+  earnPass,
   getPass,
   resolve,
   type AppConfig,
@@ -24,7 +26,7 @@ import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
 import { exportFileName, exportMarkdown, remediationSteps } from './export';
 import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
-import { capEntries, fileProblem, MANIFEST_FORMATS, textProblem } from './upload';
+import { capEntries, fileProblem, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProblem, textProblem } from './upload';
 import {
   checksServedText,
   sourceAge,
@@ -39,8 +41,10 @@ import {
   formatScore,
   fullSummary,
   itemMarks,
+  describeCveCount,
   describeLength,
   examplePlaceholder,
+  listHeadline,
   groupChanges,
   lockRemaining,
   matchHeadline,
@@ -186,46 +190,263 @@ function nudge(notice: HTMLElement): void {
 
 // ---------- Input ----------
 
-function renderInput(prefill = ''): void {
+/** The home form's two tabs: describe a stack, or rank a list of CVEs. `/#cves` opens the second. */
+type InputTab = 'stack' | 'cves';
+const CVE_TAB_HASH = '#cves';
+const tabFromHash = (): InputTab => (location.hash === CVE_TAB_HASH ? 'cves' : 'stack');
+
+/** For "Try an example": exploited, critical but not exploited, a rejected duplicate, a rejected ID and a typo. */
+const CVE_EXAMPLE = ['CVE-2021-44228', 'CVE-2024-3400', 'CVE-2014-0160', 'CVE-2022-2422', 'CVE-2021-26940', 'CVE-2023-2004', 'CVE-2021-442288'].join('\n');
+
+/**
+ * The home form. Both tabs are built at once and one is hidden, so each keeps
+ * what was typed in it and the verification widget is mounted only once.
+ * `prefill` goes into the open tab's box.
+ */
+function renderInput(prefill = '', tab: InputTab = tabFromHash()): void {
   clear(app);
+  const stackPanel = stackForm(tab === 'stack' ? prefill : '', () => select('cves', true));
+  const cvePanel = cveForm(tab === 'cves' ? prefill : '');
+  const panels: Record<InputTab, { el: HTMLElement; error: HTMLElement; field: HTMLTextAreaElement }> = { stack: stackPanel, cves: cvePanel };
+  const tabButton = (id: InputTab, label: string) =>
+    h('button', { type: 'button', role: 'tab', id: `tab-${id}`, class: 'tab', 'aria-controls': `panel-${id}` }, label) as HTMLButtonElement;
+  const tabs: Record<InputTab, HTMLButtonElement> = { stack: tabButton('stack', 'By stack'), cves: tabButton('cves', 'By CVE list') };
+  const order: InputTab[] = ['stack', 'cves'];
+  const turnstileBox = h('div', { class: 'turnstile' });
+
+  let current: InputTab = tab;
+  /** Shows a tab. `carry` moves the stack box's text across (it read as a CVE list). */
+  const select = (next: InputTab, carry = false, focusTab = false) => {
+    if (carry) {
+      panels.cves.field.value = panels.stack.field.value;
+      panels.cves.field.dispatchEvent(new Event('input'));
+    }
+    current = next;
+    for (const t of order) {
+      const on = t === next;
+      tabs[t].setAttribute('aria-selected', String(on));
+      tabs[t].tabIndex = on ? 0 : -1;
+      panels[t].el.hidden = !on;
+    }
+    formError = panels[next].error;
+    report('');
+    // The open tab is in the address, so it can be linked; nothing else about it is kept.
+    const url = next === 'cves' ? `/${CVE_TAB_HASH}` : '/';
+    if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
+    if (focusTab) tabs[next].focus();
+    else if (carry) panels.cves.field.focus();
+  };
+  for (const t of order) tabs[t].addEventListener('click', () => select(t));
+
+  // Arrow keys, Home and End move between tabs and open them (the WAI-ARIA tabs pattern).
+  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'What to check' }, tabs.stack, tabs.cves);
+  tablist.addEventListener('keydown', (e) => {
+    const at = order.indexOf(current);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: order.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    select(order[(to + order.length) % order.length]!, false, true);
+  });
+
+  app.append(
+    h(
+      'div',
+      { class: 'compose-tabs' },
+      tablist,
+      // The countdown goes first, so it's seen before anything is typed.
+      lockControls([stackPanel.submit, stackPanel.drop, cvePanel.submit, cvePanel.drop], () => (stackPanel.update(), cvePanel.update())),
+      stackPanel.el,
+      cvePanel.el,
+      // One check for both tabs, beneath them: either tab's lookup spends the same hourly allowance.
+      turnstileBox,
+    ),
+  );
+  select(tab);
+  mountTurnstile(turnstileBox);
+}
+
+interface Panel {
+  el: HTMLElement;
+  field: HTMLTextAreaElement;
+  error: HTMLElement;
+  submit: HTMLElement;
+  drop: HTMLElement;
+  /** Recounts the box and greys out the button to match. */
+  update(): void;
+}
+
+/** A drop zone that hands its file, chosen or dropped, to `onFile`. */
+function dropZone(id: string, accept: string, title: string, text: (HTMLElement | string)[], onFile: (file: File) => void): HTMLElement {
+  const fileInput = h('input', { type: 'file', id, class: 'visually-hidden', accept }) as HTMLInputElement;
+  const drop = h('div', { class: 'drop small', title }, h('p', {}, ...text), fileInput);
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    // Cleared, so choosing the same file again (after an edit) reads it again.
+    fileInput.value = '';
+    if (file) onFile(file);
+  });
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    drop.classList.add('over');
+  });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) onFile(file);
+  });
+  return drop;
+}
+
+/** The "By CVE list" tab: paste or drop a scan report; only the IDs it finds go into the link. */
+function cveForm(prefill: string): Panel {
+  const field = h('textarea', {
+    id: 'cve-text',
+    rows: 6,
+    maxlength: 1_000_000,
+    spellcheck: 'false',
+    placeholder: 'CVE-2021-44228\nCVE-2024-3400\nCVE-2014-0160',
+    'aria-describedby': 'cve-help cve-count',
+  }) as HTMLTextAreaElement;
+  field.value = prefill;
+  const counter = h('span', { class: 'counter', id: 'cve-count' });
+  const submit = h('button', { type: 'submit', class: 'primary', 'aria-describedby': 'cve-count' }, 'Rank CVEs');
+  let ids: string[] = [];
+  const update = () => {
+    ids = extractCveIds(field.value).ids;
+    const { label, over, empty } = describeCveCount(ids.length, MAX_CVE_ITEMS);
+    counter.textContent = label;
+    counter.classList.toggle('over', over);
+    submit.toggleAttribute('disabled', over || empty);
+    submit.textContent = empty || over ? 'Rank CVEs' : `Rank ${ids.length.toLocaleString('en')} ${ids.length === 1 ? 'CVE' : 'CVEs'}`;
+  };
+  field.addEventListener('input', update);
+  update();
+
+  const onFile = async (file: File) => {
+    const problem = scanFileProblem(file.name, file.size);
+    if (problem) return report(problem);
+    const text = await file.text();
+    if (text.includes('\0')) return report(`${file.name} isn't a text file. Export the report as CSV or XML.`);
+    const found = extractCveIds(text).ids;
+    if (found.length === 0) return report(`${file.name} has no CVE IDs in it.`);
+    if (found.length > MAX_CVE_ITEMS) {
+      return report(`${file.name} lists ${found.length.toLocaleString('en')} CVEs, and a list can have ${MAX_CVE_ITEMS.toLocaleString('en')}. Split the report, or filter it to the higher severities first.`);
+    }
+    report('');
+    say(`Read ${found.length} CVE IDs from ${file.name}.`);
+    await rankCves(found);
+  };
+  const drop = dropZone(
+    'cve-file',
+    '.csv,.tsv,.nessus,.xml,.json,.txt',
+    `Up to ${MAX_SCAN_BYTES / 1_000_000} MB: ${SCAN_FORMATS}`,
+    [
+      'Have a scan report? Drop it here or ',
+      h('label', { for: 'cve-file', class: 'link' }, 'choose a file'),
+      '. ',
+      h('span', { class: 'muted' }, 'Read in your browser: only the CVE IDs go into the link.'),
+    ],
+    (file) => void onFile(file),
+  );
+  const error = errorSlot();
+  const el = h(
+    'div',
+    { role: 'tabpanel', id: 'panel-cves', 'aria-labelledby': 'tab-cves' },
+    h(
+      'form',
+      {
+        class: 'compose',
+        onsubmit: (e: Event) => {
+          e.preventDefault();
+          update();
+          if (ids.length === 0) return report('Paste some CVE IDs, or drop a scan report, first.');
+          void rankCves(ids);
+        },
+      },
+      h('label', { for: 'cve-text', class: 'compose-label' }, 'Which CVEs do you want to prioritise?'),
+      field,
+      h('div', { class: 'row' }, h('p', { id: 'cve-help', class: 'muted small' }, `Paste a scanner export (${SCAN_FORMATS}) or any list of CVE IDs. Up to ${MAX_CVE_ITEMS.toLocaleString('en')}, of any age.`), counter),
+      h(
+        'div',
+        { class: 'examples' },
+        h('span', { class: 'muted small' }, 'Or try'),
+        h('button', { type: 'button', class: 'chip-button', onclick: () => ((field.value = CVE_EXAMPLE), update(), field.focus()) }, 'An example list'),
+      ),
+      drop,
+      error,
+      submit,
+    ),
+  );
+  return { el, field, error, submit, drop, update };
+}
+
+/**
+ * Ranks a list of CVE IDs. The verification check earns this browser its pass
+ * first, so a list counts against the same hourly allowance as a stack; then
+ * the IDs go straight to the feed, with nothing else sent.
+ */
+async function rankCves(ids: string[]): Promise<void> {
+  if (isLocked()) return say(passNotice(pass) ?? '');
+  const token = takeToken("The verification check couldn't run, so a list can't be ranked right now. Reload the page to try again.");
+  if (!token) return;
+  say('Checking…');
+  try {
+    pass = await earnPass(token);
+  } catch (err) {
+    say('');
+    return report(err instanceof Error ? err.message : 'Something went wrong. Try again in a moment.');
+  }
+  if (isLocked()) return say(passNotice(pass) ?? '');
+  pendingNotes = [];
+  pendingUnmatched = 0;
+  navigate(serializeStack(ids.map((id) => ({ kind: 'cve', id }))), 30);
+}
+
+/** The "Your stack" tab. `toCves` opens the CVE tab with this box's text, when it reads as a list of CVEs. */
+function stackForm(prefill: string, toCves: () => void): Panel {
   const textarea = h('textarea', {
     id: 'stack-text',
     rows: 6,
     maxlength: 200_000,
     placeholder: examplePlaceholder(EXAMPLES),
     'aria-describedby': 'stack-help',
-  });
+  }) as HTMLTextAreaElement;
   textarea.value = prefill;
   const counter = h('span', { class: 'counter', id: 'stack-length' });
   // Over the limit, the button stays greyed out, so a description that would be refused is never sent.
   const submitButton = h('button', { type: 'submit', class: 'primary', 'aria-describedby': 'stack-length' }, 'Find vulnerabilities');
+  const helpText = 'Describe your whole stack in your own words. Include versions if you know them.';
+  const help = h('p', { id: 'stack-help', class: 'muted small' }, helpText);
+  // A pasted list of CVEs belongs in the other tab: say so, and offer to move it. Never moved unasked.
+  const listHint = [h('strong', {}, 'This looks like a list of CVE IDs. '), h('button', { type: 'button', class: 'link', onclick: toCves }, 'Rank them as a CVE list')];
+  let hinting = false;
   const updateCounter = () => {
-    const { label, over } = describeLength(textarea.value, !!parseManifest(textarea.value), MAX_TEXT);
+    const manifest = !!parseManifest(textarea.value);
+    const { label, over } = describeLength(textarea.value, manifest, MAX_TEXT);
     counter.textContent = label;
     counter.classList.toggle('over', over);
     submitButton.toggleAttribute('disabled', over);
+    const hint = !manifest && looksLikeCveList(textarea.value, MAX_TEXT);
+    if (hint !== hinting) help.replaceChildren(...(hint ? listHint : [helpText]));
+    hinting = hint;
   };
   textarea.addEventListener('input', updateCounter);
   updateCounter();
 
-  const fileInput = h('input', { type: 'file', id: 'file', class: 'visually-hidden', accept: '.json,.txt,.toml,.mod,.xml,.lock,Dockerfile,*' }) as HTMLInputElement;
   // One quiet line under the examples; the full list of formats is in the tooltip.
-  const drop = h(
-    'div',
-    {
-      class: 'drop small',
-      id: 'drop',
-      title: `Up to ${MAX_MANIFEST_BYTES / 1_000_000} MB: ${MANIFEST_FORMATS}`,
-    },
-    h(
-      'p',
-      {},
+  const drop = dropZone(
+    'file',
+    '.json,.txt,.toml,.mod,.xml,.lock,Dockerfile,*',
+    `Up to ${MAX_MANIFEST_BYTES / 1_000_000} MB: ${MANIFEST_FORMATS}`,
+    [
       'Have a manifest? Drop it here or ',
       h('label', { for: 'file', class: 'link' }, 'choose a file'),
       '. ',
       h('span', { class: 'muted' }, 'Lockfiles, SBOMs and more, read in your browser: only package names and versions are sent.'),
-    ),
-    fileInput,
+    ],
+    (file) => void onFile(file),
   );
   // Uploads skip the description's length limit: only the parsed names and versions are sent.
   const onFile = async (file: File) => {
@@ -242,25 +463,8 @@ function renderInput(prefill = ''): void {
     say(`Read ${manifest.candidates.length} entries from ${file.name}.`);
     await submit({ candidates: sent }, note);
   };
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    // Cleared, so choosing the same file again (after an edit) reads it again.
-    fileInput.value = '';
-    if (file) void onFile(file);
-  });
-  drop.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    drop.classList.add('over');
-  });
-  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-  drop.addEventListener('drop', (e) => {
-    e.preventDefault();
-    drop.classList.remove('over');
-    const file = e.dataTransfer?.files?.[0];
-    if (file) void onFile(file);
-  });
 
-  const turnstileBox = h('div', { class: 'turnstile' });
+  const error = errorSlot();
   const form = h(
     'form',
     {
@@ -279,10 +483,8 @@ function renderInput(prefill = ''): void {
       },
     },
     h('label', { for: 'stack-text', class: 'compose-label' }, 'What do you run?'),
-    // The countdown goes first, so it's seen before anything is typed.
-    lockControls([submitButton, drop], updateCounter),
     textarea,
-    h('div', { class: 'row' }, h('p', { id: 'stack-help', class: 'muted small' }, 'Describe your whole stack in your own words. Include versions if you know them.'), counter),
+    h('div', { class: 'row' }, help, counter),
     h(
       'div',
       { class: 'examples' },
@@ -292,13 +494,11 @@ function renderInput(prefill = ''): void {
       ),
     ),
     drop,
-    turnstileBox,
-    errorSlot(),
+    error,
     submitButton,
   );
-
-  app.append(form);
-  mountTurnstile(turnstileBox);
+  const el = h('div', { role: 'tabpanel', id: 'panel-stack', 'aria-labelledby': 'tab-stack' }, form);
+  return { el, field: textarea, error, submit: submitButton, drop, update: updateCounter };
 }
 
 /** How long to wait for the verification script before calling it unavailable. */
@@ -351,6 +551,26 @@ const FEED_STEPS = [
   'OSV, to confirm affected versions',
   'Exact and close matches, ranked by what to fix first',
 ];
+/** A list of CVEs is looked up by ID, so its checklist names what ranks them. */
+const LIST_TITLE = 'Ranking your CVEs…';
+const LIST_DETAIL = 'Looking up each CVE, whatever its age, in:';
+const LIST_STEPS = [
+  'CVE records, with CISA’s exploitation assessments',
+  'CISA Known Exploited Vulnerabilities',
+  'EPSS exploit predictions',
+  'Rejected and duplicate CVEs',
+  'Your CVEs, ranked by what to fix first',
+];
+
+/** True for a stack that is only a list of CVEs; false for anything else, a bad link included. */
+function isList(stack: string): boolean {
+  try {
+    return parseStack(stack).every(isCveItem);
+  } catch {
+    return false;
+  }
+}
+
 /** A description's lookup reads it first, then checks the feed: one checklist for both. */
 const READ_STEP = 'Reading your stack';
 const FEED_TITLE = 'Finding matches…';
@@ -445,18 +665,29 @@ let pendingNotes: string[] = [];
 /** How many names in that submit resolved to nothing, so a no-match headline doesn't overclaim. */
 let pendingUnmatched = 0;
 
-/** Sends a description or parsed entries; `note` (e.g. what a big file left out) shows with the results. */
-async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<void> {
-  if (isLocked()) return say(passNotice(pass) ?? '');
+/**
+ * The verification check's token, used once: the widget resets for the next
+ * submit. Null, with the reason shown, while the check is still running or
+ * when it couldn't run (`failed` says what that stops, `action` offers a way out).
+ */
+function takeToken(failed: string, action?: HTMLElement): string | null {
   if (!turnstileToken) {
-    return turnstileFailed
-      ? report("The verification check couldn't run, so a description can't be read right now. Reload the page to try again.", addByHandButton())
-      : report('Please wait a moment for the verification check to finish, then try again.');
+    if (turnstileFailed) report(failed, action);
+    else report('Please wait a moment for the verification check to finish, then try again.');
+    return null;
   }
   const token = turnstileToken;
   turnstileToken = null;
   window.turnstile?.reset(turnstileWidget);
   report('');
+  return token;
+}
+
+/** Sends a description or parsed entries; `note` (e.g. what a big file left out) shows with the results. */
+async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<void> {
+  if (isLocked()) return say(passNotice(pass) ?? '');
+  const token = takeToken("The verification check couldn't run, so a description can't be read right now. Reload the page to try again.", addByHandButton());
+  if (!token) return;
   say('Working out what is in your stack…');
   const busy = showBusy(FEED_TITLE, FEED_DETAIL, [READ_STEP, ...FEED_STEPS], false);
   try {
@@ -506,10 +737,14 @@ async function submit(body: { text: string } | { candidates: import('../src/reso
 
 // ---------- Edit ----------
 
-/** `support`: the last feed's support findings by item name, so items with paid extended support on offer get a Has ESU tick. */
-function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map()): void {
+/**
+ * `support`: the last feed's support findings by item name, so items with paid extended support on offer get a Has ESU tick.
+ * `listed`: the stack's CVE IDs (`cve:` items), kept in a folded group of their own.
+ */
+function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map(), listed: string[] = []): void {
   clear(app);
   const items = [...new Set(initial)];
+  const cves = [...new Set(listed)];
   // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
   const teamed = items.some((i) => itemMarks(i).team !== null);
   const list = h('ul', { class: 'chips', 'aria-label': 'Stack items' });
@@ -575,7 +810,20 @@ function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotic
         ),
       );
     });
-    if (items.length === 0) list.append(h('li', { class: 'muted' }, 'No items yet. Add some below.'));
+    if (items.length === 0) list.append(h('li', { class: 'muted' }, cves.length > 0 ? 'No components. Your CVE list is below.' : 'No items yet. Add some below.'));
+    drawCves();
+  };
+  const cveList = h('ul', { class: 'chips compact', 'aria-label': 'CVEs from your list' });
+  const cveSummary = h('summary', { class: 'small' });
+  const cveGroup = h('details', { class: 'stack-items listed-ids', open: cves.length <= STACK_SHOWN }, cveSummary, cveList);
+  const drawCves = () => {
+    cveGroup.hidden = cves.length === 0;
+    cveSummary.textContent = `${cveCount(cves.length)} from your list`;
+    cveList.replaceChildren(
+      ...cves.map((id, i) =>
+        h('li', { class: 'chip resolved' }, h('code', {}, id), h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${id}`, onclick: () => (cves.splice(i, 1), drawCves()) }, crossIcon())),
+      ),
+    );
   };
   draw();
 
@@ -588,6 +836,10 @@ function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotic
         e.preventDefault();
         try {
           for (const item of parseStack(addInput.value)) {
+            if (item.kind === 'cve') {
+              if (!cves.includes(item.id)) cves.push(item.id);
+              continue;
+            }
             // In a stack with teams, an item added by hand starts with the fixed table's guess.
             const team = item.team ?? (teamed ? (guessTeam(item) ?? undefined) : undefined);
             items.push(serializeStack([withMarks(item, { team })]));
@@ -612,10 +864,10 @@ function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotic
       type: 'button',
       class: 'primary',
       onclick: () => {
-        if (items.length === 0) return report('Add at least one item.');
-        const stack: StackItem[] = parseStack(items.join(','));
+        if (items.length + cves.length === 0) return report('Add at least one item.');
+        const stack: StackItem[] = items.length > 0 ? parseStack(items.join(',')) : [];
         if (stack.length > 200) return report('A stack can have at most 200 items. Self-host Vulnder for larger stacks.');
-        navigate(serializeStack(stack), 30);
+        navigate(serializeStack([...stack, ...cves.map((id) => ({ kind: 'cve' as const, id }))]), 30);
       },
     },
     'Show vulnerabilities',
@@ -632,6 +884,7 @@ function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotic
         'Remove anything that is not yours and add what is missing. Exact matches are the products you named. Close matches are products your description loosely fits, so check they are yours. Tick Edge device for anything the internet can reach directly; Vulnder ticks VPNs, firewalls and gateways for you, and you can untick one that sits inside your network. Tick Has ESU on a release past its end of support if you pay for extended security updates. Items with nothing reported are still watched.',
       ),
       list,
+      cveGroup,
       addForm,
       h('p', { class: 'muted small' }, 'Format: ', h('code', {}, 'ecosystem:package@version'), ' (npm, pypi, cargo, go, maven, nuget, composer, gem, hex, pub) or ', h('code', {}, 'p:vendor/product@version'), '. Not sure of the name? Go back and describe it in words instead.'),
       errorSlot(),
@@ -650,6 +903,7 @@ function navigate(stack: string, days: number): void {
 }
 
 async function renderResults(stack: string, days: number): Promise<void> {
+  const at = routes;
   // After a submit, its loader stays exactly as it is (no second fade-in) and carries on.
   let busy = handoff;
   handoff = null;
@@ -662,7 +916,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
   }
   clearInterval(lockTimer);
   say(FEED_TITLE);
-  busy ??= showBusy(FEED_TITLE, FEED_DETAIL, FEED_STEPS);
+  busy ??= isList(stack) ? showBusy(LIST_TITLE, LIST_DETAIL, LIST_STEPS) : showBusy(FEED_TITLE, FEED_DETAIL, FEED_STEPS);
   let feed: Feed;
   try {
     feed = await getFeed(stack, days);
@@ -698,6 +952,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
   }
   // Loading this stack may have used the allowance; editing is greyed out once it has.
   await refreshPass();
+  // Left for another page while it loaded: that page stays.
+  if (at !== routes) return;
   const notes = pendingNotes;
   const unmatched = pendingUnmatched;
   pendingNotes = [];
@@ -707,7 +963,11 @@ async function renderResults(stack: string, days: number): Promise<void> {
 
   // The answer first: the headline with ways to share and follow it, the stack it answers for, priorities
   // at a glance, what to fix first, the week's changes, every result, then share and follow again in full.
-  const headline = matchHeadline(feed.results.length, feed.days, unmatched, feed.results.filter((r) => r.beforeWindow).length);
+  const listOnly = isList(feed.stack);
+  const unranked = (feed.listed?.rejected.length ?? 0) + (feed.listed?.notFound.length ?? 0);
+  const headline = listOnly
+    ? listHeadline(feed.priorities, unranked)
+    : matchHeadline(feed.results.filter((r) => r.confidence !== 'listed').length, feed.days, unmatched, feed.results.filter((r) => r.beforeWindow && r.confidence !== 'listed').length);
   app.append(
     h(
       'section',
@@ -718,6 +978,9 @@ async function renderResults(stack: string, days: number): Promise<void> {
     ),
     renderStack(feed, notes),
   );
+  // What became of the IDs that aren't ranked, before the ranking itself.
+  const aboutList = renderListed(feed);
+  if (aboutList) app.append(aboutList);
   // Before the CVEs: out of support outweighs any one of them, and a stack can have it with none.
   const support = renderSupport(feed);
   if (support) app.append(support);
@@ -767,7 +1030,10 @@ const STACK_SHOWN = 12;
  * Those notes stay on the page rather than passing through the status line.
  */
 function renderStack(feed: Feed, notes: string[]): HTMLElement {
-  const items = parseStack(feed.stack);
+  const all = parseStack(feed.stack);
+  const items = all.filter((i) => !isCveItem(i));
+  const cves = all.filter(isCveItem).map((c) => c.id);
+  if (items.length === 0) return renderListStack(cves, notes);
   const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
   daySelect.addEventListener('change', () => {
     // A key press can still get through on some browsers; put the window back.
@@ -776,7 +1042,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
   });
   const editButton = h(
     'button',
-    { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i])), supportByItem(feed.support ?? [])), app.focus()) },
+    { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i])), supportByItem(feed.support ?? []), cves), app.focus()) },
     'Edit stack',
   );
   // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
@@ -789,8 +1055,19 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
   return h(
     'section',
     { class: 'block stack', 'aria-labelledby': 'stack-title' },
-    h('div', { class: 'row wrap' }, h('h2', { id: 'stack-title', class: 'stack-title' }, 'Your stack'), h('span', { class: 'muted' }, stackSummary(items)), h('span', { class: 'stack-actions' }, daySelect, editButton)),
-    h('p', { class: 'muted small' }, 'Whatever the window, known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show too, as a safety net.'),
+    h(
+      'div',
+      { class: 'row wrap' },
+      h('h2', { id: 'stack-title', class: 'stack-title' }, 'Your stack'),
+      h('span', { class: 'muted' }, stackSummary(items), cves.length > 0 ? `, plus ${cveCount(cves.length)} from your list` : ''),
+      h('span', { class: 'stack-actions' }, daySelect, editButton),
+    ),
+    h(
+      'p',
+      { class: 'muted small' },
+      'Whatever the window, known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show too, as a safety net.',
+      cves.length > 0 ? ' The window doesn’t apply to the CVEs you listed: they all show, whatever their age.' : '',
+    ),
     editNotice,
     allNotes.length > 0 ? h('ul', { class: 'notice notes', 'aria-label': 'About this lookup' }, allNotes.map((n) => h('li', {}, n))) : null,
     h(
@@ -814,6 +1091,104 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
       ),
       anyClose
         ? h('p', { class: 'muted small' }, 'Exact matches are the products you named. Close matches are products your description loosely fits: check they are yours, and remove any that aren’t with Edit stack.')
+        : null,
+    ),
+    cves.length > 0 ? listedIds(cves, `${cveCount(cves.length)} from your list`) : null,
+  );
+}
+
+const cveCount = (n: number) => `${n.toLocaleString('en')} ${n === 1 ? 'CVE' : 'CVEs'}`;
+
+/** A list's IDs, folded away behind one line. */
+function listedIds(ids: string[], label: string): HTMLElement {
+  return h(
+    'details',
+    { class: 'stack-items listed-ids', open: ids.length <= STACK_SHOWN },
+    h('summary', { class: 'small' }, h('span', { class: 'when-closed' }, `Show the ${label}`), h('span', { class: 'when-open' }, `Hide the ${label}`)),
+    h('ul', { class: 'chips compact' }, ids.map((id) => h('li', { class: 'chip resolved' }, h('code', {}, id)))),
+  );
+}
+
+/**
+ * The stack line for a stack that is only a list of CVEs. There's no window
+ * to choose (every listed CVE shows), and Edit list reopens the CVE tab with
+ * the IDs in it.
+ */
+function renderListStack(cves: string[], notes: string[]): HTMLElement {
+  const editButton = h(
+    'button',
+    {
+      type: 'button',
+      id: 'edit-stack',
+      onclick: () => {
+        history.pushState(null, '', `/${CVE_TAB_HASH}`);
+        markIndexable();
+        document.title = DEFAULT_TITLE;
+        renderInput(cves.join('\n'), 'cves');
+        app.focus();
+      },
+    },
+    'Edit list',
+  );
+  const editNotice = lockControls([editButton]);
+  return h(
+    'section',
+    { class: 'block stack', 'aria-labelledby': 'stack-title' },
+    h('div', { class: 'row wrap' }, h('h2', { id: 'stack-title', class: 'stack-title' }, 'Your CVE list'), h('span', { class: 'muted' }, cveCount(cves.length)), h('span', { class: 'stack-actions' }, editButton)),
+    h('p', { class: 'muted small' }, 'Every CVE you listed is looked up, whatever its age.'),
+    editNotice,
+    notes.length > 0 ? h('ul', { class: 'notice notes', 'aria-label': 'About this lookup' }, notes.map((n) => h('li', {}, n))) : null,
+    listedIds(cves, cveCount(cves.length)),
+  );
+}
+
+/**
+ * What became of the listed IDs that aren't ranked: rejected as a duplicate
+ * (its replacement ranks in its place), rejected outright, or not a published
+ * CVE at all. Null when every ID is ranked.
+ */
+function renderListed(feed: Feed): HTMLElement | null {
+  const { rejected = [], notFound = [] } = feed.listed ?? {};
+  if (rejected.length === 0 && notFound.length === 0) return null;
+  const ranked = new Set(feed.results.map((r) => r.id));
+  const id = (cve: string) => h('code', {}, cve);
+  const joined = (ids: string[], each: (cve: string) => HTMLElement) => ids.flatMap((c, i) => [i === 0 ? '' : i === ids.length - 1 ? ' and ' : ', ', each(c)]);
+  const duplicates = rejected.filter((r) => r.replacedBy.length > 0);
+  const dropped = rejected.filter((r) => r.replacedBy.length === 0).map((r) => r.id);
+  return h(
+    'section',
+    { class: 'block listed', 'aria-labelledby': 'listed-title' },
+    h('h2', { id: 'listed-title' }, 'About your list'),
+    h(
+      'ul',
+      { class: 'listed-notes', role: 'list' },
+      duplicates.map((r) => {
+        const shown = r.replacedBy.filter((c) => ranked.has(c));
+        return h(
+          'li',
+          {},
+          id(r.id),
+          ` was rejected as a duplicate of `,
+          ...joined(r.replacedBy, id),
+          shown.length === 0 ? '.' : shown.length === r.replacedBy.length ? `, ranked below in its place.` : ', ranked below where published.',
+        );
+      }),
+      dropped.length > 0
+        ? h(
+            'li',
+            {},
+            ...joined(dropped, id),
+            dropped.length === 1 ? ' was rejected with no replacement named, so there is nothing to fix under that ID.' : ' were rejected with no replacement named, so there is nothing to fix under those IDs.',
+          )
+        : null,
+      notFound.length > 0
+        ? h(
+            'li',
+            {},
+            notFound.length === 1 ? '1 ID isn’t a published CVE: ' : `${notFound.length} IDs aren’t published CVEs: `,
+            ...joined(notFound, id),
+            '. Reserved and never published, or mistyped.',
+          )
         : null,
     ),
   );
@@ -968,7 +1343,13 @@ function renderFixFirst(feed: Feed): HTMLElement {
     'section',
     { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
     h('h2', { id: 'fix-title' }, 'Fix first'),
-    h('p', { class: 'muted small' }, 'Each item in your stack, ranked by what fixing it removes: the most urgent priority first, then the total risk score of its CVEs.'),
+    h(
+      'p',
+      { class: 'muted small' },
+      items.every((g) => g.listed)
+        ? 'Your CVEs grouped by product, ranked by what patching each one removes: the most urgent priority first, then the total risk score of its CVEs.'
+        : `Each item in your stack${items.some((g) => g.listed) ? ', and the products your listed CVEs are in,' : ''} ranked by what fixing it removes: the most urgent priority first, then the total risk score of its CVEs.`,
+    ),
     items.some((g) => g.close || g.also.some((i) => itemMarks(i).close))
       ? h(
           'p',
@@ -1008,8 +1389,8 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
         pause(),
         tally(g.counts),
         pause(),
-        h('span', { class: 'small muted' }, g.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${g.fixable} of ${total} with a fix`),
-        pause(),
+        // A listed CVE names no version the stack runs, so there's no fixed version to count.
+        g.listed ? null : [h('span', { class: 'small muted' }, g.fixable === total ? `${total === 1 ? 'Fix' : `Fixes for all ${total}`} available` : `${g.fixable} of ${total} with a fix`), pause()],
         h('span', { class: 'score', title: 'The risk scores of its CVEs, added up' }, `Total risk ${formatScore(g.score)}`),
         pause(),
         h('span', { class: 'expand small' }, h('span', { class: 'when-closed' }, `Show ${total === 1 ? 'CVE' : `${total} CVEs`}`), h('span', { class: 'when-open' }, 'Hide')),
@@ -1026,6 +1407,9 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
  * row doesn't read as one SKU (Server Core) the user may not run.
  */
 function groupName(g: ComponentGroup): HTMLElement[] {
+  // A listed group: its product's name, else the one CVE it holds.
+  if (g.listed && g.label) return [h('strong', { class: 'product-name' }, g.label), h('code', { class: 'small muted' }, g.component)];
+  if (g.listed && g.component.startsWith('cve:')) return [h('code', {}, `CVE-${g.component.slice(4)}`)];
   if (g.family) return [h('code', {}, g.family), h('span', { class: 'badge match-close' }, `${g.also.length + 1} close matches`)];
   return [
     h('code', {}, g.component),
@@ -1085,7 +1469,12 @@ function renderBrief(r: Result): HTMLElement {
       'p',
       { class: 'small links' },
       r.why.decisive ? h('span', {}, r.why.decisive.text) : r.reasons.length > 0 ? h('span', {}, r.reasons[0]) : null,
-      r.fixedVersions.length > 0 ? h('span', {}, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', '))) : h('span', { class: 'muted' }, 'No fixed version listed'),
+      r.fixedVersions.length > 0
+        ? h('span', {}, 'Fixed in ', h('strong', {}, r.fixedVersions.join(', ')))
+        : r.confidence === 'listed'
+          ? null
+          : h('span', { class: 'muted' }, 'No fixed version listed'),
+      r.replaces?.length ? h('span', { class: 'muted' }, `Replaces ${r.replaces.join(', ')}`) : null,
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
     ),
   );
@@ -1356,11 +1745,36 @@ function renderSummary(text: string | null): HTMLElement | null {
 function olderBadge(r: Result): HTMLElement {
   const when = r.evidence.kevAddedAt ?? r.publishedAt;
   const month = when ? new Date(when).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : null;
+  // A listed CVE shows whatever its age: the date is only for reference.
+  if (r.confidence === 'listed') {
+    const published = r.publishedAt ? new Date(r.publishedAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : null;
+    return h('span', { class: 'badge older', title: 'You listed it, so it shows whatever its age.' }, published ? `Published ${published}` : 'Publication date unknown');
+  }
   return h(
     'span',
     { class: 'badge older', title: 'Older than your time window. Exploited, likely to be, or CVSS 9.9+ CVEs from the last year always show, in case they were missed.' },
     month ? `Older: ${r.evidence.kevAddedAt ? 'on KEV since' : 'from'} ${month}` : 'Older than your window',
   );
+}
+
+/** How it matched: a listed CVE says so in place of exact or close, and names any duplicates it replaces. */
+function matchBadges(r: Result): HTMLElement[] {
+  const replaces = r.replaces?.length
+    ? [h('span', { class: 'badge replaces', title: 'Rejected as a duplicate of this CVE, so this one ranks in its place' }, `Replaces ${r.replaces.join(', ')}`)]
+    : [];
+  if (r.confidence === 'listed') return [h('span', { class: 'badge match-exact' }, r.matched.length > 0 ? 'From your list' : 'In place of a duplicate'), ...replaces];
+  return [
+    h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
+    h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Version not confirmed'),
+    ...replaces,
+  ];
+}
+
+/** The stack items it matched; listed CVEs are left out, since the ID above already says it. */
+function matchedLine(r: Result): HTMLElement | null {
+  const items = r.matched.filter((m) => !m.startsWith('cve:'));
+  if (items.length === 0) return null;
+  return h('p', { class: 'small' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '');
 }
 
 function renderResult(r: Result): HTMLElement {
@@ -1411,13 +1825,12 @@ function renderResult(r: Result): HTMLElement {
           )
         : null,
       e.knownRansomware ? h('span', { class: 'badge ransomware' }, 'Used in ransomware') : null,
-      h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
-      h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Version not confirmed'),
+      ...matchBadges(r),
     ),
     e.kevAddedAt
       ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
       : null,
-    h('p', { class: 'small' }, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
+    matchedLine(r),
     h(
       'p',
       { class: 'small links' },
@@ -1540,13 +1953,18 @@ function markIndexable(): void {
   }
 }
 
+/** Counts routes, so one still waiting when a newer one starts (Back, then a quick submit) draws nothing over it. */
+let routes = 0;
+
 async function route(): Promise<void> {
+  const at = ++routes;
   markIndexable();
   const params = new URLSearchParams(location.search);
   const s = params.get('s');
   if (s) await renderResults(s, Number(params.get('days') ?? 30) || 30);
   else {
     await refreshPass();
+    if (at !== routes) return;
     renderInput();
   }
   app.focus();

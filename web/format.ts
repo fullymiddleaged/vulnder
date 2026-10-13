@@ -42,6 +42,33 @@ export function matchHeadline(count: number, days: number, unmatched = 0, older 
   return { title: "It's a match. Unfortunately.", subtitle: `${from} Red flags, ranked:` };
 }
 
+/**
+ * The headline for a stack that is only a list of CVEs: every one of them is
+ * ranked whatever its age, so there is no window to speak of. `unranked`
+ * counts the IDs that were rejected or aren't published.
+ */
+export function listHeadline(priorities: Record<Priority, number>, unranked: number): { title: string; subtitle: string } {
+  const ranked = PRIORITY_ORDER.reduce((n, p) => n + priorities[p], 0);
+  const left = unranked > 0 ? ` ${unranked === 1 ? '1 ID wasn’t' : `${unranked} IDs weren’t`} ranked; About your list says why.` : '';
+  if (ranked === 0) return { title: 'Nothing to rank.', subtitle: `None of those IDs is a published CVE.${left}` };
+  const urgent = [
+    priorities.act > 0 ? `${priorities.act} to act on now` : '',
+    priorities.attend > 0 ? `${priorities.attend} to attend to` : '',
+  ].filter(Boolean);
+  const lead = urgent.length > 0 ? `${urgent.join(' and ')}, the rest to watch or track.` : 'None needs acting on now: watch or track the rest.';
+  return { title: `${ranked} ${ranked === 1 ? 'CVE' : 'CVEs'}, ranked.`, subtitle: `${lead}${left} Most urgent first:` };
+}
+
+const PRIORITY_ORDER: Priority[] = ['act', 'attend', 'watch', 'track'];
+
+/** The CVE list's counter: how many IDs it found, and whether the list can be ranked. */
+export function describeCveCount(found: number, max: number): { label: string; over: boolean; empty: boolean } {
+  const n = found.toLocaleString('en');
+  if (found === 0) return { label: 'No CVE IDs yet', over: false, empty: true };
+  if (found > max) return { label: `${n} CVE IDs: the limit is ${max.toLocaleString('en')}`, over: true, empty: false };
+  return { label: `${n} CVE ${found === 1 ? 'ID' : 'IDs'} found`, over: false, empty: false };
+}
+
 export function pct(v: number): string {
   return `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}%`;
 }

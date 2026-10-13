@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -27,6 +27,30 @@ function result(id: string, tier: Result['tier'], match: Result['match'] = 'exac
     mitigation: null,
   };
 }
+
+describe('a CVE list', () => {
+  it('counts the IDs found and refuses an empty or oversized list', () => {
+    expect(describeCveCount(0, 2000)).toEqual({ label: 'No CVE IDs yet', over: false, empty: true });
+    expect(describeCveCount(1, 2000)).toEqual({ label: '1 CVE ID found', over: false, empty: false });
+    expect(describeCveCount(2000, 2000)).toEqual({ label: '2,000 CVE IDs found', over: false, empty: false });
+    expect(describeCveCount(2140, 2000)).toEqual({ label: '2,140 CVE IDs: the limit is 2,000', over: true, empty: false });
+  });
+
+  it('heads the results with the ranked count, the urgent ones and what wasn’t ranked', () => {
+    expect(listHeadline({ act: 2, attend: 1, watch: 4, track: 5 }, 0)).toEqual({
+      title: '12 CVEs, ranked.',
+      subtitle: '2 to act on now and 1 to attend to, the rest to watch or track. Most urgent first:',
+    });
+    expect(listHeadline({ act: 0, attend: 0, watch: 0, track: 1 }, 2)).toEqual({
+      title: '1 CVE, ranked.',
+      subtitle: 'None needs acting on now: watch or track the rest. 2 IDs weren’t ranked; About your list says why. Most urgent first:',
+    });
+    expect(listHeadline({ act: 0, attend: 0, watch: 0, track: 0 }, 1)).toEqual({
+      title: 'Nothing to rank.',
+      subtitle: 'None of those IDs is a published CVE. 1 ID wasn’t ranked; About your list says why.',
+    });
+  });
+});
 
 describe('foldFamilies', () => {
   const member = (id: string, family: string, related: string[]) => ({ ...result(id, 'backlog'), family, related });
