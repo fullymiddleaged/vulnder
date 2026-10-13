@@ -211,6 +211,9 @@ Quiet and exact: hairline borders, a small radius, one solid primary action per 
 - **Team picker:** on stacks with teams, a small rounded select on each chip.
 - **Segmented control:** fully rounded options with a Rule border; the selected option inverts to ink on paper.
 
+### Tabs
+The home form's two modes, "By stack" and "By CVE list", sit above the headline as quiet tabs, not chips: 700-weight text at 0.95rem in Dusk Muted on a Rule line, 1.5rem apart. The open tab turns ink with a 2px ink underline that replaces the rule beneath it; hover darkens the text and shows a Control Edge underline. Each tab is at least 2.5rem tall. They follow the WAI-ARIA tabs pattern (arrow keys, Home and End), and `/#cves` opens the second. Each tab keeps its own headline ("What do you run?", "Which CVEs do you want to prioritise?"), so the One Big Line Rule holds. The CVE box is set in mono, since only IDs go in it.
+
 ### Cards / Containers
 - **Corner Style:** 4px.
 - **Background:** Card White.

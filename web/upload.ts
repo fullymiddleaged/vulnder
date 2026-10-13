@@ -1,3 +1,4 @@
+import { MAX_SCAN_BYTES } from '../src/resolve/cve-list';
 import { MAX_MANIFEST_BYTES, MAX_MANIFEST_ENTRIES, MAX_MANIFEST_LINES } from '../src/resolve/limits';
 import { isManifestFilename } from '../src/resolve/manifests';
 import type { Candidate } from '../src/resolve/types';
@@ -19,6 +20,18 @@ export function fileProblem(name: string, size: number): string | null {
   if (!isManifestFilename(name) && !SNIFFABLE.test(name)) return `${name} isn't a manifest Vulnder reads. Try ${MANIFEST_FORMATS}.`;
   if (size === 0) return `${name} is empty.`;
   if (size > MAX_MANIFEST_BYTES) return `${name} is larger than ${MAX_MANIFEST_BYTES / 1_000_000} MB.`;
+  return null;
+}
+
+/** What the CVE list tab reads: any text export; only the CVE IDs in it are used. */
+export const SCAN_FORMATS = 'Nessus, Qualys or Tenable CSV, .nessus XML, Trivy or Grype JSON';
+const SCAN_FILE = /\.(csv|tsv|nessus|xml|json|txt)$/i;
+
+/** Why a scan report can't be read, from its name and size alone; null when it can. */
+export function scanFileProblem(name: string, size: number): string | null {
+  if (!SCAN_FILE.test(name)) return `${name} isn't a report Vulnder reads. Export it as CSV, XML or JSON: ${SCAN_FORMATS}.`;
+  if (size === 0) return `${name} is empty.`;
+  if (size > MAX_SCAN_BYTES) return `${name} is larger than ${MAX_SCAN_BYTES / 1_000_000} MB. Export only the findings, or filter to the higher severities.`;
   return null;
 }
 

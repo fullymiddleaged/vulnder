@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_MANIFEST_BYTES, MAX_MANIFEST_ENTRIES, MAX_MANIFEST_LINES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import type { Candidate } from '../src/resolve/types';
-import { capEntries, fileProblem, textProblem } from '../web/upload';
+import { MAX_SCAN_BYTES } from '../src/resolve/cve-list';
+import { capEntries, fileProblem, scanFileProblem, textProblem } from '../web/upload';
+
+describe('scanFileProblem', () => {
+  it('takes text exports from scanners, up to its own size limit', () => {
+    for (const name of ['scan.csv', 'Q2 report.CSV', 'office.nessus', 'qualys.xml', 'trivy.json', 'ids.txt', 'export.tsv']) {
+      expect(scanFileProblem(name, 1000), name).toBeNull();
+    }
+    expect(scanFileProblem('big.nessus', MAX_SCAN_BYTES)).toBeNull();
+    expect(scanFileProblem('big.nessus', MAX_SCAN_BYTES + 1)).toMatch(/larger than 50 MB/);
+    expect(scanFileProblem('scan.csv', 0)).toMatch(/empty/);
+    for (const name of ['report.pdf', 'scan.xlsx', 'scan.zip', 'Dockerfile']) expect(scanFileProblem(name, 1000), name).toMatch(/isn't a report/);
+  });
+});
 
 describe('fileProblem', () => {
   it('takes the names parsers know, and sniffable extensions', () => {

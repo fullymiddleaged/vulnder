@@ -312,6 +312,10 @@ export interface FixItem {
   fixable: number;
   /** Its vendor support (src/match/support.ts), when it's out of support, losing it soon, or on paid extended support. */
   support?: SupportState;
+  /** True when it groups listed CVEs rather than naming a stack item: their product, or one CVE with none. */
+  listed?: boolean;
+  /** The product's display name, for a listed group. */
+  label?: string;
 }
 
 /**

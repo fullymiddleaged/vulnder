@@ -272,6 +272,7 @@
           <li>Your stack and text are never stored or logged. Parses are cached under a hash, never the text.</li>
           <li>Free text goes to Cloudflare Workers AI. Its AI Gateway can log those requests, text included, in the account that runs the site.</li>
           <li>Lockfiles and SBOMs are read in your browser and never reach the model. Only package names and versions are sent.</li>
+          <li>CVE lists and scan reports are read in your browser too. Only the CVE IDs go into the stack link; host names, addresses and the rest of the report stay on your machine.</li>
           <li>Stack links are kept out of logs, and pages send no <code>Referer</code>, so advisory links don't leak your stack.</li>
           <li>IP addresses are only rate-limit keys, or a hash salted afresh each day.</li>
           <li>No analytics or tracking. Cloudflare Turnstile protects the submit form.</li>

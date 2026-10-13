@@ -145,6 +145,7 @@ export function isEdgeDevice(item: StackItem): boolean {
 }
 
 export function guessTeam(item: StackItem): Team | null {
+  if (item.kind === 'cve') return null;
   if (item.kind === 'product') return productTeam(item.vendor, item.product);
   if (item.ecosystem === 'GitHub Actions') return 'platform';
   if (item.ecosystem === 'npm' && FRONTEND_NPM.test(item.name)) return 'frontend';

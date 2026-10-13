@@ -11,7 +11,7 @@ import { passLimited, readLock, withLock } from './pass';
 import type { ComponentCache, ComponentData } from '../match/components';
 import { createOsvClient } from '../match/osv';
 import { PRIORITIES, type Priority } from '../match/priority';
-import { parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
+import { isCveItem, parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
 import type { AppEnv } from '../types';
 import { openCache, putInBackground } from './cache';
 
@@ -154,11 +154,16 @@ async function load(
   return res;
 }
 
-/** How many vulns the catalog counts for a stack's items (recounted daily, so an estimate). */
+/**
+ * How many vulns a cache miss reads about: what the catalog counts for its
+ * components (recounted daily, so an estimate), plus one per listed CVE.
+ */
 async function stackSize(store: D1BindingStore, items: StackItem[]): Promise<number> {
-  const keys = [...new Set(items.map((i) => (i.kind === 'package' ? `${i.ecosystem}:${i.name}` : `${i.vendor}/${i.product}`)))];
+  const listed = items.filter(isCveItem).length;
+  const keys = [...new Set(items.flatMap((i) => (i.kind === 'package' ? [`${i.ecosystem}:${i.name}`] : i.kind === 'product' ? [`${i.vendor}/${i.product}`] : [])))];
+  if (keys.length === 0) return listed;
   const [row] = await store.all<{ n: number }>(STACK_SIZE_SQL, [JSON.stringify(keys)]);
-  return row?.n ?? 0;
+  return (row?.n ?? 0) + listed;
 }
 
 async function runMatch(c: Context<AppEnv>, req: StackRequest, now: Date, dataVersion: number): Promise<MatchResult> {
@@ -253,6 +258,7 @@ export const feeds = new Hono<AppEnv>()
         changes: changes.map((e) => ({ ...e, title: byId.get(e.vulnId)?.title ?? null, tier: byId.get(e.vulnId)?.tier })),
         results: match.results,
         watching: match.watching,
+        ...(match.listed && { listed: match.listed }),
       });
     });
     if (res.status === 200) await countCheck(c);
@@ -314,6 +320,7 @@ export function eventTitle(e: ChangeEvent, v: MatchedVuln | undefined): string {
 }
 
 const PRIORITY_LABEL: Record<Priority, string> = { act: 'Act now', attend: 'Attend', watch: 'Watch', track: 'Track' };
+const CONFIDENCE_LABEL: Record<MatchedVuln['confidence'], string> = { version_confirmed: 'version confirmed', product_match: 'product match', listed: 'from your list' };
 
 function eventSummary(e: ChangeEvent, v: MatchedVuln | undefined): string {
   const lines: string[] = [];
@@ -322,7 +329,8 @@ function eventSummary(e: ChangeEvent, v: MatchedVuln | undefined): string {
   }
   if (v) {
     lines.push(`Priority: ${PRIORITY_LABEL[v.priority]}${v.respondWithinHours !== null ? `, respond within ${describeHours(v.respondWithinHours)}` : ''}. Why: ${v.reasons.join('; ') || 'nothing beyond affecting your stack'}.`);
-    lines.push(`Tier: ${v.tier}. Confidence: ${v.confidence === 'version_confirmed' ? 'version confirmed' : 'product match'}.`);
+    lines.push(`Tier: ${v.tier}. Confidence: ${CONFIDENCE_LABEL[v.confidence]}.`);
+    if (v.replaces?.length) lines.push(`Replaces ${v.replaces.join(', ')}, rejected as duplicates of it.`);
     lines.push(`Matched: ${v.matched.join(', ')}.`);
     if (v.fixedVersions.length > 0) lines.push(`Fixed in: ${v.fixedVersions.join(', ')}.`);
     else if (v.mitigation) lines.push(`No fixed version known yet: mitigate meanwhile.${v.mitigation.action ? ` CISA: ${v.mitigation.action}` : ''}`);

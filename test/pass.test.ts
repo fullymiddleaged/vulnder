@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { maintenanceStatements } from '../src/ingest/maintenance';
 import { issuePass, lockedUntil, PASS_STACKS, passStatus, usePass } from '../src/lib/pass';
+import { SITEVERIFY_URL, TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { app } from '../src/index';
 import { resetDb, rows, store } from './helpers/db';
 
@@ -116,6 +117,61 @@ describe('feed passes on the routes', () => {
       used: 2,
       limit: 2,
       resetsAt: new Date(until).toISOString(),
+    });
+  });
+
+  describe('POST /api/pass', () => {
+    const turnstile = (success: boolean) =>
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url !== SITEVERIFY_URL) throw new Error(`unexpected fetch ${url}`);
+        // As Cloudflare answers for a widget on this site, so the hostname and action checks run.
+        return Response.json(success ? { success: true, hostname: new URL(env.BASE_URL).hostname, action: TURNSTILE_ACTION } : { success: false, 'error-codes': ['invalid-input-response'] });
+      });
+    const earn = (body: string, cookie = '', env_ = e()) =>
+      app.request('/api/pass', { method: 'POST', headers: { cookie, 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.9' }, body }, env_);
+    const passCookie = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith('vulnder_pass='))?.split(';')[0] ?? null;
+    afterEach(() => vi.restoreAllMocks());
+
+    it('trades a Turnstile token for a pass that the feed then counts', async () => {
+      turnstile(true);
+      const res = await earn(JSON.stringify({ turnstileToken: 'tok' }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ active: true, used: 0, limit: PASS_STACKS, resetsAt: null });
+      const cookie = passCookie(res)!;
+      expect(cookie).toMatch(/^vulnder_pass=/);
+      expect(res.headers.getSetCookie().find((c) => c.startsWith('vulnder_pass='))).toMatch(/HttpOnly.*Secure|Secure.*HttpOnly/);
+
+      expect((await feed('cve:2021-44228', cookie)).status).toBe(200);
+      expect(await passStatus(store(), cookie.split('=')[1]!, new Date())).toMatchObject({ used: 1 });
+      // A live pass is kept, not replaced, so earning again can't reset the count.
+      const again = await earn(JSON.stringify({ turnstileToken: 'tok2' }), cookie);
+      expect(passCookie(again)).toBeNull();
+      expect(await again.json()).toMatchObject({ used: 1 });
+    });
+
+    it('refuses a failed check, a bad body and a locked browser, issuing nothing', async () => {
+      turnstile(false);
+      const failed = await earn(JSON.stringify({ turnstileToken: 'bad' }));
+      expect(failed.status).toBe(403);
+      expect(passCookie(failed)).toBeNull();
+      for (const body of ['not json', '{}', JSON.stringify({ turnstileToken: 'x'.repeat(3000) })]) {
+        const res = await earn(body);
+        expect(res.status, body.slice(0, 20)).toBeGreaterThanOrEqual(400);
+        expect(passCookie(res)).toBeNull();
+      }
+      expect((await earn(JSON.stringify({ turnstileToken: 'x'.repeat(5000) }))).status).toBe(413);
+      const locked = await earn(JSON.stringify({ turnstileToken: 'tok' }), `vulnder_lock=${Date.now() + 60_000}`);
+      expect(locked.status).toBe(429);
+      expect(await rows('SELECT id FROM feed_passes')).toEqual([]);
+    });
+
+    it('shares the resolve rate limit', async () => {
+      turnstile(true);
+      const limit = vi.fn(async () => ({ success: false }));
+      const res = await earn(JSON.stringify({ turnstileToken: 'tok' }), '', { ...e(), RESOLVE_LIMITER: { limit } as unknown as RateLimit });
+      expect(res.status).toBe(429);
+      expect(limit).toHaveBeenCalledWith({ key: '203.0.113.9' });
     });
   });
 

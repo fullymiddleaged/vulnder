@@ -1,6 +1,6 @@
 import { allForKeys, type Store } from '../ingest/store';
 import { eolTarget } from '../stack/eol';
-import type { StackItem } from '../stack/format';
+import type { ComponentItem } from '../stack/format';
 import type { CveSupport, EolRelease } from './support';
 
 /**
@@ -64,7 +64,7 @@ export interface VulnRow {
   last_event_at: string | null;
 }
 
-export const itemKey = (item: StackItem) =>
+export const itemKey = (item: ComponentItem) =>
   item.kind === 'package' ? `pkg:${item.ecosystem}:${item.name}` : `prod:${item.vendor}/${item.product}`;
 export const rowKey = (r: AffectedRow) => (r.kind === 'package' ? `pkg:${r.ecosystem}:${r.package_name}` : `prod:${r.vendor}/${r.product}`);
 
@@ -97,8 +97,8 @@ export const EOL_CVE_SQL = `SELECT key, last_cve, last_published, tagged FROM eo
 export const FEED_CHUNK = 2000;
 
 /** The data for each distinct component among `items` (by itemKey), from the cache where it can. */
-export async function loadComponents(store: Store, items: StackItem[], cache?: ComponentCache): Promise<Map<string, ComponentData>> {
-  const wanted = new Map<string, StackItem>();
+export async function loadComponents(store: Store, items: ComponentItem[], cache?: ComponentCache): Promise<Map<string, ComponentData>> {
+  const wanted = new Map<string, ComponentItem>();
   for (const item of items) if (!wanted.has(itemKey(item))) wanted.set(itemKey(item), item);
 
   const found = new Map<string, ComponentData>();
@@ -125,7 +125,7 @@ export async function loadComponents(store: Store, items: StackItem[], cache?: C
 }
 
 /** Reads components from D1: affected rows, their vulns, then exploited family members. */
-async function fetchComponents(store: Store, items: StackItem[]): Promise<Map<string, ComponentData>> {
+async function fetchComponents(store: Store, items: ComponentItem[]): Promise<Map<string, ComponentData>> {
   const packages = items.flatMap((i) => (i.kind === 'package' ? [[i.ecosystem, i.name]] : []));
   const products = items.flatMap((i) => (i.kind === 'product' ? [[i.vendor, i.product]] : []));
   const affected: AffectedRow[] = [];
@@ -139,7 +139,7 @@ async function fetchComponents(store: Store, items: StackItem[]): Promise<Map<st
   const exploited = familyIds.length === 0 ? [] : await allForKeys<{ id: string; family_id: string }>(store, EXPLOITED_IN_FAMILIES_SQL, familyIds, FEED_CHUNK);
 
   // Support data: by endoflife.date product, and by product key for the CVE tag.
-  const productItems = items.filter((i): i is Extract<StackItem, { kind: 'product' }> => i.kind === 'product');
+  const productItems = items.filter((i): i is Extract<ComponentItem, { kind: 'product' }> => i.kind === 'product');
   const slugOf = new Map(productItems.map((i) => [itemKey(i), eolTarget(i)?.slug ?? null]));
   const slugs = [...new Set([...slugOf.values()].filter((s): s is string => s !== null))];
   const releases = slugs.length === 0 ? [] : await allForKeys<EolRelease>(store, EOL_RELEASES_SQL, slugs, FEED_CHUNK);

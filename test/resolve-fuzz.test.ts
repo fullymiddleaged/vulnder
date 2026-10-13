@@ -48,16 +48,28 @@ const candidate: fc.Arbitrary<Candidate> = fc.oneof(
 );
 const candidates = (max: number) => fc.array(candidate, { minLength: 1, maxLength: max });
 
+/** Listed CVEs as people type them: good IDs, near misses and marks they can't take. */
+const cveItem = fc
+  .tuple(
+    fc.constantFrom('cve:', 'CVE:', '?cve:', 'cve:CVE-', 'cve:cve-'),
+    fc.oneof(fc.stringMatching(/^\d{4}-\d{4,7}$/), fc.constantFrom('2024-1', 'abc', '2021-44228', '', '2024-12345678'), piece),
+    fc.constantFrom('', ';network', ';edge', ';esu', '@1.0', ';'),
+  )
+  .map(([prefix, id, tail]) => prefix + id + tail);
+
 /** Hand-edited `s` values: real prefixes, junk prefixes, pieces, versions and separators. */
 const stackParam = fc
   .array(
-    fc
-      .tuple(
-        fc.constantFrom('npm:', 'pypi:', 'p:', '?p:', 'constructor:', '__proto__:', 'toString:', '~', '', 'gem:', 'P:', '?'),
-        piece,
-        fc.option(version.map((v) => `@${v ?? ''}`), { nil: '' }),
-      )
-      .map(([prefix, p, v]) => prefix + p + v),
+    fc.oneof(
+      { weight: 4, arbitrary: fc
+        .tuple(
+          fc.constantFrom('npm:', 'pypi:', 'p:', '?p:', 'constructor:', '__proto__:', 'toString:', '~', '', 'gem:', 'P:', '?'),
+          piece,
+          fc.option(version.map((v) => `@${v ?? ''}`), { nil: '' }),
+        )
+        .map(([prefix, p, v]) => prefix + p + v) },
+      { weight: 1, arbitrary: cveItem },
+    ),
     { minLength: 1, maxLength: 4 },
   )
   .chain((parts) => fc.constantFrom(',', ',,', ' , ').map((sep) => parts.join(sep)));

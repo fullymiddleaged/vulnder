@@ -1,4 +1,5 @@
 import { describeHours } from '../src/lib/time';
+import { formatItem, isCveItem, parseStack } from '../src/stack/format';
 import type { Feed, Priority, Reason, Result } from './api';
 import { safeHref } from './url';
 import {
@@ -51,6 +52,14 @@ export function remediationSteps(r: Result): string[] {
   if (r.match === 'close') steps.push('Confirm you run this product: it is a close match for a vaguely named item.');
   if (r.confidence === 'product_match') steps.push('Confirm the installed version is affected: only the product matched, not the version.');
   if (r.fixedVersions.length > 0) steps.push(`Upgrade to a fixed version (${r.fixedVersions.join(', ')}) or later on the same release line.`);
+  // Listed: the list said where it is, not which version runs, so the advisory names the fix.
+  else if (r.confidence === 'listed') {
+    steps.push(
+      r.mitigation?.action
+        ? `Patch every system it was found on, using the fixed version in the advisory. Until then, CISA's required action: ${r.mitigation.action}`
+        : 'Patch every system it was found on, using the fixed version or workaround in the advisory.',
+    );
+  }
   else if (r.mitigation) {
     steps.push(
       r.mitigation.action
@@ -92,6 +101,7 @@ function stackLine(item: string): string {
 
 /** A Fix first row's items. Close matches merged into one row go by their shared name, as on the page. */
 function groupLine(g: ComponentGroup): string {
+  if (g.listed) return g.label ? `${mdText(g.label)} (${code(g.component)})` : code(g.component.startsWith('cve:') ? `CVE-${g.component.slice(4)}` : g.component);
   if (g.family) return `${code(g.family)} (${g.also.length + 1} close matches: ${[g.component, ...g.also.map((i) => itemMarks(i).name)].map(code).join(', ')})`;
   return [g.item, ...g.also].map(stackLine).join(', ');
 }
@@ -113,14 +123,24 @@ function mdResult(r: Result): string[] {
     if (value) lines.push(`- **${label}:** ${value}`);
   };
   add('Priority', `${RISK[r.priority].label}, risk score ${formatScore(r.score)}/100${r.respondWithinHours !== null ? `, respond within ${describeHours(r.respondWithinHours)}` : ''}`);
-  add('Affects', `${r.matched.map((m) => stackLine(m)).join(', ')}; ${r.match === 'exact' ? 'exact match' : 'close match'}, ${r.confidence === 'version_confirmed' ? 'version confirmed' : 'version not confirmed'}`);
-  add('Older than the window', r.beforeWindow ? `published ${r.publishedAt?.slice(0, 10) ?? 'unknown'}; shown because it is exploited, likely to be, or CVSS 9.9+ in the last year` : null);
+  const components = r.matched.filter((m) => !m.startsWith('cve:'));
+  add(
+    'Affects',
+    r.confidence === 'listed'
+      ? r.matched.length > 0
+        ? 'from your list'
+        : 'ranked in place of a listed duplicate'
+      : `${components.map((m) => stackLine(m)).join(', ')}; ${r.match === 'exact' ? 'exact match' : 'close match'}, ${r.confidence === 'version_confirmed' ? 'version confirmed' : 'version not confirmed'}${components.length < r.matched.length ? '; also on your list' : ''}`,
+  );
+  add('Replaces', r.replaces?.length ? `${r.replaces.join(', ')}, rejected as duplicates of it` : null);
+  add('Published', r.confidence === 'listed' ? (r.publishedAt?.slice(0, 10) ?? 'unknown') : null);
+  add('Older than the window', r.beforeWindow && r.confidence !== 'listed' ? `published ${r.publishedAt?.slice(0, 10) ?? 'unknown'}; shown because it is exploited, likely to be, or CVSS 9.9+ in the last year` : null);
   add('Decided by', r.why.decisive ? `${mdText(r.why.decisive.text)} (${KIND[r.why.decisive.kind]})` : null);
   add('Other reasons', r.why.others.length > 0 ? r.why.others.map((o) => mdText(o.text)).join('; ') : null);
   add('Not available', r.why.missing.length > 0 ? r.why.missing.map(mdText).join('; ') : null);
   add('Exploitation', evidenceLine(r));
   add('CVSS', r.cvss ? `${r.cvss.score.toFixed(1)} (${cvssSeverity(r.cvss.score)})${r.cvss.vector ? ` ${code(r.cvss.vector)}` : ''}` : 'none published');
-  add('Fixed in', r.fixedVersions.length > 0 ? r.fixedVersions.map(code).join(', ') : 'no fixed version listed');
+  add('Fixed in', r.fixedVersions.length > 0 ? r.fixedVersions.map(code).join(', ') : r.confidence === 'listed' ? 'see the advisory' : 'no fixed version listed');
   add('Action', mdText(remediation(r)));
   add('Similar CVEs here', r.related.length > 0 ? r.related.join(', ') : null);
   add('Advisory', mdLink(r.links.advisory));
@@ -133,15 +153,36 @@ function mdResult(r: Result): string[] {
 export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   const n = feed.results.length;
   const counts = PRIORITIES.map((p) => `${RISK[p].label} ${feed.priorities[p]}`).join(' · ');
+  // Parsed, not split: a long stack's link is compressed.
+  let items: string[] = [];
+  let listed = 0;
+  try {
+    const parsed = parseStack(feed.stack);
+    items = parsed.filter((i) => !isCveItem(i)).map(formatItem);
+    listed = parsed.length - items.length;
+  } catch {
+    // A stack the feed served always parses; nothing to list otherwise.
+  }
   const out = [
-    `# ${n} ${n === 1 ? 'vulnerability' : 'vulnerabilities'} affecting this stack`,
+    items.length === 0 && listed > 0
+      ? `# ${n} ${n === 1 ? 'vulnerability' : 'vulnerabilities'} from this list, ranked`
+      : `# ${n} ${n === 1 ? 'vulnerability' : 'vulnerabilities'} affecting this stack`,
     '',
     `- **From:** ${mdText(name)}, ${mdLink(feed.links.page) ?? ''}`,
     `- **Generated:** ${feed.generatedAt}`,
-    `- **Window:** CVEs from the last ${feed.days} days, plus known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year`,
+    items.length > 0
+      ? `- **Window:** CVEs from the last ${feed.days} days, plus known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year${listed > 0 ? '; every listed CVE whatever its age' : ''}`
+      : '- **Window:** every listed CVE, whatever its age',
     `- **Priorities:** ${counts}`,
-    `- **Stack:** ${feed.stack.split(',').filter(Boolean).map(stackLine).join(', ')}`,
-  ];
+    items.length > 0 ? `- **Stack:** ${items.map(stackLine).join(', ')}` : '',
+    listed > 0 ? `- **Listed CVEs:** ${listed}` : '',
+  ].filter((line, i) => i === 1 || line !== '');
+  const rejected = feed.listed?.rejected ?? [];
+  const notFound = feed.listed?.notFound ?? [];
+  for (const r of rejected) {
+    out.push(r.replacedBy.length > 0 ? `- **Rejected:** ${r.id}, a duplicate of ${r.replacedBy.join(', ')}` : `- **Rejected:** ${r.id}, with no replacement named: nothing to fix under that ID`);
+  }
+  if (notFound.length > 0) out.push(`- **Not published CVEs** (reserved, or mistyped): ${notFound.join(', ')}`);
   if (feed.versionCheckUnavailable) out.push('- **Note:** version checks were unavailable, so every match is a product match. Confirm versions before acting.');
   out.push('', '## How to work through this', '', ...EXPORT_INSTRUCTIONS.map((t, i) => `${i + 1}. ${t}`), '', '## Priority levels', '');
   for (const p of PRIORITIES) out.push(`- **${RISK[p].label}:** ${RISK[p].note}`);
@@ -166,15 +207,16 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   if (n > 0) {
     out.push('', '## Fix first', '');
     // As on the page: a CVE an earlier row listed is named as such, so it's worked on once.
-    const listed = new Set<string>();
+    const shown = new Set<string>();
     for (const g of componentGroups(feed.fixFirst, feed.results)) {
       const tally = PRIORITIES.filter((p) => g.counts[p] > 0).map((p) => `${g.counts[p]} ${RISK[p].label}`).join(', ');
       const unsupported = g.support === 'eol' ? '; out of support' : g.support === 'ending' ? '; support ending' : '';
-      const fresh = g.vulns.filter((id) => !listed.has(id));
-      const repeated = g.vulns.filter((id) => listed.has(id));
-      for (const id of fresh) listed.add(id);
+      const fresh = g.vulns.filter((id) => !shown.has(id));
+      const repeated = g.vulns.filter((id) => shown.has(id));
+      for (const id of fresh) shown.add(id);
       const cves = [fresh.length > 0 ? `CVEs: ${fresh.join(', ')}` : '', repeated.length > 0 ? `also in a row above: ${repeated.join(', ')}` : ''].filter(Boolean).join('; ');
-      out.push(`${g.rank}. ${groupLine(g)}: ${tally}${unsupported}; total risk ${formatScore(g.score)}; a fix for ${g.fixable} of ${g.vulns.length}. ${cves}`);
+      const fixes = g.listed ? '' : `; a fix for ${g.fixable} of ${g.vulns.length}`;
+      out.push(`${g.rank}. ${groupLine(g)}: ${tally}${unsupported}; total risk ${formatScore(g.score)}${fixes}. ${cves}`);
     }
     out.push('', '## Vulnerabilities', '');
     for (const p of PRIORITIES) {

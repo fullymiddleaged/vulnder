@@ -4,9 +4,10 @@ import { addDays } from '../lib/time';
 import { keepStart, keptLonger } from '../ingest/retention';
 import { allForKeys, type Store } from '../ingest/store';
 import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
-import { formatItem, type StackItem } from '../stack/format';
+import { formatItem, isCveItem, parseComponent, type ComponentItem, type StackItem } from '../stack/format';
 import { isEdge } from '../stack/teams';
 import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
+import { matchListed, type Listed } from './listed';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 import { supportFor, type Support, type SupportState } from './support';
@@ -22,7 +23,9 @@ import { supportFor, type Support, type SupportState } from './support';
  * Confidence:
  * - "version_confirmed": a package version was given and OSV says it is affected;
  * - "product_match": the product is named but its version is unknown or could
- *   not be checked.
+ *   not be checked;
+ * - "listed": the stack lists the CVE itself (a `cve:` item, src/match/listed.ts),
+ *   so it is shown whatever its age, and nothing says which version is run.
  * A versioned package that OSV checked and found unaffected is dropped. Only
  * package rows from GitHub advisories are checked this way, because GitHub
  * advisories are always in OSV; for other rows a missing OSV result would not
@@ -30,7 +33,7 @@ import { supportFor, type Support, type SupportState } from './support';
  */
 
 export type Tier = 'exploited' | 'likely' | 'backlog';
-export type Confidence = 'version_confirmed' | 'product_match';
+export type Confidence = 'version_confirmed' | 'product_match' | 'listed';
 
 export interface MatchedVuln {
   id: string;
@@ -85,8 +88,11 @@ export interface MatchedVuln {
   /**
    * Older than the chosen window, shown by the safety net: known exploited,
    * likely exploited or CVSS 9.9+ in the last year (src/ingest/retention.ts).
+   * For a listed CVE: published before the window, since a list shows every age.
    */
   beforeWindow: boolean;
+  /** Listed CVEs that were rejected as duplicates of this one; present only when there are some. */
+  replaces?: string[];
 }
 
 export interface ChangeEvent {
@@ -106,6 +112,8 @@ export interface MatchResult {
   fixFirst: FixItem[];
   /** Stack items out of support, losing it soon, or kept going by paid extended support (src/match/support.ts). */
   support: SupportNotice[];
+  /** For a stack with `cve:` items: the listed IDs that were rejected or aren't published CVEs. */
+  listed?: Listed;
 }
 
 export interface SupportNotice extends Support {
@@ -158,10 +166,13 @@ const inSafetyNet = (v: VulnRow, start: string) =>
     start,
   );
 
-export async function matchStack(store: Store, items: StackItem[], opts: MatchOptions): Promise<MatchResult> {
+export async function matchStack(store: Store, stack: StackItem[], opts: MatchOptions): Promise<MatchResult> {
   const since = addDays(opts.now, -opts.days).toISOString();
   const netStart = keepStart(opts.now);
-  const byKey = new Map<string, StackItem[]>();
+  // Components are matched through their affected rows; listed CVEs by ID (src/match/listed.ts).
+  const items = stack.filter((i): i is ComponentItem => !isCveItem(i));
+  const listedItems = stack.filter(isCveItem);
+  const byKey = new Map<string, ComponentItem[]>();
   for (const item of items) {
     const k = itemKey(item);
     if (!byKey.has(k)) byKey.set(k, []);
@@ -251,8 +262,38 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     );
   }
 
+  // Listed CVEs: one result per CVE, so a CVE a component also matched gains the list item.
+  // Each groups in Fix first under its product, when the index names one, or on its own.
+  let listed: Listed | undefined;
+  const fixGroup = new Map<string, string>();
+  const labels = new Map<string, string>();
+  const familyOf = new Map([...vulns.values()].map((v) => [v.id, v.family_id] as const));
+  if (listedItems.length > 0) {
+    const found = await matchListed(store, listedItems);
+    listed = found.listed;
+    const byId = new Map(results.map((r) => [r.id, r]));
+    for (const v of found.vulns) {
+      const group = v.product?.item ?? v.matched[0] ?? formatItem({ kind: 'cve', id: v.row.id });
+      fixGroup.set(v.row.id, group);
+      if (v.product?.label) labels.set(group, v.product.label);
+      familyOf.set(v.row.id, v.row.family_id);
+      const known = byId.get(v.row.id);
+      if (known) {
+        known.matched = [...new Set([...known.matched, ...v.matched])].sort();
+        if (v.matched.length > 0) known.match = 'exact';
+        if (v.replaces.length > 0) known.replaces = v.replaces;
+        continue;
+      }
+      // An edge device's CVEs are held to tighter deadlines, as when the stack names the product.
+      const edge = v.product ? isEdge(parseComponent(v.product.item)) : false;
+      const r = toResult(v.row, 'listed', 'exact', v.matched.sort(), [], edge, opts.now, v.exploitedSibling, !inWindow(v.row, since));
+      if (v.replaces.length > 0) r.replaces = v.replaces;
+      results.push(r);
+    }
+  }
+
   results.sort(compareResults);
-  linkFamilies(results, (id) => vulns.get(id)?.family_id ?? null);
+  linkFamilies(results, (id) => familyOf.get(id) ?? null);
   const watching = items.map(formatItem).filter((f) => !matchedItems.has(f));
 
   // 5. Vendor support, per item: whatever its CVEs, an item out of support gets no more fixes.
@@ -273,11 +314,23 @@ export async function matchStack(store: Store, items: StackItem[], opts: MatchOp
     (a, b) => SUPPORT_ORDER.indexOf(a.state) - SUPPORT_ORDER.indexOf(b.state) || a.name.localeCompare(b.name) || a.items[0]!.localeCompare(b.items[0]!),
   );
 
+  // In Fix first a listed CVE counts under its group, not under its own `cve:` item.
   const ranked = fixFirst(
-    results.map((r) => ({ ...r, assessment: r })),
+    results.map((r) => {
+      const group = fixGroup.get(r.id);
+      const matched = group ? [...new Set([...r.matched.filter((m) => !m.startsWith('cve:')), group])] : r.matched;
+      return { ...r, matched, assessment: r };
+    }),
     stateOf,
   );
-  return { results, watching, versionCheckUnavailable, fixFirst: ranked, support };
+  const stackItems = new Set(items.map(formatItem));
+  for (const f of ranked) {
+    if (stackItems.has(f.item)) continue;
+    f.listed = true;
+    const label = labels.get(f.item);
+    if (label) f.label = label;
+  }
+  return { results, watching, versionCheckUnavailable, fixFirst: ranked, support, ...(listed && { listed }) };
 }
 
 /**
@@ -302,7 +355,7 @@ export function tierOf(v: { kev_added_at: string | null; epss: number | null }):
   return 'backlog';
 }
 
-function toResult(
+export function toResult(
   v: VulnRow,
   confidence: Confidence,
   match: 'exact' | 'close',

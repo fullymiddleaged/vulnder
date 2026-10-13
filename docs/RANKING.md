@@ -88,6 +88,14 @@ Each result names the signal that decided its priority, lists the rest, and says
 
 A vague name like "Cisco switches" becomes several **close matches**, in catalog order (most-affected first). When your description makes the stack's scale (enterprise, small business, home) or hosting (cloud, on-premises) clear, [Jev](https://developers.cloudflare.com/ai/models/typesafe/jev/) judges how well each close match fits, and they're sorted by that, so a home lab sees small-business gear before data-centre switches. That only changes the order; it never hides a match. Manifests aren't sent to Jev.
 
+## Listed CVEs
+
+A pasted list of CVEs (the By CVE list tab, or `cve:` items in the link) is ranked with the same rules, whatever each CVE's age. Recent CVEs come from the same data as everything else. Older ones come from an index of every CVE ever assigned, which keeps CVSS, CISA's SSVC assessment, KEV and EPSS, so a 2014 CVE on KEV still ranks above a 2025 CVSS 10 nobody exploits. The index keeps no EPSS history, references or similar-CVE families, so an old CVE has no LEV estimate, and `why.missing` says what wasn't there.
+
+A listed CVE says it's **from your list** in place of a match confidence. Nothing says which version you run, so there's no fixed version to compare: its advisory has the fix. A CVE whose product the index knows is held to edge-device deadlines when that product is one (see [Edge devices](#edge-devices)). Fix first groups listed CVEs by their product, and a CVE with no product known stands alone.
+
+A rejected CVE isn't ranked. When its rejection names a replacement (rejected as a duplicate of another CVE), the replacement is ranked in its place and carries `replaces`. One rejected with no replacement is reported so you can drop it, and so is an ID that isn't a published CVE (reserved, or a typo). The feed lists both under `listed`.
+
 ## Prompt injection
 
 Free text that reads like instructions for an AI rather than a list of what you run is refused, first by a phrase check, then by Jev. Text that gets past both still can't add anything: the extraction model's answer is checked against your words, and components you didn't name are dropped. If Jev is unavailable, parsing carries on without the second check and close matches keep catalog order.
@@ -104,6 +112,10 @@ The JSON feed carries on each result:
 | `mitigation` | Set for urgent results with no fixed version known |
 | `family`, `related` | Similar CVEs; `related` lists the other results in the feed from the same family |
 | `tier` | The older exploited / likely / backlog field, from KEV and EPSS only; unchanged |
+| `confidence` | `version_confirmed`, `product_match`, or `listed` for a CVE from your list |
+| `replaces` | Listed CVEs rejected as duplicates of this one; present only when there are some |
+
+For a stack with listed CVEs the feed also carries `listed`: `rejected` (each `id` with the `replacedBy` IDs its rejection names, empty when none) and `notFound`. Fix first entries that group listed CVEs have `listed: true` and the product's `label`.
 
 The feed also carries `support`: one entry per out-of-support finding, with `state` (`eol`, `ending` or `covered`), `name`, `date`, `esuUntil`, `esu`, `edge`, `source` (`endoflife` or `cve`), `cve` and the stack `items` it's about. Fix first entries carry the same `support` state. The Atom feed has an entry for each item out of support or losing it soon.
 

@@ -41,7 +41,8 @@ export interface Result {
     /** NIST LEV: lower-bound chance it has already been exploited. */
     lev: number | null;
   };
-  confidence: 'version_confirmed' | 'product_match';
+  /** 'listed': the stack lists the CVE itself (a `cve:` item), so no version was checked. */
+  confidence: 'version_confirmed' | 'product_match' | 'listed';
   match: 'exact' | 'close';
   matched: string[];
   fixedVersions: string[];
@@ -67,8 +68,10 @@ export interface Result {
   respondWithinHours: number | null;
   /** For urgent CVEs with no fixed version known: what to do meanwhile. */
   mitigation: { action: string | null; advisory: string | null } | null;
-  /** Older than the chosen window, shown because it's exploited, likely to be, or CVSS 9.9+ in the last year. */
+  /** Older than the chosen window, shown because it's exploited, likely to be, or CVSS 9.9+ in the last year (or because it's listed). */
   beforeWindow?: boolean;
+  /** Listed CVEs rejected as duplicates of this one. */
+  replaces?: string[];
 }
 
 export interface Reason {
@@ -87,6 +90,10 @@ export interface FixItem {
   fixable: number;
   /** Set when it's out of support, losing it soon, or kept going by paid extended support. */
   support?: SupportState;
+  /** Groups listed CVEs (by their product, or one CVE alone) rather than naming a stack item. */
+  listed?: boolean;
+  /** The product's display name, for a listed group. */
+  label?: string;
 }
 
 export type SupportState = 'eol' | 'ending' | 'covered';
@@ -133,6 +140,11 @@ export interface Feed {
   changes: Change[];
   results: Result[];
   watching: string[];
+  /** For a stack with `cve:` items: listed IDs that were rejected or aren't published CVEs. */
+  listed?: {
+    rejected: { id: string; replacedBy: string[] }[];
+    notFound: string[];
+  };
 }
 
 export interface Health {
@@ -190,6 +202,11 @@ export async function request(url: string, init: RequestInit, timeoutMs: number,
 }
 
 export const getPass = () => request('/api/pass', {}, SMALL_TIMEOUT_MS).then((r) => json<PassStatus>(r));
+/** Trades a Turnstile token for a pass, as a description's lookup does; the CVE list tab's lookup goes straight to the feed. */
+export const earnPass = (turnstileToken: string) =>
+  request('/api/pass', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnstileToken }) }, SMALL_TIMEOUT_MS).then((r) =>
+    json<PassStatus>(r),
+  );
 
 export const getConfig = () => request('/api/config', {}, SMALL_TIMEOUT_MS).then((r) => json<AppConfig>(r));
 export const getHealth = () => request('/api/health', {}, SMALL_TIMEOUT_MS).then((r) => json<Health>(r));

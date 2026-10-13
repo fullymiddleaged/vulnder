@@ -88,7 +88,8 @@
           Vulnder does not store your stack or what you type. Free text is sent to Cloudflare Workers AI to pick out component names, and
           Cloudflare's AI Gateway can keep a log of that request, including your text, in the Cloudflare account that runs this site. Vulnder
           caches the parsed result under a hash of the text, never the text itself. Manifest files are read in your browser, and only package
-          names and versions are sent. Stack links are not written to logs. Vulnder is hosted on Cloudflare, which processes every request to
+          names and versions are sent. A pasted CVE list or scan report is read in your browser too, and only the CVE IDs go into the
+          stack link; nothing else in the report, such as host names or addresses, leaves it. Stack links are not written to logs. Vulnder is hosted on Cloudflare, which processes every request to
           run the service, including the stack in the page address. Treat a stack link like a list of what you run and share it with care. The count of stack checks in the footer is a single running total, with nothing about the stack or who asked. No analytics or tracking scripts are used.
         </p>
       </details>
