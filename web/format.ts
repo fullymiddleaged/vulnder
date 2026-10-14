@@ -93,9 +93,12 @@ export function sourceAge(s: Health['sources'][string], now = Date.now()): strin
   return s.health === 'stale' ? `${age}, stale` : age;
 }
 
-/** The footer's running total, or null before the first check. */
+/** The footer shows the running total from here; below it, a small number reads as an empty site. */
+const CHECKS_SHOWN_FROM = 1000;
+
+/** The footer's running total, or null until it reaches CHECKS_SHOWN_FROM. */
 export function checksServedText(count: number | undefined): string | null {
-  if (!count || count < 1) return null;
+  if (!count || count < CHECKS_SHOWN_FROM) return null;
   return `${count.toLocaleString('en')} stack ${count === 1 ? 'check' : 'checks'} served`;
 }
 

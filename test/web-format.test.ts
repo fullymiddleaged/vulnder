@@ -127,10 +127,12 @@ describe('UI formatting', () => {
     expect(sourceAge({ health: 'never', lastSuccessAt: null }, now)).toBe('not yet');
   });
 
-  it('writes the checks served, and nothing before the first', () => {
+  it('writes the checks served, and nothing before the first 1,000', () => {
     expect(checksServedText(undefined)).toBeNull();
     expect(checksServedText(0)).toBeNull();
-    expect(checksServedText(1)).toBe('1 stack check served');
+    expect(checksServedText(1)).toBeNull();
+    expect(checksServedText(999)).toBeNull();
+    expect(checksServedText(1000)).toBe('1,000 stack checks served');
     expect(checksServedText(12345)).toBe('12,345 stack checks served');
   });
 
