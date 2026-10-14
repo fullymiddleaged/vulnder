@@ -89,7 +89,7 @@ The sections above record decisions as they were made. This one describes the cu
 
 **Resolve** (`src/resolve/`) turns input into stack items. `extract.ts` asks Workers AI (`AI_MODEL`) to list named components; `catalog.ts` resolves names against the catalog (aliases, product lines in `lines.ts`, categories, fuzzy match; `npm run check:names` finds drift); `injection.ts` is a free phrase screen; `jev.ts` and `profile.ts` screen the text and order close matches by fit (below).
 
-**Match** (`src/match/`): `match.ts` matches a stack to CVEs (OSV confirms package versions) from per-component data that `components.ts` loads and the feed routes cache by data version; `priority.ts` assigns Act/Attend/Watch/Track, a 0–100 score and reasons, plus the per-component "Fix first" list.
+**Match** (`src/match/`): `match.ts` matches a stack to CVEs (OSV confirms package versions) from per-component data that `components.ts` loads and the feed routes cache by data version; `priority.ts` assigns Act/Attend/Watch/Track, a 0–100 score and reasons, plus the per-component "Fix first" list. Its last rule is age (`ageDays` from `published_at`): CVSS 8.0+ public for 60 days is at least Attend and 7.0+ at least Watch, so old CVEs whose only data is a CVSS score and CISA's day-one assessment (typical of `cve_index` rows) still rise; it lifts the band, never the score.
 
 **Routes** (`src/routes/`): `POST /api/resolve` (Turnstile, per-IP limit, daily model caps in `src/lib/quota.ts`); `GET /api/feed`, `/feed.xml`, `/badge.svg` (cached by data version; cache misses rate-limited).
 

@@ -20,16 +20,21 @@ import type { SupportState } from './support';
  *             it has already been exploited, CVSS 9.0 or more, or a
  *             proof-of-concept exploit that is automatable or gives total
  *             control, or an edge device that is automatable or gives total
- *             control (BOD 26-04: 14 days for an internet-facing system)
+ *             control (BOD 26-04: 14 days for an internet-facing system),
+ *             or CVSS 8.0 or more and public for 60 days (overdue)
  *     watch   CVSS 8.0 or more, a proof-of-concept exploit, automatable (BOD
- *             26-04: 60 days even when not exposed), or an edge device CISA
- *             has assessed (60 days when exposed)
+ *             26-04: 60 days even when not exposed), an edge device CISA
+ *             has assessed (60 days when exposed), or CVSS 7.0 or more and
+ *             public for 60 days (overdue)
  *     track   everything else: affected, but nothing above applies
  *   No result ever gets longer than BOD 26-04 would give it, taking every
  *   system as not exposed except edge devices, which are.
  *   A low EPSS never holds a critical back a band: EPSS is often near zero in
  *   a CVE's first days. What an attacker needs to reach it (see reach()) only
  *   orders it within Attend.
+ *   Overdue is checked last: an old CVE often has none of the other signals
+ *   (CISA assessed it once, EPSS stays low), yet a high-severity bug still
+ *   unfixed 60 days on needs fixing. It lifts the band, never the threat.
  * - A 0–100 score that orders results within a band and ranks components:
  *   threat × impact × ease × edge × ransomware, in the shape Grype uses (threat from
  *   KEV or EPSS, never under 1%; impact from CVSS). Whatever earns a band also
@@ -67,7 +72,7 @@ export interface Why {
   missing: string[];
 }
 
-type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'takeover' | 'automatable' | 'total' | 'edge' | 'access' | 'cvss' | 'label';
+type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'takeover' | 'automatable' | 'total' | 'edge' | 'overdue' | 'access' | 'cvss' | 'label';
 
 /**
  * How soon to fix or mitigate, as guidance rather than an SLA. In 2026, working
@@ -110,6 +115,8 @@ export interface Signals {
    * guess can't push anything down.
    */
   edge?: boolean;
+  /** Whole days since it was published; null when the record has no date. */
+  ageDays?: number | null;
 }
 
 const CRITICAL_CVSS = 9;
@@ -118,6 +125,11 @@ const EPSS_VERY_HIGH = 0.5;
 const WATCH_CVSS = 8;
 /** From here up, results say whether an attacker can reach the bug. */
 const HIGH_CVSS = 7;
+/**
+ * Public this long, a high-severity bug is overdue: BOD 26-04's deadline for a
+ * system that isn't exposed, and twice Watch's 30 days.
+ */
+const OVERDUE_DAYS = 60;
 /**
  * The least threat anything gets, scored by EPSS or not (usually a new one).
  * A tiny EPSS shouldn't rank a CVE below one EPSS knows nothing about.
@@ -175,12 +187,15 @@ export function assess(s: Signals): Assessment {
   // impact: 14 days, so Attend; anything CISA has assessed: 60 days, so Watch).
   const edgeAttend = !!s.edge && (automatable || totalImpact);
   const edgeWatch = !!s.edge && s.ssvc !== null;
+  const pocAttend = poc && (automatable || totalImpact);
+  // Still affected long after it was published: Attend from CVSS 8.0, Watch from 7.0.
+  const overdue = high && s.ageDays != null && s.ageDays >= OVERDUE_DAYS;
 
   const priority: Priority = active || predicted
     ? 'act'
-    : sibling || likely || likelyBefore || critical || (poc && (automatable || totalImpact)) || edgeAttend
+    : sibling || likely || likelyBefore || critical || pocAttend || edgeAttend || (overdue && severe)
       ? 'attend'
-      : severe || labelled || poc || automatable || edgeWatch
+      : severe || labelled || poc || automatable || edgeWatch || overdue
         ? 'watch'
         : 'track';
 
@@ -215,6 +230,10 @@ export function assess(s: Signals): Assessment {
     else if (edgeWatch) add('edge', 'context', 'Edge device: CISA sets internet-facing systems a deadline for every bug it assesses');
     else if (s.edge) add('edge', 'context', 'Edge device: VPNs, firewalls and gateways are a top target');
   }
+  // Said only where it holds the band, so Act now results don't carry it.
+  if (overdue && priority === (severe ? 'attend' : 'watch')) {
+    add('overdue', 'context', `Public for ${formatAge(s.ageDays!)} at CVSS ${severe ? '8.0' : '7.0'} or more: a fix is overdue`);
+  }
   if (access && high) add('access', 'context', describeAccess(access.barriers));
   if (s.cvss !== null) add('cvss', 'severity', `CVSS ${s.cvss.toFixed(1)} (${severity(s.cvss)})`);
   if (labelled) add('label', 'severity', `Rated ${labelled} by its advisory (no CVSS score yet)`);
@@ -224,9 +243,9 @@ export function assess(s: Signals): Assessment {
     priority === 'act'
       ? active ? 'active' : veryLikely || (criticalLikely && likely) ? 'epss' : criticalLikely ? 'lev' : 'takeover'
       : priority === 'attend'
-        ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical ? (labelled ? 'label' : 'cvss') : poc ? 'poc' : 'edge'
+        ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical ? (labelled ? 'label' : 'cvss') : pocAttend ? 'poc' : edgeAttend ? 'edge' : 'overdue'
         : priority === 'watch'
-          ? severe ? 'cvss' : labelled ? 'label' : poc ? 'poc' : automatable ? (totalImpact ? 'total' : 'automatable') : 'edge'
+          ? severe ? 'cvss' : labelled ? 'label' : poc ? 'poc' : automatable ? (totalImpact ? 'total' : 'automatable') : edgeWatch ? 'edge' : 'overdue'
           : null;
   const decisive = all.find((r) => r.key === decidedBy) ?? null;
   const strip = ({ text, kind }: Reason): Reason => ({ text, kind });
@@ -287,6 +306,13 @@ export function severity(cvss: number): 'critical' | 'high' | 'medium' | 'low' |
 
 function formatPct(v: number): string {
   return `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
+}
+
+/** "75 days", "17 months", "3 years". */
+export function formatAge(days: number): string {
+  if (days < 90) return `${days} days`;
+  if (days < 730) return `${Math.floor(days / 30.44)} months`;
+  return `${Math.floor(days / 365.25)} years`;
 }
 
 type Ranked = Pick<Assessment, 'priority' | 'score'> & Partial<Pick<Assessment, 'respondWithinHours'>>;

@@ -115,6 +115,26 @@ describe('matchStack with listed CVEs', () => {
     expect(res.results.map((r) => [r.id, r.matched, r.replaces])).toEqual([['CVE-2018-1001', ['cve:2018-1001'], ['CVE-2018-1000']]]);
   });
 
+  it('ranks an old high-severity CVE with nothing else known as overdue', async () => {
+    // Shaped like CVE-2025-41450: CVSS 8.2, assessed once by CISA on publication, EPSS low and flat.
+    await index([
+      {
+        id: 'CVE-2025-41450',
+        published_at: '2025-05-08T09:41:20.881Z',
+        title: 'Authentication bypass in Danfoss AK-SM 8xxA',
+        product: 'danfoss/ak-sm_8xxa_series',
+        cvss_score: 8.2,
+        cvss_vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:L/A:H',
+        ssvc: JSON.stringify({ exploitation: 'none', automatable: 'no', technicalImpact: 'partial' }),
+        epss: 0.0035,
+        epss_date: daysAgo(1).slice(0, 10),
+      },
+    ]);
+    const [r] = (await matchStack(store(), parseStack('cve:2025-41450'), { now: NOW, days: 30, osv: noOsv })).results;
+    expect(r).toMatchObject({ id: 'CVE-2025-41450', priority: 'attend', respondWithinHours: 168 });
+    expect(r!.why.decisive).toEqual({ kind: 'context', text: expect.stringMatching(/^Public for \d+ (months|years) at CVSS 8\.0 or more: a fix is overdue$/) });
+  });
+
   it('never reads cve_index for a stack without listed CVEs', async () => {
     const sql: string[] = [];
     const spy = store();

@@ -257,14 +257,14 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'amber',
     brief: 'Likely to be exploited soon.',
     window: 'Within 7 days',
-    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, or an edge device with a bug that is automatable or gives full control.',
+    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, an edge device with a bug that is automatable or gives full control, or CVSS 8.0 or more and public for 60 days or more.',
   },
   watch: {
     label: 'Watch',
     light: 'yellow',
     brief: 'Serious, but less pressing.',
     window: 'Within 30 days',
-    note: 'High severity, a public exploit, or easy to attack at scale: CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable, or any bug CISA has assessed on an edge device.',
+    note: 'High severity, a public exploit, or easy to attack at scale: CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable, any bug CISA has assessed on an edge device, or CVSS 7.0 or more and public for 60 days or more.',
   },
   track: {
     label: 'Track',

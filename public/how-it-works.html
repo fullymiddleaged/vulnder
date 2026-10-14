@@ -235,13 +235,14 @@
         </p>
         <ul class="levels">
           <li class="red"><span class="light"></span><span><strong>Act now:</strong> on CISA's KEV catalog or actively exploited, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited bugs come first.</span></li>
-          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> likely or critical. EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, CVSS 9.0+, or an edge-device bug that is automatable or gives full control. Within 7 days.</span></li>
-          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept exploit, or rated automatable by CISA. Within 30 days.</span></li>
+          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> likely or critical. EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, CVSS 9.0+, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
+          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept exploit, rated automatable by CISA, or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
           <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack, nothing above applies. Next routine update.</span></li>
         </ul>
         <ul>
           <li><strong>Score.</strong> A 0–100 heuristic orders results within a priority, from threat, impact, reachability and ransomware use. It isn't a probability.</li>
           <li><strong>Older.</strong> Known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year always show, whatever window you pick.</li>
+          <li><strong>Overdue.</strong> A high-severity bug still unfixed 60 days after it was published moves up a priority, even with nothing else known about it. It never changes the score or reaches Act now.</li>
           <li><strong>Edge devices.</strong> Treated as internet-facing, ranked ahead of similar results, and given CISA's BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked for you; change any under Edit stack.</li>
           <li><strong>Reasons.</strong> Each result names what decided it and what data is missing, so a quiet result reads as unknown, not safe.</li>
         </ul>

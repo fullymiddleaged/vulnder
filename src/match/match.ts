@@ -1,5 +1,5 @@
 import { EPSS_HIGH } from '../config';
-import { lev } from '../lib/lev';
+import { daysBetween, lev } from '../lib/lev';
 import { addDays } from '../lib/time';
 import { keepStart, keptLonger } from '../ingest/retention';
 import { allForKeys, type Store } from '../ingest/store';
@@ -381,6 +381,7 @@ export function toResult(
     severityLabel: parseSeverityLabel(v.severity_label),
     ssvc,
     edge,
+    ageDays: v.published_at ? daysBetween(v.published_at, now.toISOString()) : null,
   });
   return {
     id: v.id,
