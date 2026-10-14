@@ -427,3 +427,56 @@ describe('assess: a score that agrees with its band', () => {
     expect(assess({ ...login, epss: 0.3 }).score).toBe(29.7);
   });
 });
+
+describe('assess: overdue', () => {
+  // CVE-2025-41450, Danfoss AK-SM 8xxA auth bypass: 8.2, CISA's day-one assessment, EPSS 0.35%.
+  const danfoss = { ...base, cvss: 8.2, cvssVector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:L/A:H', epss: 0.0035, ssvc: ssvc('none') };
+
+  it('lifts CVSS 8.0 or more to Attend once it has been public for 60 days', () => {
+    expect(assess({ ...danfoss, ageDays: 59 }).priority).toBe('watch');
+    expect(assess({ ...danfoss, ageDays: 59 }).why.decisive!.text).toBe('CVSS 8.2 (high)');
+    const old = assess({ ...danfoss, ageDays: 524 });
+    expect(old.priority).toBe('attend');
+    expect(old.respondWithinHours).toBe(168);
+    expect(old.why.decisive).toEqual({ text: 'Public for 17 months at CVSS 8.0 or more: a fix is overdue', kind: 'context' });
+    expect(assess({ ...danfoss, ageDays: 60 }).why.decisive!.text).toBe('Public for 60 days at CVSS 8.0 or more: a fix is overdue');
+  });
+
+  it('lifts CVSS 7.0 to 7.9 to Watch, and nothing below 7.0', () => {
+    expect(assess({ ...base, cvss: 7.5, ageDays: 59 }).priority).toBe('track');
+    const old = assess({ ...base, cvss: 7.5, ageDays: 60 });
+    expect(old.priority).toBe('watch');
+    expect(old.why.decisive!.text).toBe('Public for 60 days at CVSS 7.0 or more: a fix is overdue');
+    expect(assess({ ...base, cvss: 6.9, ageDays: 4000 }).priority).toBe('track');
+    // A severity word alone isn't a score to judge it by.
+    expect(assess({ ...base, severityLabel: 'high', ageDays: 4000 }).priority).toBe('watch');
+    expect(assess({ ...base, severityLabel: 'high', ageDays: 4000 }).why.decisive!.text).toBe('Rated high by its advisory (no CVSS score yet)');
+  });
+
+  it('changes nothing without a date', () => {
+    expect(assess({ ...danfoss, ageDays: null }).priority).toBe('watch');
+    expect(assess(danfoss).priority).toBe('watch');
+  });
+
+  it('leaves stronger reasons decisive, and Act now as it was', () => {
+    expect(assess({ ...danfoss, cvss: 9.8, ageDays: 900 }).why.decisive!.text).toBe('CVSS 9.8 (critical)');
+    expect(assess({ ...danfoss, epss: 0.2, ageDays: 900 }).why.decisive!.text).toBe('EPSS 20%');
+    const kev = assess({ ...danfoss, kevAddedAt: '2026-10-01', ageDays: 900 });
+    expect(kev.priority).toBe('act');
+    expect(kev.reasons).not.toContainEqual(expect.stringContaining('overdue'));
+    // In Attend for another reason, it still says the fix is overdue.
+    expect(assess({ ...danfoss, epss: 0.2, ageDays: 900 }).reasons).toContain('Public for 2 years at CVSS 8.0 or more: a fix is overdue');
+  });
+
+  it('lifts the band, never the score', () => {
+    expect(assess({ ...danfoss, ageDays: 900 }).score).toBe(assess({ ...danfoss, ageDays: 0 }).score);
+    expect(assess({ ...base, cvss: 7.5, ssvc: ssvc('poc'), ageDays: 900 }).score).toBe(assess({ ...base, cvss: 7.5, ssvc: ssvc('poc') }).score);
+  });
+
+  it('credits overdue, not a bare proof-of-concept, when overdue is what reached Attend', () => {
+    const r = assess({ ...danfoss, ssvc: ssvc('poc'), ageDays: 900 });
+    expect(r.priority).toBe('attend');
+    expect(r.why.decisive!.text).toBe('Public for 2 years at CVSS 8.0 or more: a fix is overdue');
+    expect(r.reasons).toContain('Proof-of-concept exploit');
+  });
+});
