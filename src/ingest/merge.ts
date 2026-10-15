@@ -1,6 +1,6 @@
 import { EPSS_HIGH, EPSS_RISE } from '../config';
 import { daysBetween, levTerm } from '../lib/lev';
-import { keptLonger } from './retention';
+import { retained } from './retention';
 import type { Ref, SeverityLabel, SourceName, Ssvc, VulnPatch } from './types';
 
 /** A stored vulnerability, with JSON columns parsed. */
@@ -115,7 +115,7 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
       (f.publishedAt != null && f.publishedAt >= opts.windowStart) ||
       (f.kevAddedAt != null && f.kevAddedAt >= opts.windowStart) ||
       (opts.keepStart !== undefined &&
-        keptLonger(
+        retained(
           {
             publishedAt: f.publishedAt ?? null,
             kevAddedAt: f.kevAddedAt ?? null,
