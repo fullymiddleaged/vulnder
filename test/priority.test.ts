@@ -249,7 +249,7 @@ describe('assess: why and when', () => {
 
   it('says what data it could not use', () => {
     expect(assess(base).why.missing).toEqual([
-      'No CISA assessment of exploitation, automation or impact yet',
+      'No CISA Vulnrichment assessment of exploitation, automation or impact yet',
       'No CVSS score yet: NVD now scores only a fraction of new CVEs',
       'Not scored by EPSS yet',
     ]);

@@ -51,7 +51,7 @@ Vulnder runs on Cloudflare, which sees every request, including the stack in the
 
 ## Data
 
-[CVE records](https://github.com/CVEProject/cvelistV5) with CISA's enrichment, the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, and vendor support dates from [endoflife.date](https://endoflife.date) (MIT). 90 days are kept; an old CVE that lands on KEV today still shows up.
+[CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, and vendor support dates from [endoflife.date](https://endoflife.date) (MIT). 90 days are kept; an old CVE that lands on KEV today still shows up.
 
 ## Self-hosting
 

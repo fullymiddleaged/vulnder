@@ -251,7 +251,7 @@ export function assess(s: Signals): Assessment {
   const strip = ({ text, kind }: Reason): Reason => ({ text, kind });
 
   const missing: string[] = [];
-  if (!active && !s.ssvc) missing.push('No CISA assessment of exploitation, automation or impact yet');
+  if (!active && !s.ssvc) missing.push('No CISA Vulnrichment assessment of exploitation, automation or impact yet');
   if (s.cvss === null) missing.push('No CVSS score yet: NVD now scores only a fraction of new CVEs');
   else if (high && !access) missing.push('No CVSS vector to tell whether an attacker can reach it');
   if (!active && s.epss === null) missing.push('Not scored by EPSS yet');

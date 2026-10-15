@@ -4,7 +4,7 @@ The short version is on the site at [How it works](https://vulnder.com/how-it-wo
 
 ## Priorities
 
-Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. Evidence of exploitation always outranks prediction and severity.
+Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. The SSVC assessments themselves (exploitation, automatable, technical impact) come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment), attached to CVE records. Evidence of exploitation always outranks prediction and severity.
 
 | Priority | When |
 |---|---|
