@@ -150,6 +150,7 @@ describe('matchStack', () => {
     expect(next.links).toEqual({
       advisory: `https://github.com/advisories/${GHSA_NEXT_1}`,
       patch: 'https://github.com/vercel/next.js/commit/abcdef1234567',
+      exploit: null,
     });
     expect(res.results[1]!.evidence).toMatchObject({ knownRansomware: true });
   });
@@ -431,9 +432,10 @@ describe('feed cost controls', () => {
     }) as typeof counting.all;
     const res = await matchStack(counting, parseStack('p:linux/linux'), { now: NOW, days: 30, osv: fakeOsv() });
     expect(res.results).toHaveLength(n);
-    // Affected rows, the vulns in chunks of 2,000 (at 400 a chunk this was 13), then the
-    // product's unsupported-when-assigned tag. Linux maps to no endoflife.date product, so no dates.
-    expect(queries).toBe(5);
+    // Affected rows, the vulns in chunks of 2,000 (at 400 a chunk this was 13), every
+    // CVE's exploit rows in one, then the product's unsupported-when-assigned tag. Linux
+    // maps to no endoflife.date product, so no dates.
+    expect(queries).toBe(6);
   });
 });
 

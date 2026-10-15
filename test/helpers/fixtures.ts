@@ -5,6 +5,8 @@ import cve2023_0884 from '../fixtures/cve/records/CVE-2023-0884.json';
 import cve2024_0228 from '../fixtures/cve/records/CVE-2024-0228.json';
 import cve2024_34393 from '../fixtures/cve/records/CVE-2024-34393.json';
 import cve2025_0020 from '../fixtures/cve/records/CVE-2025-0020.json';
+import cve2025_0167 from '../fixtures/cve/records/CVE-2025-0167.json';
+import cve2025_0168 from '../fixtures/cve/records/CVE-2025-0168.json';
 import cve2025_12828 from '../fixtures/cve/records/CVE-2025-12828.json';
 import cve2026_100107 from '../fixtures/cve/records/CVE-2026-100107.json';
 import cve2026_100148 from '../fixtures/cve/records/CVE-2026-100148.json';
@@ -17,6 +19,9 @@ import ghsaPage from '../fixtures/ghsa/page.json';
 import kevFeed from '../fixtures/kev/feed.json';
 // endoflife.date's /api/v1/products/full, cut down to the products src/stack/eol.ts maps and one it doesn't (nginx).
 import eolFull from '../fixtures/eol/full.json';
+// Metasploit's module index and Nuclei's cves.json, cut to a few real entries (scripts/record-fixtures.ts --exploits).
+import metasploitIndex from '../fixtures/exploits/metasploit.json';
+import nucleiIndex from '../fixtures/exploits/nuclei.json';
 
 export type CveRecordJson = { cveMetadata: { cveId: string; dateUpdated: string; datePublished?: string; state: string } };
 
@@ -26,6 +31,9 @@ export const cveRecords: Record<string, CveRecordJson> = {
   'CVE-2023-0884': cve2023_0884 as CveRecordJson,
   'CVE-2024-0228': cve2024_0228 as CveRecordJson,
   'CVE-2025-0020': cve2025_0020 as CveRecordJson,
+  // Exploit-tagged references: in the CNA's list, and only in CISA-ADP's.
+  'CVE-2025-0168': cve2025_0168 as CveRecordJson,
+  'CVE-2025-0167': cve2025_0167 as CveRecordJson,
   'CVE-2022-48816': cve2022_48816 as CveRecordJson,
   'CVE-2024-34393': cve2024_34393 as CveRecordJson,
   'CVE-2025-12828': cve2025_12828 as CveRecordJson,
@@ -35,7 +43,12 @@ export const cveRecords: Record<string, CveRecordJson> = {
   'CVE-2026-104910': cve2026_104910 as CveRecordJson,
 };
 
-export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, releases };
+export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, metasploitIndex, nucleiIndex, releases };
+
+/** The recorded Metasploit index as its file's text. */
+export const metasploitBody = () => JSON.stringify(metasploitIndex.body);
+/** The recorded Nuclei lines as cves.json's text. */
+export const nucleiBody = () => `${nucleiIndex.lines.join('\n')}\n`;
 
 /** A delta zip laid out like cvelistV5's (deltaCves/CVE-*.json), built from recorded records. */
 export function deltaZip(records: CveRecordJson[]): Uint8Array {

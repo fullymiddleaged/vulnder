@@ -42,4 +42,7 @@ export const STALE_AFTER_HOURS: Record<string, number> = {
   epss: 48,
   // Fetched once a day; a missed day or two is fine, since support dates rarely change.
   eol: 72,
+  // Fetched once a day, like support dates.
+  metasploit: 72,
+  nuclei: 72,
 };

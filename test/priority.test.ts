@@ -428,6 +428,77 @@ describe('assess: a score that agrees with its band', () => {
   });
 });
 
+describe('assess: exploit availability', () => {
+  const none = { ref: false, metasploit: null, nuclei: false } as const;
+  const x = (e: Partial<NonNullable<Signals['exploit']>>): Signals['exploit'] => ({ ...none, ...e });
+  const medium = { ...base, cvss: 5 };
+
+  it('changes nothing when there is none', () => {
+    expect(assess({ ...medium, exploit: x({}) })).toEqual(assess(medium));
+  });
+
+  it('watches public exploit code from the CVE record or a Metasploit auxiliary module, as a proof of concept', () => {
+    const ref = assess({ ...medium, exploit: x({ ref: true }) });
+    expect(ref).toMatchObject({ priority: 'watch', score: 10, respondWithinHours: 30 * 24 });
+    expect(ref.why.decisive).toEqual({ text: 'Public exploit code (reference in the CVE record)', kind: 'evidence' });
+    expect(assess({ ...medium, exploit: x({ metasploit: 'auxiliary' }) }).why.decisive!.text).toBe('Public exploit code (Metasploit auxiliary module)');
+    // CISA's own word comes first.
+    expect(assess({ ...medium, ssvc: ssvc('poc'), exploit: x({ ref: true }) }).reasons).toContain('Proof-of-concept exploit');
+  });
+
+  it('attends to a Metasploit exploit module, never acts on it', () => {
+    const r = assess({ ...base, cvss: 6, exploit: x({ metasploit: 'exploit' }) });
+    expect(r).toMatchObject({ priority: 'attend', score: 18, respondWithinHours: 7 * 24 });
+    expect(r.why.decisive).toEqual({ text: 'Metasploit module: a ready-made attack tool', kind: 'evidence' });
+    // Not a separate "public exploit code" line as well.
+    expect(r.reasons).toEqual(['Metasploit module: a ready-made attack tool', 'CVSS 6.0 (medium)']);
+    expect(assess({ ...base, cvss: 10, exploit: x({ metasploit: 'exploit', ref: true, nuclei: true }) }).priority).toBe('attend');
+  });
+
+  it('watches a CVE with a Nuclei template when CISA has not rated it automatable, with the automatable boost', () => {
+    const r = assess({ ...medium, exploit: x({ nuclei: true }) });
+    expect(r).toMatchObject({ priority: 'watch', score: 0.6 });
+    expect(r.why.decisive).toEqual({ text: 'Nuclei scanner template: can be mass-scanned', kind: 'context' });
+    // Rated by CISA, either way: CISA's word stands and the template adds nothing.
+    expect(assess({ ...medium, ssvc: ssvc('none', 'no'), exploit: x({ nuclei: true }) })).toEqual(assess({ ...medium, ssvc: ssvc('none', 'no') }));
+    expect(assess({ ...medium, ssvc: ssvc('none', 'yes'), exploit: x({ nuclei: true }) })).toEqual(assess({ ...medium, ssvc: ssvc('none', 'yes') }));
+  });
+
+  it('attends to public exploit code that a Nuclei template makes scannable', () => {
+    const r = assess({ ...medium, exploit: x({ ref: true, nuclei: true }) });
+    expect(r).toMatchObject({ priority: 'attend', score: 12.5 });
+    expect(r.why.decisive!.text).toBe('Public exploit code (reference in the CVE record)');
+    expect(r.reasons).toContain('Nuclei scanner template: can be mass-scanned');
+    // CISA rated it not automatable: the template doesn't overrule that.
+    expect(assess({ ...medium, ssvc: ssvc('poc', 'no'), exploit: x({ ref: true, nuclei: true }) }).priority).toBe('watch');
+  });
+
+  it("leaves the edge-device rules and reachability to CISA's ratings", () => {
+    const edge = { ...base, edge: true, cvss: 5, exploit: x({ nuclei: true }) };
+    // An edge device with a template: Watch from the template, not BOD's Attend for automatable edge devices.
+    expect(assess(edge).priority).toBe('watch');
+    expect(assess({ ...edge, ssvc: ssvc('none', null, 'total') }).priority).toBe('attend');
+    expect(assess({ ...edge, ssvc: ssvc('none', null, 'total') }).why.decisive!.text).toMatch(/^Edge device with a total-impact bug/);
+    // No 3-day takeover case from a template, even with total impact.
+    expect(assess({ ...edge, cvss: 9.8, ssvc: ssvc('none', null, 'total') }).priority).toBe('attend');
+    // A critical behind a login stays guarded: a template doesn't make it reachable.
+    const guarded = { ...base, cvss: 9.0, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H' };
+    expect(assess({ ...guarded, exploit: x({ nuclei: true }) }).score).toBe(Math.round(0.05 * 0.9 * 1.25 * 1000) / 10);
+  });
+
+  it('keeps KEV and active exploitation on top, and never calls exploit code "exploited"', () => {
+    const kev = assess({ ...medium, kevAddedAt: '2026-10-01', exploit: x({ metasploit: 'exploit', ref: true, nuclei: true }) });
+    expect(kev).toMatchObject({ priority: 'act', respondWithinHours: 24 });
+    expect(kev.why.decisive!.text).toBe('On CISA KEV');
+    expect(assess({ ...medium, ssvc: ssvc('active'), exploit: x({ metasploit: 'exploit' }) }).priority).toBe('act');
+    for (const e of [x({ ref: true }), x({ metasploit: 'exploit' }), x({ metasploit: 'auxiliary' }), x({ nuclei: true }), x({ ref: true, metasploit: 'exploit', nuclei: true })]) {
+      const r = assess({ ...medium, exploit: e });
+      expect(r.reasons.join(' ')).not.toMatch(/exploited/i);
+      expect(r.priority).not.toBe('act');
+    }
+  });
+});
+
 describe('assess: overdue', () => {
   // CVE-2025-41450, Danfoss AK-SM 8xxA auth bypass: 8.2, CISA's day-one assessment, EPSS 0.35%.
   const danfoss = { ...base, cvss: 8.2, cvssVector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:L/A:H', epss: 0.0035, ssvc: ssvc('none') };

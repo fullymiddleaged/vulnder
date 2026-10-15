@@ -2,7 +2,7 @@ import { CVE_INDEX_BY_ID_SQL } from '../ingest/cve-index';
 import { allForKeys, type Store } from '../ingest/store';
 import type { Ecosystem } from '../lib/normalize';
 import { formatItem, identity, parseStack, PREFIXES, type CveItem } from '../stack/format';
-import { EXPLOITED_IN_FAMILIES_SQL, FEED_CHUNK, VULNS_BY_ID_SQL, type VulnRow } from './components';
+import { EXPLOITED_IN_FAMILIES_SQL, FEED_CHUNK, loadExploits, VULNS_BY_ID_SQL, type ExploitRef, type VulnRow } from './components';
 
 /**
  * A pasted list of CVEs (`cve:` items), looked up by ID whatever their age.
@@ -33,6 +33,8 @@ export interface IndexRow {
   epss: number | null;
   epss_percentile: number | null;
   epss_date: string | null;
+  /** The record's first exploit-tagged reference; absent before migration 0010. */
+  exploit_ref?: string | null;
 }
 
 /** What a list held besides CVEs to rank. */
@@ -52,6 +54,8 @@ export interface ListedVuln {
   product: { item: string; label: string | null } | null;
   /** An exploited member of its family, when vulns knows the family. */
   exploitedSibling: string | null;
+  /** Metasploit modules and Nuclei templates naming it. */
+  exploits: ExploitRef[];
 }
 
 export interface ListedMatch {
@@ -94,7 +98,7 @@ export async function matchListed(store: Store, items: CveItem[]): Promise<Liste
     if (!f?.row) return;
     let v = ranked.get(id);
     if (!v) {
-      v = { row: f.row, matched: [], replaces: [...(replacing.get(id) ?? [])].sort(), product: f.product, exploitedSibling: null };
+      v = { row: f.row, matched: [], replaces: [...(replacing.get(id) ?? [])].sort(), product: f.product, exploitedSibling: null, exploits: [] };
       ranked.set(id, v);
     }
     if (matched) v.matched.push(matched);
@@ -110,6 +114,10 @@ export async function matchListed(store: Store, items: CveItem[]): Promise<Liste
       v.exploitedSibling = exploited.filter((e) => e.family_id === v.row.family_id && e.id !== v.row.id).map((e) => e.id).sort()[0] ?? null;
     }
   }
+
+  // Metasploit modules and Nuclei templates, read by ID like the rest.
+  const exploits = await loadExploits(store, [...ranked.keys()]);
+  for (const e of exploits) ranked.get(e.cve_id)?.exploits.push(e);
   return { vulns: [...ranked.values()], listed: { rejected, notFound } };
 }
 
@@ -168,6 +176,7 @@ export function indexToVuln(r: IndexRow): VulnRow {
     refs: '[]',
     family_id: null,
     last_event_at: null,
+    exploit_ref: r.exploit_ref ?? null,
   };
 }
 

@@ -47,7 +47,8 @@ export interface Result {
   matched: string[];
   fixedVersions: string[];
   cvss: { score: number; vector: string | null } | null;
-  links: { advisory: string | null; patch: string | null };
+  /** `exploit`: public attack code, when there is some; absent from feeds cached before it existed. */
+  links: { advisory: string | null; patch: string | null; exploit?: string | null };
   priority: Priority;
   /** 0–100: orders results within a priority. */
   score: number;

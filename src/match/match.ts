@@ -3,10 +3,10 @@ import { daysBetween, lev } from '../lib/lev';
 import { addDays } from '../lib/time';
 import { keepStart, keptLonger } from '../ingest/retention';
 import { allForKeys, type Store } from '../ingest/store';
-import { parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
+import { firstExploitRef, parseSeverityLabel, type Ref, type Ssvc } from '../ingest/types';
 import { formatItem, isCveItem, parseComponent, type ComponentItem, type StackItem } from '../stack/format';
 import { isEdge } from '../stack/teams';
-import { FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type VulnRow } from './components';
+import { cveIdsOf, FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type ExploitRef, type VulnRow } from './components';
 import { matchListed, type Listed } from './listed';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
@@ -62,7 +62,8 @@ export interface MatchedVuln {
   cvss: { score: number; vector: string | null } | null;
   cwe: string[];
   ssvc: Ssvc | null;
-  links: { advisory: string | null; patch: string | null };
+  /** `exploit`: public attack code (a Metasploit module or the record's exploit reference), when there is some. */
+  links: { advisory: string | null; patch: string | null; exploit: string | null };
   /** What to do about it: act, attend, watch or track. */
   priority: Priority;
   /** 0–100, for ordering within a priority and ranking components. */
@@ -222,6 +223,15 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
   const exploitedSibling = (v: VulnRow) =>
     [...(v.family_id ? (exploitedIn.get(v.family_id) ?? []) : [])].filter((id) => id !== v.id).sort()[0] ?? null;
 
+  // Metasploit modules and Nuclei templates, by CVE ID (an advisory's through its aliases).
+  const exploitsByCve = new Map<string, ExploitRef[]>();
+  for (const e of components.flatMap((d) => d.exploits ?? [])) {
+    const list = exploitsByCve.get(e.cve_id) ?? [];
+    if (!list.some((x) => x.source === e.source)) list.push(e);
+    exploitsByCve.set(e.cve_id, list);
+  }
+  const exploitsOf = (v: VulnRow) => cveIdsOf(v).flatMap((id) => exploitsByCve.get(id) ?? []);
+
   // 4. Decide confidence per vuln.
   const results: MatchedVuln[] = [];
   const matchedItems = new Set<string>();
@@ -258,7 +268,18 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
     if (!confirmed && !unverified) continue;
     for (const m of matched) matchedItems.add(m);
     results.push(
-      toResult(v, confirmed ? 'version_confirmed' : 'product_match', exact ? 'exact' : 'close', [...matched].sort(), [...fixes].sort(), edge, opts.now, exploitedSibling(v), !inWindow(v, since)),
+      toResult(
+        v,
+        confirmed ? 'version_confirmed' : 'product_match',
+        exact ? 'exact' : 'close',
+        [...matched].sort(),
+        [...fixes].sort(),
+        edge,
+        opts.now,
+        exploitedSibling(v),
+        !inWindow(v, since),
+        exploitsOf(v),
+      ),
     );
   }
 
@@ -286,7 +307,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
       }
       // An edge device's CVEs are held to tighter deadlines, as when the stack names the product.
       const edge = v.product ? isEdge(parseComponent(v.product.item)) : false;
-      const r = toResult(v.row, 'listed', 'exact', v.matched.sort(), [], edge, opts.now, v.exploitedSibling, !inWindow(v.row, since));
+      const r = toResult(v.row, 'listed', 'exact', v.matched.sort(), [], edge, opts.now, v.exploitedSibling, !inWindow(v.row, since), v.exploits);
       if (v.replaces.length > 0) r.replaces = v.replaces;
       results.push(r);
     }
@@ -365,12 +386,17 @@ export function toResult(
   now: Date,
   exploitedSibling: string | null,
   beforeWindow: boolean,
+  exploits: readonly ExploitRef[] = [],
 ): MatchedVuln {
   const refs = parseJson<Ref[]>(v.refs, []);
-  const links = pickLinks(v.id, refs);
+  const exploitRef = v.exploit_ref ?? firstExploitRef(refs);
+  const metasploit = exploits.find((e) => e.source === 'metasploit' && e.kind === 'exploit') ?? exploits.find((e) => e.source === 'metasploit') ?? null;
+  const msfKind = metasploit ? (metasploit.kind === 'exploit' ? 'exploit' : 'auxiliary') : null;
+  const links = { ...pickLinks(v.id, refs), exploit: exploitLink(metasploit, exploitRef) };
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
   const levNow = lev(v.lev_log ?? 0, v.epss, v.epss_date, now);
   const { priority, score, reasons, why, respondWithinHours } = assess({
+    exploit: { ref: exploitRef !== null, metasploit: msfKind, nuclei: exploits.some((e) => e.source === 'nuclei') },
     kevAddedAt: v.kev_added_at,
     knownRansomware: v.kev_ransomware === 1,
     epss: v.epss,
@@ -435,6 +461,17 @@ export function mitigationFor(
 ): { action: string | null; advisory: string | null } | null {
   if ((priority !== 'act' && priority !== 'attend') || fixedVersions.length > 0) return null;
   return { action: requiredAction?.trim() || null, advisory };
+}
+
+/**
+ * Where to see the public attack code: a Metasploit exploit module first,
+ * then the record's own exploit reference, then an auxiliary module. Only
+ * http(s) links; a Nuclei template is a scanner check, not attack code.
+ */
+export function exploitLink(metasploit: ExploitRef | null, ref: string | null): string | null {
+  const safe = (u: string | null | undefined) => (u && /^https?:\/\//i.test(u) ? u : null);
+  if (metasploit?.kind === 'exploit' && safe(metasploit.url)) return safe(metasploit.url);
+  return safe(ref) ?? safe(metasploit?.url);
 }
 
 /**

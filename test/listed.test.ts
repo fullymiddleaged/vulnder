@@ -157,10 +157,69 @@ describe('matchStack with listed CVEs', () => {
     counting.all = ((s: string, p?: unknown[]) => (queries++, all(s, p))) as typeof counting.all;
     const res = await matchStack(counting, parseStack(serializeStack(items)), { now: NOW, days: 30, osv: noOsv });
     expect(res.results).toHaveLength(MAX_CVE_ITEMS);
-    // vulns and cve_index, one chunk each; nothing rejected, no families.
-    expect(queries).toBe(2);
+    // vulns, cve_index and exploits, one chunk each; nothing rejected, no families.
+    expect(queries).toBe(3);
+  });
+
+  it('ranks a listed CVE on its exploit reference and a Metasploit module, however old', async () => {
+    await index([
+      { id: 'CVE-2016-2000', published_at: '2016-01-01T00:00:00.000Z', title: 'Old with a PoC', cvss_score: 5, exploit_ref: 'https://example.com/poc' },
+      { id: 'CVE-2016-2001', published_at: '2016-01-01T00:00:00.000Z', title: 'Old with a module', cvss_score: 5 },
+    ]);
+    await insertExploits([{ cve_id: 'CVE-2016-2001', source: 'metasploit', kind: 'exploit', url: `${MSF}/exploits/x.rb` }]);
+    const res = await matchStack(store(), parseStack('cve:2016-2000,cve:2016-2001'), { now: NOW, days: 30, osv: noOsv });
+    expect(res.results.map((r) => [r.id, r.priority, r.why.decisive?.text, r.links.exploit])).toEqual([
+      ['CVE-2016-2001', 'attend', 'Metasploit module: a ready-made attack tool', `${MSF}/exploits/x.rb`],
+      ['CVE-2016-2000', 'watch', 'Public exploit code (reference in the CVE record)', 'https://example.com/poc'],
+    ]);
+  });
+
+  it("reads an in-window CVE's exploit reference from its own references, and a component's Metasploit rows", async () => {
+    await applyPatches(
+      store(),
+      [
+        {
+          source: 'cve',
+          id: 'CVE-2026-1004',
+          aliases: [],
+          fields: { title: 'PostgreSQL injection', publishedAt: daysAgo(10), cvssScore: 5, refs: [{ url: 'https://example.com/poc', tags: ['exploit'] }] },
+          affected: [{ kind: 'product', vendor: 'postgresql', product: 'postgresql', ranges: [], fixedVersion: null }],
+        },
+      ],
+      { now: NOW, windowStart: daysAgo(90), epssEvents: true },
+    );
+    await insertExploits([
+      { cve_id: 'CVE-2026-1003', source: 'metasploit', kind: 'auxiliary', url: `${MSF}/auxiliary/y.rb` },
+      { cve_id: 'CVE-2026-1003', source: 'nuclei', kind: 'template', url: 'https://github.com/projectdiscovery/nuclei-templates/blob/main/http/y.yaml' },
+    ]);
+    const res = await matchStack(store(), parseStack('p:postgresql/postgresql'), { now: NOW, days: 30, osv: noOsv });
+    const byId = new Map(res.results.map((r) => [r.id, r]));
+    expect(byId.get('CVE-2026-1004')).toMatchObject({ priority: 'watch', links: { exploit: 'https://example.com/poc' } });
+    // CVSS 8.8 is Watch on its own; public code that a scanner can find lifts it to Attend.
+    expect(byId.get('CVE-2026-1003')).toMatchObject({ priority: 'attend', links: { exploit: `${MSF}/auxiliary/y.rb` } });
+    expect(byId.get('CVE-2026-1003')!.reasons).toEqual(expect.arrayContaining(['Public exploit code (Metasploit auxiliary module)', 'Nuclei scanner template: can be mass-scanned']));
+  });
+
+  it('ranks as before when the exploits table is missing', async () => {
+    const before = await matchStack(store(), parseStack(`${LIST},p:postgresql/postgresql`), { now: NOW, days: 30, osv: noOsv });
+    await env.DB.exec('DROP TABLE exploits');
+    try {
+      expect(await matchStack(store(), parseStack(`${LIST},p:postgresql/postgresql`), { now: NOW, days: 30, osv: noOsv })).toEqual(before);
+    } finally {
+      await env.DB.exec(
+        'CREATE TABLE exploits (cve_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, url TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (cve_id, source)) WITHOUT ROWID',
+      );
+    }
   });
 });
+
+const MSF = 'https://github.com/rapid7/metasploit-framework/blob/master/modules';
+
+async function insertExploits(rows: { cve_id: string; source: string; kind: string; url: string }[]): Promise<void> {
+  await env.DB.batch(
+    rows.map((r) => env.DB.prepare('INSERT INTO exploits (cve_id, source, kind, url, updated_at) VALUES (?, ?, ?, ?, ?)').bind(r.cve_id, r.source, r.kind, r.url, NOW.toISOString())),
+  );
+}
 
 describe('productItem', () => {
   it('turns index product keys into stack items', () => {

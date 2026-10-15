@@ -11,6 +11,11 @@ export interface Ref {
   tags?: string[];
 }
 
+/** The first reference tagged "exploit" (public exploit code, by the CVE record's say), or null. */
+export function firstExploitRef(refs: readonly Ref[]): string | null {
+  return refs.find((r) => r.tags?.some((t) => t.toLowerCase() === 'exploit'))?.url ?? null;
+}
+
 export interface Ssvc {
   exploitation: string | null;
   automatable: string | null;
