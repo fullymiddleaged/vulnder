@@ -51,7 +51,9 @@ describe('exploit references', () => {
     ];
     const refs = parseCveRecord(record)!.fields.refs!;
     expect(refs.filter((r) => r.url === cnaUrl)).toHaveLength(1);
-    expect(refs.some((r) => r.url === 'https://example.com/advisory' || r.url.startsWith('javascript:'))).toBe(false);
+    expect(refs.some((r) => r.url === 'https://example.com/advisory')).toBe(false);
+    // Only http(s) references are kept: the javascript: one is dropped.
+    expect(refs.every((r) => /^https?:\/\//.test(r.url))).toBe(true);
     expect(refs.filter((r) => r.url.startsWith('https://example.com/poc/'))).toEqual(
       Array.from({ length: 5 }, (_, i) => ({ url: `https://example.com/poc/${i}`, tags: ['exploit'] })),
     );
