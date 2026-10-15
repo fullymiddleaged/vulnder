@@ -1,4 +1,4 @@
-import { EPSS_HIGH, KEEP_CVSS, KEEP_DAYS, LEV_HIGH } from '../config';
+import { EPSS_HIGH, KEEP_CVSS, KEEP_DAYS, LEV_HIGH, RETAIN_CVSS } from '../config';
 import { windowStart } from '../lib/time';
 
 /**
@@ -12,6 +12,12 @@ import { windowStart } from '../lib/time';
  * An unpatched exploited bug from six months ago is exactly what shouldn't
  * drop out of view. The predicate and its SQL twin (KEEP_SQL) must agree:
  * test/retention.test.ts checks them against each other.
+ *
+ * Ingest keeps more than it shows: retained() adds CVSS 7.0+ from the same
+ * year, so a high-severity CVE keeps its full record (version ranges, EPSS
+ * history for LEV, family) for ranking a listed CVE, without appearing
+ * outside the window picked. Merge and the prune use retained(); match.ts
+ * uses keptLonger() for what shows.
  */
 
 export interface Keepable {
@@ -58,3 +64,15 @@ export const KEEP_SQL = `(
   ))
 )`;
 export const KEEP_PARAMS = [KEEP_CVSS - EPSILON, EPSS_HIGH - EPSILON, LEV_LOG_HIGH + EPSILON] as const;
+
+/** What ingest stores and the prune keeps for KEEP_DAYS: the safety net, and CVSS 7.0+ published in that time. */
+export function retained(v: Keepable, start: string): boolean {
+  if (keptLonger(v, start)) return true;
+  return v.publishedAt !== null && v.publishedAt >= start && v.cvssScore !== null && v.cvssScore >= RETAIN_CVSS - EPSILON;
+}
+
+/** retained() in SQL, bound like KEEP_SQL with RETAIN_PARAMS after the start. */
+export const RETAIN_SQL = `(${KEEP_SQL}
+  OR (COALESCE(published_at, '') >= ?2 AND COALESCE(cvss_score, 0) >= ?6)
+)`;
+export const RETAIN_PARAMS = [...KEEP_PARAMS, RETAIN_CVSS - EPSILON] as const;

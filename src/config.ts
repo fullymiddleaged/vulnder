@@ -8,6 +8,12 @@ export const RETENTION_DAYS = 90;
  */
 export const KEEP_DAYS = 365;
 export const KEEP_CVSS = 9.9;
+/**
+ * CVEs this severe are also kept for KEEP_DAYS, with everything Vulnder knows
+ * (version ranges, EPSS history, families), but shown only inside the window
+ * picked: a listed CVE and ranking get the full record, the feed stays the same.
+ */
+export const RETAIN_CVSS = 7;
 
 /** EPSS at or above this is the "Likely" tier, and crossing it upward is an event. */
 export const EPSS_HIGH = 0.1;

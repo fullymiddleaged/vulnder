@@ -4,7 +4,7 @@ import { catchUpHighEpss, EPSS_NET_KEY } from '../src/ingest/epss-net';
 import { maintenanceStatements } from '../src/ingest/maintenance';
 import { mergePatch } from '../src/ingest/merge';
 import { cursorKey, setMetaStatement } from '../src/ingest/meta';
-import { KEEP_PARAMS, KEEP_SQL, keepStart, keptLonger, type Keepable } from '../src/ingest/retention';
+import { KEEP_PARAMS, KEEP_SQL, keepStart, keptLonger, RETAIN_PARAMS, RETAIN_SQL, retained, type Keepable } from '../src/ingest/retention';
 import { RAW_BASE } from '../src/ingest/sources/cve';
 import { EPSS_URL } from '../src/ingest/sources/epss';
 import { windowStart } from '../src/lib/time';
@@ -63,8 +63,13 @@ const CASES: Row[] = [
   { id: 'CVE-2020-0011', age: 2000, kevAddedAt: daysAgo(400) },
   { id: 'CVE-2026-0012', age: 30 },
   { id: 'CVE-2026-0013', age: 200, lastEventAge: 10 },
+  { id: 'CVE-2026-0014', age: 200, cvssScore: 7.0 },
+  { id: 'CVE-2026-0015', age: 200, cvssScore: 6.9 },
+  { id: 'CVE-2025-0016', age: 400, cvssScore: 8.8 },
 ];
 const KEPT_LONGER = ['CVE-2026-0001', 'CVE-2026-0003', 'CVE-2026-0005', 'CVE-2026-0007', 'CVE-2020-0010'];
+/** Kept for the year, not shown outside the window: CVSS 7.0+. */
+const RETAINED = [...KEPT_LONGER, 'CVE-2026-0002', 'CVE-2026-0014'];
 
 const keepable = (r: Row): Keepable => ({
   publishedAt: daysAgo(r.age),
@@ -85,12 +90,19 @@ describe('the safety net', () => {
     expect(sql.map((r) => r.id)).toEqual([...KEPT_LONGER].sort());
   });
 
-  it('prunes after 90 days only what the safety net doesn’t keep', async () => {
+  it('retains CVSS 7.0+ from the last year besides, in code and in SQL alike', async () => {
+    expect(CASES.filter((r) => retained(keepable(r), START)).map((r) => r.id).sort()).toEqual([...RETAINED].sort());
+    await insert(...CASES);
+    const sql = await rows<{ id: string }>(`SELECT id FROM vulns WHERE ${RETAIN_SQL} ORDER BY id`, NOW.toISOString(), START, ...RETAIN_PARAMS);
+    expect(sql.map((r) => r.id)).toEqual([...RETAINED].sort());
+  });
+
+  it('prunes after 90 days only what it doesn’t retain', async () => {
     await insert(...CASES);
     await env.DB.batch(maintenanceStatements(NOW).map((s) => env.DB.prepare(s.sql).bind(...s.params)));
     const left = (await rows<{ id: string }>('SELECT id FROM vulns ORDER BY id')).map((r) => r.id);
-    // The safety net, plus the two still inside the 90 days (one by a recent event).
-    expect(left).toEqual([...KEPT_LONGER, 'CVE-2026-0012', 'CVE-2026-0013'].sort());
+    // What it retains, plus the two still inside the 90 days (one by a recent event).
+    expect(left).toEqual([...RETAINED, 'CVE-2026-0012', 'CVE-2026-0013'].sort());
     expect((await rows<{ n: number }>('SELECT COUNT(*) AS n FROM affected'))[0]!.n).toBe(left.length);
   });
 
@@ -98,7 +110,10 @@ describe('the safety net', () => {
     const opts = { windowStart: windowStart(NOW, 90), keepStart: START, epssEvents: true };
     const patch = (fields: Record<string, unknown>) => ({ source: 'cve' as const, id: 'CVE-2026-0100', aliases: [], fields: { publishedAt: daysAgo(200), ...fields } });
     expect(mergePatch(null, patch({ cvssScore: 9.9 }), opts).record).not.toBeNull();
-    expect(mergePatch(null, patch({ cvssScore: 9.8 }), opts).record).toBeNull();
+    expect(mergePatch(null, patch({ cvssScore: 7.0 }), opts).record).not.toBeNull();
+    expect(mergePatch(null, patch({ cvssScore: 6.9 }), opts).record).toBeNull();
+    expect(mergePatch(null, patch({}), opts).record).toBeNull();
+    expect(mergePatch(null, patch({ cvssScore: 8.8, publishedAt: daysAgo(400) }), opts).record).toBeNull();
     expect(mergePatch(null, patch({ epss: 0.2, epssPercentile: 0.9, epssDate: '2026-10-09' }), opts).record).not.toBeNull();
     expect(mergePatch(null, patch({ cvssScore: 9.9, publishedAt: daysAgo(400) }), opts).record).toBeNull();
     // Without a keepStart, nothing outside the window, as before.
@@ -107,9 +122,10 @@ describe('the safety net', () => {
     expect(mergePatch(null, patch({ cvssScore: 9.9 }), opts).events).toEqual([]);
   });
 
-  it('shows safety-net CVEs whatever the window, marked as older', async () => {
+  it('shows safety-net CVEs whatever the window, marked as older, and nothing else it retains', async () => {
     await insert(...CASES);
     const res = await matchStack(store(), parseStack('p:acme/gate'), { now: NOW, days: 7, osv: { affecting: async () => new Map() } });
+    // CVE-2026-0002 and CVE-2026-0014 are retained, but not shown outside the window.
     expect(res.results.map((r) => r.id).sort()).toEqual([...KEPT_LONGER].sort());
     expect(res.results.every((r) => r.beforeWindow)).toBe(true);
     const month = await matchStack(store(), parseStack('p:acme/gate'), { now: NOW, days: 90, osv: { affecting: async () => new Map() } });

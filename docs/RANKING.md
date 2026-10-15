@@ -38,7 +38,7 @@ Results come from the time window you pick (7, 30 or 90 days). Whatever the wind
 - added to CISA KEV in the last year, or published in it and reported by CISA as actively exploited;
 - published in the last year with EPSS of 10% or more, a NIST LEV estimate of 20% or more, or CVSS 9.9 or more.
 
-An exploited bug from six months ago that's still unpatched is exactly what shouldn't drop out of view. Ingest keeps these for a year instead of 90 days. EPSS only scores CVEs Vulnder already holds, so once a day ingest also asks FIRST for this and last year's CVEs with EPSS of 10% or more and fetches any it doesn't have; one that was dropped at 90 days and has since turned hot comes back.
+An exploited bug from six months ago that's still unpatched is exactly what shouldn't drop out of view. Ingest keeps these for a year instead of 90 days. It also keeps CVEs with CVSS 7.0 or more for a year, with everything it knows about them (affected versions, EPSS history for LEV, similar CVEs), but shows them only inside the window you pick. They're there so a listed CVE from the last year ranks on its full record (see [Listed CVEs](#listed-cves)). EPSS only scores CVEs Vulnder already holds, so once a day ingest also asks FIRST for this and last year's CVEs with EPSS of 10% or more and fetches any it doesn't have; one that was dropped at 90 days and has since turned hot comes back.
 
 ## Edge devices
 
@@ -98,7 +98,7 @@ A vague name like "Cisco switches" becomes several **close matches**, in catalog
 
 ## Listed CVEs
 
-A pasted list of CVEs (the By CVE list tab, or `cve:` items in the link) is ranked with the same rules, whatever each CVE's age. Recent CVEs come from the same data as everything else. Older ones come from an index of every CVE ever assigned, which keeps CVSS, CISA's SSVC assessment, KEV and EPSS, so a 2014 CVE on KEV still ranks above a 2025 CVSS 10 nobody exploits. The index keeps no EPSS history, references or similar-CVE families, so an old CVE has no LEV estimate, and `why.missing` says what wasn't there.
+A pasted list of CVEs (the By CVE list tab, or `cve:` items in the link) is ranked with the same rules, whatever each CVE's age. CVEs from the last 90 days, and those from the last year with CVSS 7.0 or more or in the safety net, come from the same data as everything else. Older ones come from an index of every CVE ever assigned, which keeps CVSS, CISA's SSVC assessment, KEV and EPSS, so a 2014 CVE on KEV still ranks above a 2025 CVSS 10 nobody exploits. The index keeps no EPSS history, references or similar-CVE families, so an old CVE has no LEV estimate, and `why.missing` says what wasn't there.
 
 A listed CVE says it's **from your list** in place of a match confidence. Nothing says which version you run, so there's no fixed version to compare: its advisory has the fix. A CVE whose product the index knows is held to edge-device deadlines when that product is one (see [Edge devices](#edge-devices)). Fix first groups listed CVEs by their product, and a CVE with no product known stands alone.
 
