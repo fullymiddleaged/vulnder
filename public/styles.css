@@ -444,8 +444,17 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .site-nav a[aria-current='page'] { color: var(--fg); font-weight: 700; text-decoration: none; }
 .footer-nav { display: flex; gap: 0.4rem 1rem; flex-wrap: wrap; }
 /* The list wraps between sources; a source only breaks itself on a screen too narrow for it. */
-.data-sources { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; }
-.data-sources span:not(:empty)::before { content: '· '; }
+/* Footer: one line says whether the data is current; the ledger behind it lists each source and its age. */
+#sources-status { color: var(--muted); }
+#sources-status.stale { color: var(--likely); }
+/* Narrower than the column, so each name stays within reach of its age. */
+.data-sources { list-style: none; padding: 0; margin: 0.5rem 0 0.75rem; max-width: 32rem; }
+/* Name and provider on the left, age on the right; on a narrow screen the age wraps beneath, still flush right. */
+.data-sources li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.75rem; padding: 0.35rem 0; border-top: 1px solid var(--border); }
+.data-sources li:last-child { border-bottom: 1px solid var(--border); }
+.data-sources .by { color: var(--muted); }
+.data-sources .age { margin-left: auto; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.data-sources .age.stale { color: var(--likely); }
 .prose { display: block; }
 .prose h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 1rem; }
 .prose .lede { font-size: 1.15rem; margin-bottom: 1.5rem; }

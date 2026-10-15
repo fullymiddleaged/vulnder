@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -125,6 +125,18 @@ describe('UI formatting', () => {
     expect(sourceAge({ health: 'ok', lastSuccessAt: '2026-10-05T11:15:00Z' }, now)).toBe('45 min ago');
     expect(sourceAge({ health: 'stale', lastSuccessAt: '2026-10-01T12:00:00Z' }, now)).toBe('4 days ago, stale');
     expect(sourceAge({ health: 'never', lastSuccessAt: null }, now)).toBe('not yet');
+  });
+
+  it('sums up the listed sources in one line: all up to date, or how many are behind', () => {
+    const ok = { health: 'ok' as const, lastSuccessAt: '2026-10-05T11:15:00Z' };
+    const names = ['cve', 'kev', 'nuclei'];
+    expect(sourcesStatus({ cve: ok, kev: ok, nuclei: ok }, names)).toEqual({ text: '· all up to date', behind: 0 });
+    // Stale, failing and never-run all count as behind; sources the page doesn't list don't count.
+    expect(
+      sourcesStatus({ cve: { ...ok, health: 'stale' }, kev: { ...ok, health: 'error' }, nuclei: { health: 'never', lastSuccessAt: null }, other: { ...ok, health: 'stale' } }, names),
+    ).toEqual({ text: '· 3 of 3 running behind', behind: 3 });
+    expect(sourcesStatus({ cve: { ...ok, health: 'stale' }, kev: ok }, names)).toEqual({ text: '· 1 of 2 running behind', behind: 1 });
+    expect(sourcesStatus({ other: ok }, names)).toBeNull();
   });
 
   it('writes the checks served, and nothing before the first 1,000', () => {

@@ -69,22 +69,22 @@
 
     <footer class="site">
       <p id="checks" class="small" hidden></p>
-      <!-- Ages come from /api/health (web/main.ts, renderFooter); without it the links still stand. -->
-      <ul class="data-sources small muted" aria-label="Data sources, with when each was last updated">
-        <li><a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records</a> <span data-source="cve"></span></li>
-        <li><a href="https://github.com/cisagov/vulnrichment" rel="noreferrer">CISA Vulnrichment</a> <span>with CVE records</span></li>
-        <li><a href="https://github.com/advisories" rel="noreferrer">GitHub advisories</a> <span data-source="ghsa"></span></li>
-        <li><a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a> <span data-source="kev"></span></li>
-        <li><a href="https://www.first.org/epss" rel="noreferrer">EPSS</a> <span data-source="epss"></span></li>
-        <li><a href="https://endoflife.date" rel="noreferrer">End-of-life dates</a> <span data-source="eol"></span></li>
-        <li><a href="https://github.com/rapid7/metasploit-framework" rel="noreferrer">Metasploit modules</a> <span data-source="metasploit"></span></li>
-        <li><a href="https://github.com/projectdiscovery/nuclei-templates" rel="noreferrer">Nuclei templates</a> <span data-source="nuclei"></span></li>
-        <li><a href="https://osv.dev" rel="noreferrer">OSV</a> <span>live, for version checks</span></li>
-      </ul>
-      <p class="small muted">
-        CVE records from MITRE, EPSS scores courtesy of FIRST, end-of-life dates from endoflife.date. EPSS is a predicted probability of
-        exploitation in the next 30 days, not evidence of exploitation.
-      </p>
+      <!-- The status and ages come from /api/health (web/main.ts, renderFooter); without it the links still stand. -->
+      <details id="sources">
+        <summary>Data sources <span id="sources-status"></span></summary>
+        <ul class="data-sources small" aria-label="Data sources, with when each was last updated">
+          <li><span><a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records</a> <span class="by">MITRE</span></span> <span class="age" data-source="cve"></span></li>
+          <li><a href="https://github.com/cisagov/vulnrichment" rel="noreferrer">CISA Vulnrichment</a> <span class="age">with CVE records</span></li>
+          <li><a href="https://github.com/advisories" rel="noreferrer">GitHub advisories</a> <span class="age" data-source="ghsa"></span></li>
+          <li><a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a> <span class="age" data-source="kev"></span></li>
+          <li><span><a href="https://www.first.org/epss" rel="noreferrer">EPSS</a> <span class="by">courtesy of FIRST</span></span> <span class="age" data-source="epss"></span></li>
+          <li><a href="https://endoflife.date" rel="noreferrer">End-of-life dates</a> <span class="age" data-source="eol"></span></li>
+          <li><span><a href="https://github.com/rapid7/metasploit-framework" rel="noreferrer">Metasploit modules</a> <span class="by">Rapid7</span></span> <span class="age" data-source="metasploit"></span></li>
+          <li><span><a href="https://github.com/projectdiscovery/nuclei-templates" rel="noreferrer">Nuclei templates</a> <span class="by">ProjectDiscovery</span></span> <span class="age" data-source="nuclei"></span></li>
+          <li><a href="https://osv.dev" rel="noreferrer">OSV</a> <span class="age">live, for version checks</span></li>
+        </ul>
+        <p class="small muted">EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.</p>
+      </details>
       <details id="privacy">
         <summary>Privacy</summary>
         <p class="small">

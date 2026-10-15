@@ -30,6 +30,7 @@ import { capEntries, fileProblem, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProble
 import {
   checksServedText,
   sourceAge,
+  sourcesStatus,
   byPriority,
   foldFamilies,
   CHANGE_LABEL,
@@ -1927,11 +1928,19 @@ async function renderFooter(): Promise<void> {
     checksEl.textContent = checks;
     checksEl.hidden = false;
   }
+  const names: string[] = [];
   for (const el of document.querySelectorAll<HTMLElement>('[data-source]')) {
     const s = health.sources[el.dataset.source ?? ''];
     if (!s) continue;
+    names.push(el.dataset.source!);
     el.textContent = sourceAge(s);
     el.classList.toggle('stale', s.health !== 'ok');
+  }
+  const status = sourcesStatus(health.sources, names);
+  const statusEl = document.getElementById('sources-status');
+  if (statusEl && status) {
+    statusEl.textContent = status.text;
+    statusEl.classList.toggle('stale', status.behind > 0);
   }
 }
 
