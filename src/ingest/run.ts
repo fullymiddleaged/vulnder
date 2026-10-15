@@ -5,6 +5,9 @@ import { Budget, BudgetExhausted, RateLimited } from './budget';
 import { openIndex, refreshEpssIndex, type EpssIndexReport, type IndexWriter } from './cve-index';
 import { catchUpHighEpss } from './epss-net';
 import { EOL_CURSOR_KEY, EOL_LAST_KEY, EOL_STATUS_KEY, EOL_STORED_SQL, eolStatements, fetchEol, type EolCursor, type EolRow } from './eol';
+import { exploitLastKey, refreshExploits, type ExploitReport, type ExploitSource } from './exploits';
+import { metasploitSpec } from './metasploit';
+import { nucleiSpec } from './nuclei';
 import { assignFamilies, type Embedder, type FamilyReport } from './families';
 import { maintenanceStatements } from './maintenance';
 import { keepStart } from './retention';
@@ -53,6 +56,10 @@ export interface RunOptions {
   maintenance?: boolean | 'force';
   /** Daily vendor support dates from endoflife.date (src/ingest/eol.ts). 'force' fetches even if it ran today. */
   eol?: boolean | 'force';
+  /** Daily Metasploit module index (src/ingest/metasploit.ts). 'force' fetches even if it ran today. */
+  metasploit?: boolean | 'force';
+  /** Daily Nuclei template index (src/ingest/nuclei.ts). 'force' fetches even if it ran today. */
+  nuclei?: boolean | 'force';
   /** Workers AI embeddings for variant families; without it, families wait. */
   embed?: Embedder;
   /** Most vulns to assign families in a UTC day (FREE_PLAN_FAMILY_DAILY on Free); no cap when left out. */
@@ -87,6 +94,9 @@ export interface RunReport {
   families?: FamilyReport;
   /** The daily support-dates fetch, when this run made it. */
   eol?: EolReport;
+  /** The daily exploit-availability fetches, when this run made them. */
+  metasploit?: ExploitReport;
+  nuclei?: ExploitReport;
   /** Rows sent to cve_index beside the sources (src/ingest/cve-index.ts); undefined when the table is missing. */
   cveIndex?: { rows: number; epss?: EpssIndexReport };
 }
@@ -140,6 +150,19 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
       if (eol.written > 0) anyWrites = true;
       log(`eol: ${eol.status}, ${eol.written} release row(s) written${eol.error ? ` (${eol.error})` : ''}`);
     }
+  }
+
+  // Once a UTC day each: exploit availability. One subrequest when unchanged.
+  const exploits: Partial<Record<ExploitSource, ExploitReport>> = {};
+  for (const spec of [metasploitSpec, nucleiSpec]) {
+    const opt = opts[spec.source];
+    if (opt === false || !budget.has(4)) continue;
+    const today = utcDay(now());
+    if (opt !== 'force' && (await getMeta<string>(store, exploitLastKey(spec.source))) === today) continue;
+    const r = await refreshExploits(ctx, spec, today);
+    exploits[spec.source] = r;
+    if (r.written > 0) anyWrites = true;
+    log(`${spec.source}: ${r.status}, ${r.written} row(s) written${r.error ? ` (${r.error})` : ''}`);
   }
 
   const order = opts.sources ?? SOURCE_ORDER;
@@ -264,6 +287,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     d1Queries: budget.d1Spent,
     ...(families ? { families } : {}),
     ...(eol ? { eol } : {}),
+    ...exploits,
     ...(cveIndex ? { cveIndex: { rows: indexRows, ...(epssIndex ? { epss: epssIndex } : {}) } } : {}),
   };
 }

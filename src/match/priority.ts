@@ -15,7 +15,7 @@ import type { SupportState } from './support';
  *             system, and edge devices are the one place Vulnder knows that).
  *             Exploited results sort first and get a day; the rest get 3 days.
  *     attend  a similar CVE in the same product (its family) on KEV or
- *             actively exploited,
+ *             actively exploited, a Metasploit exploit module,
  *             EPSS of 10% or more, a NIST LEV estimate of 20% or more that
  *             it has already been exploited, CVSS 9.0 or more, or a
  *             proof-of-concept exploit that is automatable or gives total
@@ -26,6 +26,12 @@ import type { SupportState } from './support';
  *             26-04: 60 days even when not exposed), an edge device CISA
  *             has assessed (60 days when exposed), or CVSS 7.0 or more and
  *             public for 60 days (overdue)
+ *   Public exploit code counts as a proof of concept: CISA's SSVC "poc", a
+ *   reference the CVE record tags "exploit", or a Metasploit module. A Nuclei
+ *   template counts as automatable when CISA hasn't rated it (a scanner
+ *   automates finding the bug, the code exploiting it), but never for the edge
+ *   rules or reachability, which stay CISA's. None of it is evidence of
+ *   exploitation: only KEV and SSVC "active" are.
  *     track   everything else: affected, but nothing above applies
  *   No result ever gets longer than BOD 26-04 would give it, taking every
  *   system as not exposed except edge devices, which are.
@@ -72,7 +78,23 @@ export interface Why {
   missing: string[];
 }
 
-type ReasonKey = 'active' | 'ransomware' | 'sibling' | 'epss' | 'lev' | 'poc' | 'takeover' | 'automatable' | 'total' | 'edge' | 'overdue' | 'access' | 'cvss' | 'label';
+type ReasonKey =
+  | 'active'
+  | 'ransomware'
+  | 'sibling'
+  | 'metasploit'
+  | 'epss'
+  | 'lev'
+  | 'poc'
+  | 'takeover'
+  | 'automatable'
+  | 'nuclei'
+  | 'total'
+  | 'edge'
+  | 'overdue'
+  | 'access'
+  | 'cvss'
+  | 'label';
 
 /**
  * How soon to fix or mitigate, as guidance rather than an SLA. In 2026, working
@@ -117,6 +139,12 @@ export interface Signals {
   edge?: boolean;
   /** Whole days since it was published; null when the record has no date. */
   ageDays?: number | null;
+  /**
+   * Public attack code and scanner templates: an exploit-tagged reference in
+   * the CVE record, a Metasploit module (an exploit module, or only auxiliary
+   * ones) and a Nuclei template (src/ingest/exploits.ts). Never evidence of exploitation.
+   */
+  exploit?: { ref: boolean; metasploit: 'exploit' | 'auxiliary' | null; nuclei: boolean };
 }
 
 const CRITICAL_CVSS = 9;
@@ -157,13 +185,21 @@ const RANSOMWARE_BOOST = 1.2;
 export function assess(s: Signals): Assessment {
   const exploitation = s.ssvc?.exploitation?.toLowerCase() ?? null;
   const active = s.kevAddedAt !== null || exploitation === 'active';
-  const poc = exploitation === 'poc';
+  // Public exploit code, by CISA's word, the record's references or Metasploit.
+  const cisaPoc = exploitation === 'poc';
+  const x = s.exploit;
+  const hasMsfExploit = x?.metasploit === 'exploit';
+  const poc = cisaPoc || !!x?.ref || (x?.metasploit ?? null) !== null;
+  // A ready-made attack tool lifts to Attend, never to Act: it's availability, not use.
+  const msfExploit = !active && hasMsfExploit;
   const likely = s.epss !== null && s.epss >= EPSS_HIGH - 1e-9;
   // An estimate from EPSS history, so it ranks with prediction, never with evidence.
   const likelyBefore = !active && s.lev !== null && s.lev >= LEV_HIGH - 1e-9;
   // Evidence about a similar CVE, not about this one: it lifts to Attend, never to Act.
   const sibling = !active && s.exploitedSibling !== null;
   const automatable = s.ssvc?.automatable?.toLowerCase() === 'yes';
+  // A Nuclei template stands in for CISA's "automatable" only where CISA hasn't rated it.
+  const scannable = !!x?.nuclei && !s.ssvc?.automatable;
   const totalImpact = s.ssvc?.technicalImpact?.toLowerCase() === 'total';
   const severe = s.cvss !== null && s.cvss >= WATCH_CVSS;
   const access = reach(s.cvssVector);
@@ -187,15 +223,15 @@ export function assess(s: Signals): Assessment {
   // impact: 14 days, so Attend; anything CISA has assessed: 60 days, so Watch).
   const edgeAttend = !!s.edge && (automatable || totalImpact);
   const edgeWatch = !!s.edge && s.ssvc !== null;
-  const pocAttend = poc && (automatable || totalImpact);
+  const pocAttend = poc && (automatable || scannable || totalImpact);
   // Still affected long after it was published: Attend from CVSS 8.0, Watch from 7.0.
   const overdue = high && s.ageDays != null && s.ageDays >= OVERDUE_DAYS;
 
   const priority: Priority = active || predicted
     ? 'act'
-    : sibling || likely || likelyBefore || critical || pocAttend || edgeAttend || (overdue && severe)
+    : sibling || msfExploit || likely || likelyBefore || critical || pocAttend || edgeAttend || (overdue && severe)
       ? 'attend'
-      : severe || labelled || poc || automatable || edgeWatch || overdue
+      : severe || labelled || poc || automatable || scannable || edgeWatch || overdue
         ? 'watch'
         : 'track';
 
@@ -203,10 +239,13 @@ export function assess(s: Signals): Assessment {
   // it had that EPSS, or half that when an attacker needs a login or help first.
   // An edge device that BOD 26-04 puts in Attend or Act now scores the same.
   const bandThreat = edgeAttend || (critical && reachable) ? EPSS_HIGH : critical ? GUARDED_CRITICAL_THREAT : 0;
-  const threat = active ? 1 : Math.max(MIN_THREAT, s.epss ?? 0, s.lev ?? 0, poc ? POC_THREAT : 0, sibling ? SIBLING_THREAT : 0, bandThreat);
+  // A Metasploit exploit module counts like an exploited sibling: a ready path to attack, short of evidence.
+  const threat = active
+    ? 1
+    : Math.max(MIN_THREAT, s.epss ?? 0, s.lev ?? 0, poc ? POC_THREAT : 0, sibling || msfExploit ? SIBLING_THREAT : 0, bandThreat);
   const unscoredImpact = (s.severityLabel && LABEL_IMPACT[s.severityLabel]) ?? UNKNOWN_IMPACT;
   const impact = Math.max(s.cvss !== null ? s.cvss / 10 : unscoredImpact, totalImpact ? TOTAL_IMPACT : 0);
-  const raw = threat * impact * (automatable ? AUTOMATABLE_BOOST : 1) * (s.edge ? EDGE_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
+  const raw = threat * impact * (automatable || scannable ? AUTOMATABLE_BOOST : 1) * (s.edge ? EDGE_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
 
   const all: (Reason & { key: ReasonKey })[] = [];
@@ -215,16 +254,26 @@ export function assess(s: Signals): Assessment {
   else if (exploitation === 'active') add('active', 'evidence', 'Active exploitation (CISA)');
   if (s.knownRansomware) add('ransomware', 'evidence', 'Used in ransomware');
   if (sibling) add('sibling', 'evidence', `Similar to exploited ${s.exploitedSibling} in the same product`);
+  if (hasMsfExploit) add('metasploit', 'evidence', 'Metasploit module: a ready-made attack tool');
   // When the prediction puts a critical in Act now, the reason says both halves.
   const onCritical = criticalLikely && !veryLikely ? ' on a critical bug' : '';
   if (likely) add('epss', 'prediction', `EPSS ${formatPct(s.epss!)}${onCritical}`);
   if (likelyBefore) add('lev', 'prediction', `NIST LEV estimate: ${formatPct(s.lev!)} chance it has already been exploited${likely ? '' : onCritical}`);
-  if (poc) add('poc', 'evidence', 'Proof-of-concept exploit');
+  // A Metasploit exploit module has its own reason; otherwise say where the code is.
+  const pocText = cisaPoc
+    ? 'Proof-of-concept exploit'
+    : x?.ref
+      ? 'Public exploit code (reference in the CVE record)'
+      : x?.metasploit === 'auxiliary'
+        ? 'Public exploit code (Metasploit auxiliary module)'
+        : null;
+  if (poc && pocText) add('poc', 'evidence', pocText);
   if (takeover) add('takeover', 'context', 'Edge device an attacker can take over automatically: CISA’s 3-day case for internet-facing systems');
   else {
     // On its own it decides Watch, so then it says why that's enough.
     const automatableDecides = !totalImpact && !edgeAttend && priority === 'watch' && !severe && !labelled && !poc;
     if (automatable) add('automatable', 'context', automatableDecides ? 'Automatable: CISA sets a deadline for these even on internal systems' : 'Automatable');
+    if (scannable) add('nuclei', 'context', 'Nuclei scanner template: can be mass-scanned');
     if (totalImpact) add('total', 'severity', 'Total technical impact');
     if (edgeAttend) add('edge', 'context', `Edge device with ${automatable ? 'an automatable' : 'a total-impact'} bug: CISA gives internet-facing systems 14 days`);
     else if (edgeWatch) add('edge', 'context', 'Edge device: CISA sets internet-facing systems a deadline for every bug it assesses');
@@ -239,19 +288,37 @@ export function assess(s: Signals): Assessment {
   if (labelled) add('label', 'severity', `Rated ${labelled} by its advisory (no CVSS score yet)`);
 
   // The first rule that put it in its band, in the order the band checks them.
+  const first = (rules: [boolean, ReasonKey][]) => rules.find(([holds]) => holds)?.[1] ?? null;
   const decidedBy: ReasonKey | null =
     priority === 'act'
-      ? active ? 'active' : veryLikely || (criticalLikely && likely) ? 'epss' : criticalLikely ? 'lev' : 'takeover'
+      ? first([[active, 'active'], [veryLikely || (criticalLikely && likely), 'epss'], [criticalLikely, 'lev'], [true, 'takeover']])
       : priority === 'attend'
-        ? sibling ? 'sibling' : likely ? 'epss' : likelyBefore ? 'lev' : critical ? (labelled ? 'label' : 'cvss') : pocAttend ? 'poc' : edgeAttend ? 'edge' : 'overdue'
+        ? first([
+            [sibling, 'sibling'],
+            [msfExploit, 'metasploit'],
+            [likely, 'epss'],
+            [likelyBefore, 'lev'],
+            [critical, labelled ? 'label' : 'cvss'],
+            [pocAttend, 'poc'],
+            [edgeAttend, 'edge'],
+            [true, 'overdue'],
+          ])
         : priority === 'watch'
-          ? severe ? 'cvss' : labelled ? 'label' : poc ? 'poc' : automatable ? (totalImpact ? 'total' : 'automatable') : edgeWatch ? 'edge' : 'overdue'
+          ? first([
+              [severe, 'cvss'],
+              [!!labelled, 'label'],
+              [poc, 'poc'],
+              [automatable, totalImpact ? 'total' : 'automatable'],
+              [scannable, 'nuclei'],
+              [edgeWatch, 'edge'],
+              [true, 'overdue'],
+            ])
           : null;
   const decisive = all.find((r) => r.key === decidedBy) ?? null;
   const strip = ({ text, kind }: Reason): Reason => ({ text, kind });
 
   const missing: string[] = [];
-  if (!active && !s.ssvc) missing.push('No CISA assessment of exploitation, automation or impact yet');
+  if (!active && !s.ssvc) missing.push('No CISA Vulnrichment assessment of exploitation, automation or impact yet');
   if (s.cvss === null) missing.push('No CVSS score yet: NVD now scores only a fraction of new CVEs');
   else if (high && !access) missing.push('No CVSS vector to tell whether an attacker can reach it');
   if (!active && s.epss === null) missing.push('Not scored by EPSS yet');

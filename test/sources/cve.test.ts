@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cveRecordUrl, cveSource, indexZip, MAX_RELEASE_PAGES, RELEASES_URL, type CveCursor } from '../../src/ingest/sources/cve';
 import { parseCveRecord, productLabel } from '../../src/ingest/sources/cve-record';
-import { parseSeverityLabel } from '../../src/ingest/types';
+import { firstExploitRef, parseSeverityLabel } from '../../src/ingest/types';
 import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
 import { cveRecords, deltaZip, releases, withMeta, type CveRecordJson } from '../helpers/fixtures';
 import { sourceContext } from '../helpers/db';
@@ -24,6 +24,45 @@ function cvelist(zips: Record<string, CveRecordJson[]>, releaseList: unknown = r
       return zipResponse(records);
     });
 }
+
+describe('exploit references', () => {
+  const exploitRefs = (id: string) => parseCveRecord(cveRecords[id])!.fields.refs!.filter((r) => r.tags?.includes('exploit')).map((r) => r.url);
+
+  it("keeps the CNA's exploit-tagged references as they are", () => {
+    expect(exploitRefs('CVE-2025-0168')).toEqual(['https://github.com/UnrealdDei/cve/blob/main/sql11.md']);
+  });
+
+  it("adds CISA-ADP's exploit tag to a reference the CNA lists without it, keeping the CNA's order", () => {
+    const p = parseCveRecord(cveRecords['CVE-2025-0167'])!;
+    const cna = (cveRecords['CVE-2025-0167'] as unknown as { containers: { cna: { references: { url: string }[] } } }).containers.cna.references;
+    expect(p.fields.refs!.map((r) => r.url)).toEqual(cna.map((r) => r.url));
+    expect(exploitRefs('CVE-2025-0167')).toEqual(['https://curl.se/docs/CVE-2025-0167.html']);
+    expect(firstExploitRef(p.fields.refs!)).toBe('https://curl.se/docs/CVE-2025-0167.html');
+  });
+
+  it("adds exploit references only an ADP container has after the CNA's: no others, no duplicates, at most five", () => {
+    const record = structuredClone(cveRecords['CVE-2024-34393']) as unknown as { containers: { cna: { references: { url: string; tags?: string[] }[] }; adp: { references?: unknown[] }[] } };
+    const cnaUrl = record.containers.cna.references[0]!.url;
+    record.containers.adp[0]!.references = [
+      { url: cnaUrl, tags: ['exploit'] },
+      { url: 'https://example.com/advisory', tags: ['vendor-advisory'] },
+      { url: 'javascript:alert(1)', tags: ['exploit'] },
+      ...Array.from({ length: 10 }, (_, i) => ({ url: `https://example.com/poc/${i}`, tags: ['exploit', 'x_transferred'] })),
+    ];
+    const refs = parseCveRecord(record)!.fields.refs!;
+    expect(refs.filter((r) => r.url === cnaUrl)).toHaveLength(1);
+    expect(refs.some((r) => r.url === 'https://example.com/advisory')).toBe(false);
+    // Only http(s) references are kept: the javascript: one is dropped.
+    expect(refs.every((r) => /^https?:\/\//.test(r.url))).toBe(true);
+    expect(refs.filter((r) => r.url.startsWith('https://example.com/poc/'))).toEqual(
+      Array.from({ length: 5 }, (_, i) => ({ url: `https://example.com/poc/${i}`, tags: ['exploit'] })),
+    );
+  });
+
+  it('gives none for a record without them', () => {
+    expect(firstExploitRef(parseCveRecord(cveRecords['CVE-2026-104910'])!.fields.refs!)).toBeNull();
+  });
+});
 
 describe('parseCveRecord', () => {
   it('reads a package-level record with CISA ADP enrichment', () => {

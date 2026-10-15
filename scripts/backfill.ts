@@ -32,6 +32,13 @@
  *   npm run backfill -- --index-only --remote
  *   npm run backfill -- --index-only --remote --max-rows 80000
  *
+ * --index-only --exploit-refs fills just cve_index.exploit_ref (migration
+ * 0010) on an index that is already full: it sends only the records with a
+ * reference tagged "exploit", about 44,000 of 390,000 in October 2026, and
+ * skips KEV and EPSS. It resumes the same way (.cache/exploit-refs-progress.json).
+ *
+ *   npm run backfill -- --index-only --exploit-refs --remote
+ *
  * GITHUB_TOKEN, if set, raises the GitHub API limit.
  */
 import { execFile } from 'node:child_process';
@@ -42,14 +49,14 @@ import { promisify } from 'node:util';
 import { RETENTION_DAYS } from '../src/config';
 import { applyPatches } from '../src/ingest/apply';
 import { Budget } from '../src/ingest/budget';
-import { indexStatements, refreshEpssIndex } from '../src/ingest/cve-index';
+import { hasExploitRef, indexStatements, refreshEpssIndex } from '../src/ingest/cve-index';
 import { cursorKey, setMetaStatement } from '../src/ingest/meta';
 import { runIngest, type RunReport } from '../src/ingest/run';
 import { parseCveRecord } from '../src/ingest/sources/cve-record';
 import type { CveCursor } from '../src/ingest/sources/cve';
 import type { GhsaCursor } from '../src/ingest/sources/ghsa';
 import { kevSource } from '../src/ingest/sources/kev';
-import type { SourceContext, VulnPatch } from '../src/ingest/types';
+import { firstExploitRef, type SourceContext, type VulnPatch } from '../src/ingest/types';
 import { keepStart } from '../src/ingest/retention';
 import { utcDay, windowStart } from '../src/lib/time';
 import { parseArgs, parseTarget } from './lib/args';
@@ -65,9 +72,11 @@ const { values } = parseArgs({
     'no-update': { type: 'boolean' },
     'skip-cve': { type: 'boolean' },
     'index-only': { type: 'boolean' },
+    'exploit-refs': { type: 'boolean' },
     'max-rows': { type: 'string' },
   },
 });
+if (values['exploit-refs'] && !values['index-only']) throw new Error('--exploit-refs works with --index-only');
 const maxRows = values['max-rows'] === undefined ? Infinity : Number(values['max-rows']);
 // Below this a run can stop before writing anything (records go in steps of SCAN_CONCURRENCY, scores a statement at a time).
 if (!(maxRows >= 10_000)) throw new Error('--max-rows must be at least 10000');
@@ -112,7 +121,13 @@ async function migrate(): Promise<void> {
  * qualify. In ID order, so an index-only run stopped by --max-rows resumes
  * after the last ID it wrote.
  */
-async function backfillCve(opts: { vulns: boolean; after: string | null; maxRows: number }): Promise<{ last: string | null; done: boolean; rows: number }> {
+async function backfillCve(opts: {
+  vulns: boolean;
+  after: string | null;
+  maxRows: number;
+  /** Index only the records this keeps (for --exploit-refs). */
+  only?: (p: VulnPatch) => boolean;
+}): Promise<{ last: string | null; done: boolean; rows: number }> {
   await ensureClone(values.cvelist!, !values['no-update'], log);
   log(
     opts.vulns
@@ -137,7 +152,7 @@ async function backfillCve(opts: { vulns: boolean; after: string | null; maxRows
       const stats = await applyPatches(store, batch, { now, windowStart: cutoff, keepStart: yearStart, epssEvents: false, extraStatements: extra });
       stored += stats.written;
     }
-    await store.batch(indexStatements(toIndex));
+    await store.batch(indexStatements(toIndex, { exploitRef }));
     indexed += toIndex.length;
     if (toIndex.length > 0) last = toIndex[toIndex.length - 1]!.id;
     batch = [];
@@ -177,7 +192,7 @@ async function backfillCve(opts: { vulns: boolean; after: string | null; maxRows
     }
     for (const { patch, inYear } of await Promise.all(slice.map(scanOne))) {
       if (!patch) continue;
-      toIndex.push(patch);
+      if (!opts.only || opts.only(patch)) toIndex.push(patch);
       if (inYear) batch.push(patch);
     }
     scanned += slice.length;
@@ -222,7 +237,7 @@ async function backfillIndexOnly(): Promise<void> {
   const budget = unlimited();
   const ctx: SourceContext = { fetch: budget.wrapFetch(fetch), store, budget, now: () => now, log, runtime: 'node' };
   const kev = await kevSource.fetchChanges(kevSource.initialCursor(now), ctx);
-  await store.batch(indexStatements(kev.records));
+  await store.batch(indexStatements(kev.records, { exploitRef }));
   await store.flush();
   left -= kev.records.length;
   log(`kev: ${kev.records.length} entries indexed`);
@@ -238,10 +253,35 @@ async function backfillIndexOnly(): Promise<void> {
   }
 }
 
+/** Where an --exploit-refs run stopped: the last record sent, and whether the clone is done. */
+const EXPLOIT_REFS_PROGRESS = path.join('.cache', 'exploit-refs-progress.json');
+
+async function backfillExploitRefs(): Promise<void> {
+  if (!exploitRef) throw new Error(`the ${target} database has no cve_index.exploit_ref; run \`npm run db:migrate:${target}\` first`);
+  const progress: IndexProgress = existsSync(EXPLOIT_REFS_PROGRESS)
+    ? (JSON.parse(await readFile(EXPLOIT_REFS_PROGRESS, 'utf8')) as IndexProgress)
+    : { cveAfter: null, cveDone: false };
+  const res = await backfillCve({
+    vulns: false,
+    after: progress.cveAfter,
+    maxRows,
+    only: (p) => p.source === 'cve' && !p.withdrawn && firstExploitRef(p.fields.refs ?? []) !== null,
+  });
+  if (res.done) {
+    await rm(EXPLOIT_REFS_PROGRESS, { force: true });
+    log(`exploit refs: ${res.rows} records indexed; cve_index.exploit_ref is complete`);
+    return;
+  }
+  await mkdir(path.dirname(EXPLOIT_REFS_PROGRESS), { recursive: true });
+  await writeFile(EXPLOIT_REFS_PROGRESS, `${JSON.stringify({ cveAfter: res.last, cveDone: false } satisfies IndexProgress, null, 2)}\n`);
+}
+
 await migrate();
+// False only on a remote database without migration 0010: the index is written without exploit_ref.
+const exploitRef = await hasExploitRef(store);
 
 if (values['index-only']) {
-  await backfillIndexOnly();
+  await (values['exploit-refs'] ? backfillExploitRefs() : backfillIndexOnly());
   process.exit(0);
 }
 

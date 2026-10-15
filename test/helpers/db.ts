@@ -5,7 +5,7 @@ import type { SourceContext } from '../../src/ingest/types';
 
 export async function resetDb(): Promise<void> {
   await env.DB.batch(
-    ['vulns', 'aliases', 'affected', 'events', 'catalog', 'meta', 'usage_counters', 'families', 'feed_passes', 'eol_releases', 'eol_cve', 'cve_index'].map((t) =>
+    ['vulns', 'aliases', 'affected', 'events', 'catalog', 'meta', 'usage_counters', 'families', 'feed_passes', 'eol_releases', 'eol_cve', 'cve_index', 'exploits'].map((t) =>
       env.DB.prepare(`DELETE FROM ${t}`),
     ),
   );

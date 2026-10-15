@@ -4,16 +4,26 @@ The short version is on the site at [How it works](https://vulnder.com/how-it-wo
 
 ## Priorities
 
-Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. Evidence of exploitation always outranks prediction and severity.
+Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. The SSVC assessments themselves (exploitation, automatable, technical impact) come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment), attached to CVE records. Evidence of exploitation always outranks prediction and severity.
 
 | Priority | When |
 |---|---|
 | **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, or an edge device that CISA rates automatable with total technical impact. Exploited results always sort first. |
-| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, an edge device with a bug CISA rates automatable or total technical impact, or CVSS 8.0 or more and public for 60 days or more (see [Overdue](#overdue)). |
-| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable, any bug CISA has assessed on an edge device, or CVSS 7.0 or more and public for 60 days or more. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it high (Red Hat's "important" counts as high). |
+| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, a [Metasploit](https://github.com/rapid7/metasploit-framework) exploit module, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, an edge device with a bug CISA rates automatable or total technical impact, or CVSS 8.0 or more and public for 60 days or more (see [Overdue](#overdue)). |
+| **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable (or, unrated, one with a Nuclei template), any bug CISA has assessed on an edge device, or CVSS 7.0 or more and public for 60 days or more. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it high (Red Hat's "important" counts as high). |
 | **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
 
 EPSS is a *predicted* probability of exploitation in the next 30 days, not evidence that it has happened. LEV (NIST CSWP 41) adds up a CVE's daily EPSS scores into the chance it has *already* been exploited, so a CVE that was hot for weeks and has since cooled stays visible. It's an estimate, and a lower bound, because Vulnder counts only the EPSS history it has seen since it first ingested the CVE.
+
+## Exploit code
+
+Most CVEs have no CISA assessment, so CISA's "proof of concept" isn't the only sign of public exploit code Vulnder reads:
+
+- **A reference the CVE record tags "exploit"**, from its CNA or a CISA-ADP container. It counts as a proof-of-concept exploit: at least Watch, and Attend when the bug is automatable or gives total control. Reason: "Public exploit code (reference in the CVE record)".
+- **A [Metasploit](https://github.com/rapid7/metasploit-framework) module.** An exploit module is a ready-made attack tool: at least Attend, with a threat of at least 0.3, as for an exploited similar CVE. An auxiliary module (a scanner, a denial of service) counts as a proof of concept.
+- **A [Nuclei](https://github.com/projectdiscovery/nuclei-templates) template** means the bug can be found across the internet with a scanner. Where CISA hasn't rated the CVE automatable or not, it counts as automatable: at least Watch, × 1.25 on the score, and with public exploit code, Attend. CISA's own rating always wins, and it never counts toward the edge-device rules or reachability, which stay CISA's.
+
+None of this is evidence of exploitation, and it never reaches Act now on its own: only CISA KEV and CISA reporting active exploitation are evidence. EPSS already uses exploit code and scanner templates as inputs, so these mostly add explicit reasons, and cover CVEs EPSS hasn't caught up with. Metasploit's and Nuclei's indexes are fetched once a day.
 
 ## Reachability
 
@@ -70,9 +80,9 @@ Teams only group results ("By team") and label the export. They never change a p
 
 Within a priority, results are ordered by a 0–100 score:
 
-- **threat**: 1 for KEV, otherwise the higher of EPSS and LEV; at least 0.01, at least 0.1 for a critical (the EPSS that earns Attend; 0.05 when it needs a login, a user's help or local access), at least 0.2 with a proof-of-concept exploit, at least 0.3 when a similar CVE is exploited
+- **threat**: 1 for KEV, otherwise the higher of EPSS and LEV; at least 0.01, at least 0.1 for a critical (the EPSS that earns Attend; 0.05 when it needs a login, a user's help or local access), at least 0.2 with a proof-of-concept exploit, at least 0.3 when a similar CVE is exploited or a Metasploit exploit module exists
 - × **impact**: CVSS ÷ 10, at least 0.9 for total technical impact, 0.5 without CVSS
-- × 1.25 if automatable, × 1.25 on an edge device, × 1.2 if used in ransomware
+- × 1.25 if automatable (or, unrated by CISA, with a Nuclei template), × 1.25 on an edge device, × 1.2 if used in ransomware
 - capped at 100
 
 It's a heuristic for ordering, not a probability. Exploitation status, automatability and technical impact come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment) data in CVE records.
@@ -98,7 +108,7 @@ A vague name like "Cisco switches" becomes several **close matches**, in catalog
 
 ## Listed CVEs
 
-A pasted list of CVEs (the By CVE list tab, or `cve:` items in the link) is ranked with the same rules, whatever each CVE's age. CVEs from the last 90 days, and those from the last year with CVSS 7.0 or more or in the safety net, come from the same data as everything else. Older ones come from an index of every CVE ever assigned, which keeps CVSS, CISA's SSVC assessment, KEV and EPSS, so a 2014 CVE on KEV still ranks above a 2025 CVSS 10 nobody exploits. The index keeps no EPSS history, references or similar-CVE families, so an old CVE has no LEV estimate, and `why.missing` says what wasn't there.
+A pasted list of CVEs (the By CVE list tab, or `cve:` items in the link) is ranked with the same rules, whatever each CVE's age. CVEs from the last 90 days, and those from the last year with CVSS 7.0 or more or in the safety net, come from the same data as everything else. Older ones come from an index of every CVE ever assigned, which keeps CVSS, CISA's SSVC assessment, KEV and EPSS, so a 2014 CVE on KEV still ranks above a 2025 CVSS 10 nobody exploits. The index keeps no EPSS history, references (apart from the first exploit reference) or similar-CVE families, so an old CVE has no LEV estimate, and `why.missing` says what wasn't there.
 
 A listed CVE says it's **from your list** in place of a match confidence. Nothing says which version you run, so there's no fixed version to compare: its advisory has the fix. A CVE whose product the index knows is held to edge-device deadlines when that product is one (see [Edge devices](#edge-devices)). Fix first groups listed CVEs by their product, and a CVE with no product known stands alone.
 
@@ -118,6 +128,7 @@ The JSON feed carries on each result:
 | `why` | `decisive`, `others` (each with a `kind`: evidence, prediction, severity or context) and `missing` |
 | `respondWithinHours` | The suggested window (null for Track) |
 | `mitigation` | Set for urgent results with no fixed version known |
+| `links` | `advisory`, `patch`, and `exploit`: public attack code (a Metasploit module or the record's exploit reference), or null |
 | `family`, `related` | Similar CVEs; `related` lists the other results in the feed from the same family |
 | `tier` | The older exploited / likely / backlog field, from KEV and EPSS only; unchanged |
 | `confidence` | `version_confirmed`, `product_match`, or `listed` for a CVE from your list |

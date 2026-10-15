@@ -1,14 +1,31 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { AFFECTED_KEYS_SQL, CATALOG_COUNTS_SQL, LEADERS_SQL, UNASSIGNED_SQL } from '../src/ingest/families';
-import { AFFECTED_PACKAGES_SQL, AFFECTED_PRODUCTS_SQL, EOL_CVE_SQL, EOL_RELEASES_SQL, EXPLOITED_IN_FAMILIES_SQL, VULNS_BY_ID_SQL } from '../src/match/components';
+import {
+  AFFECTED_PACKAGES_SQL,
+  AFFECTED_PRODUCTS_SQL,
+  EOL_CVE_SQL,
+  EOL_RELEASES_SQL,
+  EXPLOITED_IN_FAMILIES_SQL,
+  EXPLOITS_BY_CVE_SQL,
+  VULNS_BY_ID_SQL,
+} from '../src/match/components';
 import { eventsSinceSql, RECENT_EVENTS_SQL } from '../src/match/match';
 import { KEY_RANGE_SQL, KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
 import { CLEAR_UNSUPPORTED, UPDATE_EPSS } from '../src/ingest/apply';
 import { STORED_EPSS_SQL } from '../src/ingest/sources/epss';
-import { CVE_INDEX_BY_ID_SQL, CVE_INDEX_PROBE_SQL, UPSERT_CVE_INDEX, UPSERT_EPSS_INDEX, UPSERT_KEV_INDEX } from '../src/ingest/cve-index';
+import {
+  CVE_INDEX_BY_ID_SQL,
+  CVE_INDEX_EXPLOIT_PROBE_SQL,
+  CVE_INDEX_PROBE_SQL,
+  UPSERT_CVE_INDEX,
+  UPSERT_CVE_INDEX_EXPLOIT,
+  UPSERT_EPSS_INDEX,
+  UPSERT_KEV_INDEX,
+} from '../src/ingest/cve-index';
+import { EXPLOITS_PROBE_SQL } from '../src/ingest/exploits';
 
 /**
  * D1 bills every row a query reads, and a full scan reads the whole table on
@@ -59,6 +76,11 @@ describe('request-path query plans', () => {
     ['cve index record upsert', UPSERT_CVE_INDEX, ['[{"id":"CVE-2020-0001","state":"published"}]']],
     ['cve index KEV upsert', UPSERT_KEV_INDEX, ['[{"id":"CVE-2020-0001","kev_added_at":"2021-11-03"}]']],
     ['cve index EPSS upsert', UPSERT_EPSS_INDEX, ['[{"id":"CVE-2020-0001","epss":0.1}]']],
+    ['cve index record upsert with exploit_ref', UPSERT_CVE_INDEX_EXPLOIT, ['[{"id":"CVE-2020-0001","state":"published","exploit_ref":"https://x"}]']],
+    ['cve index exploit_ref probe', CVE_INDEX_EXPLOIT_PROBE_SQL, []],
+    // Exploit availability: the feed's read, and ingest's daily probe.
+    ['exploits by cve', EXPLOITS_BY_CVE_SQL, ['["CVE-2020-0001","CVE-2021-44228"]']],
+    ['exploits probe', EXPLOITS_PROBE_SQL, []],
   ] as const)('%s searches an index', async (_name, sql, params) => {
     expect(await scans(sql, [...params])).toEqual([]);
   });

@@ -1,4 +1,5 @@
-import { allForKeys, type Store } from '../ingest/store';
+import { allForKeys, chunkByJsonSize, type Store } from '../ingest/store';
+import { CVE_ID } from '../lib/normalize';
 import { eolTarget } from '../stack/eol';
 import type { ComponentItem } from '../stack/format';
 import type { CveSupport, EolRelease } from './support';
@@ -19,6 +20,16 @@ export interface ComponentData {
   eol?: EolRelease[];
   /** Its latest CVE's "unsupported-when-assigned" tag, when a tagged CVE has named it. */
   cveSupport?: CveSupport | null;
+  /** Metasploit modules and Nuclei templates naming its CVEs; absent in entries cached before exploit data. */
+  exploits?: ExploitRef[];
+}
+
+/** One row of exploits (migrations/0010_exploits.sql). */
+export interface ExploitRef {
+  cve_id: string;
+  source: 'metasploit' | 'nuclei';
+  kind: string;
+  url: string | null;
 }
 
 /** Where loaded components are kept between requests (the Cache API in the Worker). */
@@ -62,6 +73,8 @@ export interface VulnRow {
   refs: string;
   family_id: string | null;
   last_event_at: string | null;
+  /** A cve_index row's exploit reference (src/match/listed.ts); vulns rows have their references in refs. */
+  exploit_ref?: string | null;
 }
 
 export const itemKey = (item: ComponentItem) =>
@@ -89,6 +102,8 @@ export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
 export const EOL_RELEASES_SQL = `SELECT slug, release, label, eol_from, is_eol, eoes_from FROM eol_releases
   WHERE slug IN (SELECT value FROM json_each(?))`;
 export const EOL_CVE_SQL = `SELECT key, last_cve, last_published, tagged FROM eol_cve WHERE key IN (SELECT value FROM json_each(?))`;
+/** Exploit availability for these CVE IDs: reads only the rows that exist, a few percent of them. */
+export const EXPLOITS_BY_CVE_SQL = `SELECT cve_id, source, kind, url FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
 /**
  * Keys per query: 2,000 IDs is about 45 KB of JSON, so the biggest stack stays
  * around 15 D1 queries, well inside Workers Free's 50 per request. Rows read
@@ -137,6 +152,7 @@ async function fetchComponents(store: Store, items: ComponentItem[]): Promise<Ma
   );
   const familyIds = [...vulns.values()].map((v) => v.family_id).filter((f): f is string => !!f);
   const exploited = familyIds.length === 0 ? [] : await allForKeys<{ id: string; family_id: string }>(store, EXPLOITED_IN_FAMILIES_SQL, familyIds, FEED_CHUNK);
+  const exploitRows = await loadExploits(store, [...vulns.values()].flatMap(cveIdsOf));
 
   // Support data: by endoflife.date product, and by product key for the CVE tag.
   const productItems = items.filter((i): i is Extract<ComponentItem, { kind: 'product' }> => i.kind === 'product');
@@ -151,7 +167,7 @@ async function fetchComponents(store: Store, items: ComponentItem[]): Promise<Ma
     items.map((i) => {
       const k = itemKey(i);
       const slug = slugOf.get(k) ?? null;
-      return [k, { affected: [], vulns: [], exploited: [], eol: slug ? releases.filter((r) => r.slug === slug) : [], cveSupport: tagOf.get(k) ?? null }];
+      return [k, { affected: [], vulns: [], exploited: [], eol: slug ? releases.filter((r) => r.slug === slug) : [], cveSupport: tagOf.get(k) ?? null, exploits: [] }];
     }),
   );
   const vulnsOf = new Map<string, Set<string>>();
@@ -168,6 +184,36 @@ async function fetchComponents(store: Store, items: ComponentItem[]): Promise<Ma
     data.vulns = [...ids].map((id) => vulns.get(id)!);
     const families = new Set(data.vulns.map((v) => v.family_id).filter(Boolean));
     data.exploited = exploited.filter((e) => families.has(e.family_id));
+    const cves = new Set(data.vulns.flatMap(cveIdsOf));
+    data.exploits = exploitRows.filter((e) => cves.has(e.cve_id));
+  }
+  return out;
+}
+
+/** A vuln's CVE IDs: its own, or the aliases of a GitHub advisory. */
+export function cveIdsOf(v: Pick<VulnRow, 'id' | 'aliases'>): string[] {
+  const ids = [v.id];
+  try {
+    const aliases: unknown = JSON.parse(v.aliases);
+    if (Array.isArray(aliases)) for (const a of aliases) if (typeof a === 'string') ids.push(a);
+  } catch {
+    // no aliases
+  }
+  return ids.filter((id) => CVE_ID.test(id));
+}
+
+/**
+ * Exploit rows for these CVE IDs. Bare IDs are small, so the keys are chunked
+ * by size (about 4,700 to a query) rather than by FEED_CHUNK: one query for
+ * all but the largest stacks. Before migration 0010 the table is missing, and
+ * ranking goes on without it, as it did before.
+ */
+export async function loadExploits(store: Store, cveIds: string[]): Promise<ExploitRef[]> {
+  const out: ExploitRef[] = [];
+  try {
+    for (const chunk of chunkByJsonSize([...new Set(cveIds)])) out.push(...(await store.all<ExploitRef>(EXPLOITS_BY_CVE_SQL, [JSON.stringify(chunk)])));
+  } catch {
+    return [];
   }
   return out;
 }

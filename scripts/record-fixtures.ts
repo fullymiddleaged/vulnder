@@ -6,6 +6,8 @@
  *
  * Set GITHUB_TOKEN to avoid the 60/h unauthenticated GitHub limit.
  * Re-run when an upstream format changes, then update the tests' expectations.
+ *
+ *   npm run record-fixtures -- --exploits   # only the exploit-availability ones
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -15,8 +17,25 @@ import { cveRecordUrl, RELEASES_URL } from '../src/ingest/sources/cve';
 import { advisoriesUrl } from '../src/ingest/sources/ghsa';
 import { KEV_URL } from '../src/ingest/sources/kev';
 import { EPSS_URL } from '../src/ingest/sources/epss';
+import { METASPLOIT_URL } from '../src/ingest/metasploit';
+import { NUCLEI_URL } from '../src/ingest/nuclei';
 
 const OUT = path.join(import.meta.dirname, '..', 'test', 'fixtures');
+
+/** Records with references tagged "exploit": public exploit code. */
+const EXPLOIT_CVES = [
+  'CVE-2025-0168', // in the CNA's references
+  'CVE-2025-0167', // only in the CISA-ADP container's
+];
+
+/** Metasploit modules kept: an exploit module naming several CVEs, an auxiliary one, and others. */
+const METASPLOIT_MODULES = [
+  'exploit_windows/smb/ms17_010_eternalblue', // exploit, six CVEs
+  'auxiliary_scanner/smb/smb_ms17_010', // auxiliary, the same CVEs: the exploit module wins
+  'auxiliary_scanner/http/log4shell_scanner', // auxiliary only
+  'payload_windows/x64/meterpreter/reverse_tcp', // no CVEs
+  'post_multi/recon/local_exploit_suggester', // post: left out
+];
 
 /** Records chosen for the shapes they exercise. */
 const NAMED_CVES = [
@@ -137,6 +156,31 @@ async function recordEpss(ids: string[]): Promise<void> {
   await write('epss/scores.json', { request: { cve: ids, date }, body: await (await get(url)).json() });
 }
 
+/**
+ * Metasploit's module index and Nuclei's cves.json, cut down to a few real
+ * entries, with each file's ETag; and the CVE records with exploit references.
+ */
+async function recordExploits(): Promise<void> {
+  const msf = await get(METASPLOIT_URL);
+  const modules = (await msf.json()) as Record<string, unknown>;
+  const kept = Object.fromEntries(METASPLOIT_MODULES.filter((k) => k in modules).map((k) => [k, modules[k]]));
+  const missing = METASPLOIT_MODULES.filter((k) => !(k in modules));
+  if (missing.length > 0) console.warn(`not in the Metasploit index any more: ${missing.join(', ')}`);
+  await write('exploits/metasploit.json', { etag: msf.headers.get('etag'), body: kept });
+
+  const nuclei = await get(NUCLEI_URL);
+  const lines = (await nuclei.text()).split('\n').filter((l) => /"ID":"(CVE-2021-44228|CVE-2017-0144|CVE-2024-3400|CVE-2023-4966|CVE-2000-0114)"/.test(l));
+  await write('exploits/nuclei.json', { etag: nuclei.headers.get('etag'), lines });
+
+  for (const id of EXPLOIT_CVES) await write(`cve/records/${id}.json`, await (await get(cveRecordUrl(id))).json());
+}
+
+if (process.argv.includes('--exploits')) {
+  await recordExploits();
+  process.exit(0);
+}
+
+await recordExploits();
 const cveIds = await recordCve();
 const ghsaCves = await recordGhsa();
 const kevIds = await recordKev();
