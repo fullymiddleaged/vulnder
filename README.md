@@ -41,8 +41,8 @@ https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 
 A list of what you run is useful to an attacker, so Vulnder keeps as little as it can.
 
-- **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. Cloudflare's AI Gateway can log those model requests, text included, in the account running the site; operators can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
-- **Lockfiles stay in your browser.** Only package names and versions are sent.
+- **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. On vulnder.com, only those free-text entries are logged, by Cloudflare's AI Gateway; self-hosters can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
+- **Lockfiles, SBOMs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent.
 - **Stack URLs aren't logged.** IPs are used only as rate-limit keys or a daily-salted hash, and there's no analytics.
 - **Feed passes hold no stacks**, only keyed hashes, and are deleted after a day.
 - **Not indexed.** Stack pages and feeds are `noindex`, and no `Referer` is sent.

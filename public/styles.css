@@ -462,13 +462,34 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose .byline { margin-top: -0.5rem; margin-bottom: 1.25rem; }
 /* Room between sections and a short measure, so the pages read as a few calm blocks, not a wall. */
 .prose section { margin-top: 3.5rem; }
-.prose .block { padding-top: 1.75rem; }
+/* Prose pages separate sections with space, not a rule: their tables already carry hairlines, and two sets of lines read as clutter. */
+.prose .block { border-top: 0; padding-top: 0; }
 .prose h2 { margin-bottom: 0.9rem; }
 .prose p, .prose li { max-width: 68ch; }
 .prose p { margin: 0; }
-.prose p + p, .prose p + ul, .prose ul + p, .prose ul + .notice { margin-top: 1.1rem; }
-.prose ul { margin: 0; }
-.prose ul + ul { margin-top: 1.75rem; }
+.prose p + p, .prose p + ul, .prose ul + p, .prose ul + .notice, .prose p + ol, .prose ol + p, .prose p + table, .prose table + p { margin-top: 1.1rem; }
+.prose ul, .prose ol { margin: 0; }
+/* Prose tables: a ledger with hairlines, not a boxed grid. The row label is the first column. */
+.prose-table { border-collapse: collapse; width: 100%; }
+.prose-table th, .prose-table td { padding: 0.6rem 1rem 0.6rem 0; border-top: 1px solid var(--border); vertical-align: baseline; text-align: left; }
+.prose-table :is(th, td):last-child { padding-right: 0; }
+.prose-table tbody tr:last-child > * { border-bottom: 1px solid var(--border); }
+.prose-table thead th { border-top: 0; padding-top: 0; font-size: 0.85rem; color: var(--muted); }
+.prose-table tbody th { font-weight: 700; }
+.keyed tbody th { width: 11rem; }
+.priorities tbody th { width: 6rem; white-space: nowrap; }
+.priorities tbody td:nth-child(2) { width: 9rem; }
+/* On a narrow screen each row becomes a block: label, then its lines. Column headings drop out, so cells must read alone. */
+@media (max-width: 36rem) {
+  .prose-table, .prose-table tbody, .prose-table tr, .prose-table th, .prose-table td { display: block; width: auto; }
+  .prose-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .prose-table tbody tr { border-top: 1px solid var(--border); padding: 0.6rem 0; }
+  .prose-table tbody tr:last-child { border-bottom: 1px solid var(--border); }
+  .prose-table tbody :is(th, td), .prose-table tbody tr:last-child > * { border: 0; padding: 0; }
+  .prose-table tbody td { margin-top: 0.15rem; }
+  .priorities tbody td:nth-child(2) { width: auto; color: var(--muted); }
+}
+.prose ul + ul, .prose ul + table { margin-top: 1.75rem; }
 .prose li { margin: 0.8rem 0; }
 .prose li::marker { color: var(--muted); }
 .prose .sign { margin-top: 2rem; }

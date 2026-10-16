@@ -15,7 +15,7 @@ npm run dev                           # http://localhost:8787
 - `npm run ingest` runs one incremental pass against local D1, the same pass production runs every hour.
 - Free-text parsing calls Workers AI, which needs a Cloudflare login even during `wrangler dev`. Without one, manifests and manually added items still work.
 - Jev is billed in [AI Gateway credits](https://developers.cloudflare.com/ai-gateway/), not neurons. Without credits its calls fail with "Insufficient AI Gateway credits" and parsing carries on without it.
-- AI Gateway can log model requests, including the text people type, in your Cloudflare account. The privacy notes say so. For a stricter setup, turn off log collection in the gateway's settings in the Cloudflare dashboard.
+- AI Gateway can log model requests, including the text people type, in your Cloudflare account. The privacy notes on the home page, About and How it works say free-text entries are logged there. For a stricter setup, turn off log collection in the gateway's settings in the Cloudflare dashboard, and change those notes to match.
 - `npm run update-injection-corpus` refreshes the prompt-injection test corpus (`test/fixtures/injection/corpus.json`) from [garak](https://github.com/NVIDIA/garak) (Apache-2.0) and [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings) (MIT), at the commits pinned in the script.
 - Checks: `npm test`, `npm run typecheck`, `npm run lint`. `npm run record-fixtures` refreshes the recorded upstream samples the tests use. Tests never touch the network.
 
@@ -44,7 +44,7 @@ npm run dev                           # http://localhost:8787
 | `BASE_URL`, `DISPLAY_NAME` | Vars | Public URL and name |
 | `INGEST_RUNTIME` | Var | `actions` (free plan) or `worker` (Paid cron) |
 | `AI_MODEL` | Var | Workers AI model ID (default `@cf/google/gemma-4-26b-a4b-it`) |
-| `PARSE_DAILY_PER_CLIENT`, `PARSE_DAILY_TOTAL` | Vars | Daily caps on free-text parses that reach the model (defaults 30 and 600; cached parses are free) |
+| `PARSE_DAILY_PER_CLIENT`, `PARSE_DAILY_TOTAL` | Vars | Daily caps on free-text parses that reach the model (defaults 30 and 600; `deploy:paid` sets the total to 5,000; cached parses are free) |
 | `TURNSTILE_SITE_KEY` | Var | Public Turnstile key; tokens must come from `BASE_URL`'s hostname |
 | `TURNSTILE_SECRET_KEY` | Secret | Required; `/api/resolve` refuses requests without it |
 | `GITHUB_TOKEN` | Secret | Optional; raises the GitHub API limit |

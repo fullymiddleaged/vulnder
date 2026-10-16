@@ -111,7 +111,10 @@
         "CRON_MAX_D1_QUERIES": "900",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
         "PARSE_DAILY_PER_CLIENT": "30",
-        "PARSE_DAILY_TOTAL": "600",
+        // Paid bills neurons past the free 10,000 a day, so the total is higher
+        // here: 5,000 parses is about 65,000 neurons at most. Jev's AI Gateway
+        // credits come on top. Keep a cap so cost stays bounded.
+        "PARSE_DAILY_TOTAL": "5000",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAFPH90_hA9uyf8E9"
       },
       "ai": { "binding": "AI" },

@@ -20,6 +20,24 @@
         ],
         "createdAt": "2026-10-09T10:10:18.388Z",
         "reason": "Claude: 4px tier-coloured left borders on results/changes/components and the spent-pass notice are documented in DESIGN.md (Elevation & Depth, Do's); the pipeline rail is a 2px pseudo-element"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "public/about.html"
+        ],
+        "createdAt": "2026-10-16T09:19:46.661Z",
+        "reason": "Claude: .prose .block sets border-top 0 (styles.css), so prose sections have no top border; rendered screenshot confirms. Detector misses the override."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "public/how-it-works.html"
+        ],
+        "createdAt": "2026-10-16T09:19:47.246Z",
+        "reason": "Claude: .prose .block sets border-top 0 (styles.css), so prose sections have no top border; rendered screenshot confirms. Detector misses the override."
       }
     ]
   }
