@@ -40,77 +40,78 @@
     </header>
 
     <main id="main" class="prose" tabindex="-1">
-      <h1>Why I built Vulnder</h1>
-      <p class="byline small muted">By <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond</a></p>
+      <h1>About Vulnder</h1>
+      <p class="byline small muted">Built by <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond</a></p>
       <p class="lede">
-        2025 set a record with 48,185 CVEs.<a href="#s1"><sup>1</sup></a> Then 2026 doubled the monthly rate, from 5,045 in January to 10,740 in August.<a href="#s2"><sup>2</sup></a>
-        Most of them don't touch what you run, and only a few of those are being exploited.
+        The latest CVEs for your stack, aggregated and prioritised. Free and open source.
       </p>
       <p>
-        Vulnder answers two questions about your stack: <strong>which new CVEs affect it</strong>, and <strong>which of those is anyone exploiting</strong>.
-        Describe what you run or drop in a lockfile, and get the answer in seconds, in the order to fix things.
+        I built Vulnder because there are now too many CVEs to triage by hand, and most of them don't affect what you run.
+        Too many tools mark everything critical and pass a huge task list downstream, which only adds to the noise.
+      </p>
+      <p>
+        Tell Vulnder what you run: describe it in a sentence, drop in a lockfile or SBOM, or paste the CVE IDs from a scanner report.
+        It checks them against the latest CVE records, security advisories and exploitation data, then lists the CVEs that affect you, most urgent first, with the reason for each.
+        No account needed.
       </p>
 
-      <section class="block" aria-labelledby="signals">
-        <h2 id="signals">The usual way to triage is running out</h2>
-        <p>
-          For years, "which ones matter?" meant the CVSS score NIST added to each CVE. In April 2026 NIST said it can't keep up,
-          and now scores known-exploited, government and critical software first.<a href="#s3"><sup>3</sup></a>
-          A year earlier, the CVE programme came within a day of losing its funding.<a href="#s4"><sup>4</sup></a>
-        </p>
-        <p>
-          A severity score says how bad a bug could be, not whether anyone is exploiting it. And a missing score isn't "safe", so Vulnder says what it doesn't know.
-        </p>
-      </section>
-
-      <section class="block" aria-labelledby="ai">
-        <h2 id="ai">AI helps attackers as well as defenders</h2>
-        <p>
-          AI is finding serious bugs: half of those in Google's 2026 study lead to remote code execution, against about a quarter of CVEs overall.<a href="#s2"><sup>2</sup></a>
-        </p>
-        <p>
-          It helps attackers too. Most of 2026's growth in exploitation came from disclosed bugs weaponised quickly, likely with AI reading the patches.<a href="#s2"><sup>2</sup></a>
-          In the first half of 2026, 23% of newly exploited bugs were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a>
-        </p>
-      </section>
-
-      <section class="block" aria-labelledby="priority">
-        <h2 id="priority">Why prioritising matters more now</h2>
+      <section class="block" aria-labelledby="why">
+        <h2 id="why">Why sorting by CVSS no longer works</h2>
         <ul>
-          <li><strong>Volume has outrun patching.</strong> Twice the CVEs doesn't bring twice the people or change windows.</li>
-          <li><strong>Severity no longer sorts.</strong> When half of AI-found bugs are remote code execution, "critical" stops telling you where to start.</li>
-          <li><strong>The window has shrunk.</strong> Bugs are weaponised within days, sometimes before disclosure.<sup><a href="#s2">2</a>, <a href="#s5">5</a></sup> A monthly review is too slow.</li>
-          <li><strong>Your fixers are faster too.</strong> A coding agent given a ranked list starts with the bugs attackers are most likely to use.</li>
+          <li>48,185 CVEs were published in 2025.<a href="#s1"><sup>1</sup></a> The monthly count doubled during 2026, from 5,045 in January to 10,740 in August.<a href="#s2"><sup>2</sup></a></li>
+          <li>Since April 2026, NIST has enriched known-exploited, government and critical software first.<a href="#s3"><sup>3</sup></a> The CVE programme nearly lost its funding in 2025.<a href="#s4"><sup>4</sup></a></li>
+          <li>Half of the vulnerabilities in Google's 2026 study led to remote code execution, against about a quarter of all CVEs.<a href="#s2"><sup>2</sup></a></li>
+          <li>23% of vulnerabilities newly exploited in the first half of 2026 were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a></li>
         </ul>
+        <p>
+          CVSS measures how severe a bug could be. It doesn't say whether anyone is exploiting it, or whether you run the affected software.
+        </p>
       </section>
 
-      <section class="block" aria-labelledby="evidence">
-        <h2 id="evidence">Evidence beats severity</h2>
+      <section class="block" aria-labelledby="ranking">
+        <h2 id="ranking">How results are ranked</h2>
         <p>
-          Evidence of exploitation (CISA's catalog or reports) comes first, then prediction (EPSS, NIST's LEV), then severity (CVSS).
-          Every result says which signal decided its place and what data was missing. Scores only set the order; they aren't probabilities.
+          Evidence of exploitation outranks the predicted probability of exploitation (EPSS, NIST LEV), and both outrank severity (CVSS).
+          Each CVE gets one of four priorities:
+        </p>
+        <table class="prose-table priorities">
+          <thead>
+            <tr><th scope="col">Priority</th><th scope="col">Respond</th><th scope="col">Main triggers</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Act now</th><td>Within 24 hours, or 3 days before exploitation is seen</td><td>In CISA KEV or actively exploited. Before that: EPSS 50%+, a critical bug with EPSS 10%+, or an edge device an attacker can take over automatically.</td></tr>
+            <tr><th scope="row">Attend</th><td>Within 7 days</td><td>EPSS 10%+, NIST LEV 20%+, CVSS 9.0+, a Metasploit exploit module, or a similar CVE in the product exploited.</td></tr>
+            <tr><th scope="row">Watch</th><td>Within 30 days</td><td>CVSS 8.0+, public proof-of-concept code, or rated automatable by CISA.</td></tr>
+            <tr><th scope="row">Track</th><td>Next routine update</td><td>Affects your stack; nothing above applies.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Each result lists the signals that set its priority and any data that is missing. A CVE with no score is still shown.
+          EPSS jumps appear under What changed and in the Atom feed. <a href="/how-it-works#ranking">Full ranking rules</a>
         </p>
       </section>
 
       <section class="block" aria-labelledby="principles">
-        <h2 id="principles">What I wanted it to be</h2>
+        <h2 id="principles">Design choices</h2>
+        <table class="prose-table keyed">
+          <tbody>
+            <tr><th scope="row">No account</th><td>The stack is encoded in the URL. The same link gives a JSON feed, an Atom feed and a badge.</td></tr>
+            <tr><th scope="row">Private</th><td>Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. Vulnder doesn't store your stack, your files or your CVE lists; files and CVE lists are read in your browser. <a href="/how-it-works#privacy">Privacy details</a></td></tr>
+            <tr><th scope="row">Nothing hidden</th><td>Every match is shown. Close matches for broad names are labelled as close.</td></tr>
+            <tr><th scope="row">AI extracts, code ranks</th><td>A model turns free text into stack items. Code does the matching and ranking. <a href="/how-it-works#ai">Where AI is used</a></td></tr>
+            <tr><th scope="row">Open source</th><td>Apache 2.0. Self-host it on Cloudflare Workers. <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">Source on GitHub</a></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="block" aria-labelledby="contact">
+        <h2 id="contact">Contact</h2>
         <ul>
-          <li>Quick to use: describe your stack in a sentence, or drop in a lockfile or SBOM, and get a ranked list back.</li>
-          <li>No account. Your stack lives in the link, which also gives you a JSON feed, an Atom feed and a badge.</li>
-          <li>Your text and stack are never stored or logged, and lockfiles stay in your browser. Cloudflare's AI gateway can log free-text requests. <a href="/how-it-works#privacy">Details</a></li>
-          <li>It never hides a match, says how sure it is of each one, and suggests response times rather than deadlines.</li>
-          <li>A model reads your description, and code does the ranking. <a href="/how-it-works#ai">Where AI is used</a></li>
-          <li>Free and Apache 2.0, so you can check our code first, or even host your own version.</li>
+          <li>Bugs and feature requests: <a href="https://github.com/fullymiddleaged/vulnder/issues" rel="noreferrer">GitHub issues</a>.</li>
+          <li>Security problems: the <a href="https://github.com/fullymiddleaged/vulnder/security/policy" rel="noreferrer">security policy</a>, not a public issue.</li>
+          <li>Deployment help, customisation or integration with your security tooling: <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond on LinkedIn</a>.</li>
         </ul>
-        <p class="sign">
-          Pete Salmond (<a href="https://github.com/fullymiddleaged" rel="noreferrer">@fullymiddleaged</a>). Bugs and ideas go to the
-          <a href="https://github.com/fullymiddleaged/vulnder/issues" rel="noreferrer">issue tracker</a>. If Vulnder is useful to you, a star on
-          <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">GitHub</a> helps other people find it.
-        </p>
-        <p>
-          If you'd like to get in touch, or want help building your own customised version, add me on
-          <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">LinkedIn</a>.
-        </p>
+        <p>If Vulnder is useful to you, a star on <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">GitHub</a> helps other people find it.</p>
       </section>
 
       <section class="block" aria-labelledby="sources">
