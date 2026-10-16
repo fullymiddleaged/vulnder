@@ -19,6 +19,14 @@ describe('parseStack', () => {
     expect(parseStack('go:github.com/containers/podman/v5@v5.6.0')[0]).toMatchObject({ ecosystem: 'Go', name: 'github.com/containers/podman/v5', version: 'v5.6.0' });
   });
 
+  it("treats a trailing '@' as no version, and rejects a package name with '@' inside it", () => {
+    expect(parseStack('npm:express@')).toEqual([{ kind: 'package', ecosystem: 'npm', name: 'express', version: null }]);
+    expect(parseStack('npm:@angular/core@')[0]).toMatchObject({ name: '@angular/core', version: null });
+    // Found by the fuzz test: "a@b@c" with no version would read back as "a@b" at version "c".
+    expect(() => parseStack('npm:a@b@c@')).toThrow(StackFormatError);
+    expect(() => parseStack('pypi:a@b@')).toThrow(StackFormatError);
+  });
+
   it('normalises names and product keys', () => {
     expect(parseStack('PYPI:Django_REST.framework,p:Cisco/IOS XE')).toEqual([
       { kind: 'product', vendor: 'cisco', product: 'ios_xe', version: null },

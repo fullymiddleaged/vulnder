@@ -93,6 +93,18 @@ export function sourceAge(s: Health['sources'][string], now = Date.now()): strin
   return s.health === 'stale' ? `${age}, stale` : age;
 }
 
+/**
+ * The footer's verdict on the sources it lists, beside "Data sources": every
+ * one fresh, or how many are behind (stale, failing, or never run). Null when
+ * health names none of them.
+ */
+export function sourcesStatus(sources: Health['sources'], names: readonly string[]): { text: string; behind: number } | null {
+  const listed = names.flatMap((n) => (sources[n] ? [sources[n]] : []));
+  if (listed.length === 0) return null;
+  const behind = listed.filter((s) => s.health !== 'ok').length;
+  return { text: behind === 0 ? '· all up to date' : `· ${behind} of ${listed.length} running behind`, behind };
+}
+
 /** The footer shows the running total from here; below it, a small number reads as an empty site. */
 const CHECKS_SHOWN_FROM = 1000;
 

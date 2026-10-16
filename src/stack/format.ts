@@ -264,6 +264,9 @@ function parseExactItem(text: string): StackItem | null {
   const name = body.trim();
   // eslint-disable-next-line no-control-regex -- reject control characters in names
   if (!name || name.length > 214 || /[\s\u0000-\u001f]/.test(name)) return null;
+  // No package name has '@' past its first character (an npm scope's). One only gets here
+  // through a trailing '@' ("npm:a@b@"), and would read back as a version ("npm:a@b").
+  if (name.includes('@', 1)) return null;
   return { kind: 'package', ecosystem, name: normalizePackageName(ecosystem, name), version };
 }
 
