@@ -44,7 +44,7 @@ npm run dev                           # http://localhost:8787
 | `BASE_URL`, `DISPLAY_NAME` | Vars | Public URL and name |
 | `INGEST_RUNTIME` | Var | `actions` (free plan) or `worker` (Paid cron) |
 | `AI_MODEL` | Var | Workers AI model ID (default `@cf/google/gemma-4-26b-a4b-it`) |
-| `PARSE_DAILY_PER_CLIENT`, `PARSE_DAILY_TOTAL` | Vars | Daily caps on free-text parses that reach the model (defaults 30 and 600; cached parses are free) |
+| `PARSE_DAILY_PER_CLIENT`, `PARSE_DAILY_TOTAL` | Vars | Daily caps on free-text parses that reach the model (defaults 30 and 600; `deploy:paid` sets the total to 5,000; cached parses are free) |
 | `TURNSTILE_SITE_KEY` | Var | Public Turnstile key; tokens must come from `BASE_URL`'s hostname |
 | `TURNSTILE_SECRET_KEY` | Secret | Required; `/api/resolve` refuses requests without it |
 | `GITHUB_TOKEN` | Secret | Optional; raises the GitHub API limit |
