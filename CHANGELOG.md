@@ -15,6 +15,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Changed
 
+- **The README, How it works and About match how results are ranked now.** The README lists what Vulnder does (three ways in, Edit stack, the results views, Export for AI), gives the full rules for each priority, and explains the risk score and Fix first. The JSON feed is described as the API behind the results page, which no longer links it.
 - **A new home page subheading:** "Someone could be into your stack. See your CVE matches, ranked by what to fix first." It no longer says the ranking is by real-world exploitation alone.
 - **About and How it works are shorter and more direct.** About states what Vulnder does, the case against sorting by CVSS, the four priorities with their response times, and the design choices, in tables where that's clearer. How it works now says which sources are fetched hourly and which daily, that exploited and CVSS 7.0+ CVEs are kept for a year, and that out-of-support software ranks with Act now. Its AI, ranking rules, AI assistant and limits sections are tables.
 - **The privacy notes say plainly that free text is logged.** Every page now opens its privacy note with "Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway", where before it said the gateway can log them. They also say that files, CVE lists and scan reports are read in the browser and not stored.
