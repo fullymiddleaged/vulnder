@@ -249,6 +249,7 @@
             <tr><th scope="row">Overdue</th><td>A high-severity CVE still unfixed 60 days after publication moves up one priority. It never changes the score or reaches Act now.</td></tr>
             <tr><th scope="row">Edge devices</th><td>Treated as internet-facing, ranked ahead of similar results, and given CISA BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked by default; change them under Edit stack.</td></tr>
             <tr><th scope="row">Out of support</th><td>Software past its vendor's end of support ranks with Act now; support ending within 90 days ranks with Attend. This is a finding on the component and doesn't change its CVEs' priorities.</td></tr>
+            <tr><th scope="row">Targeted by attackers</th><td>An item with any CVE CISA added to KEV in the last 90 days gets a notice, whatever version those CVEs affect. In 2025–26, about a third of products with a KEV add got another within 90 days, so patch its next advisory within days. Like out of support, it doesn't change any CVE's priority.</td></tr>
             <tr><th scope="row">Reasons</th><td>Each result names what decided it and what data is missing. A result with little data reads as unknown, not safe.</td></tr>
           </tbody>
         </table>

@@ -168,6 +168,30 @@ describe('exportMarkdown', () => {
     expect(md).toContain('Still watched: `pypi:django`\n');
   });
 
+  it('lists targeted products before Fix first and marks their rows', () => {
+    const md = exportMarkdown({
+      ...feed,
+      targeted: [{ items: ['npm:express@4.18.2'], kev: [{ id: 'CVE-2026-0001', addedAt: '2026-10-02' }] }],
+    });
+    expect(md.indexOf('## Targeted by attackers')).toBeLessThan(md.indexOf('## Fix first'));
+    expect(md).toContain(
+      '- `npm:express@4.18.2`: CISA added one of its CVEs to KEV (CVE-2026-0001), most recently CVE-2026-0001 on 2026-10-02. It affects your stack: see Act now below.',
+    );
+    expect(md).toContain('1. `npm:express@4.18.2`: 1 Act now; targeted (see above); total risk 92');
+    expect(md).not.toContain('2. `?p:f5/nginx`: 1 Watch; targeted');
+    expect(exportMarkdown(feed)).not.toContain('Targeted by attackers');
+  });
+
+  it('names a listed CVE’s targeted product by its label', () => {
+    const md = exportMarkdown({
+      ...feed,
+      targeted: [{ items: ['p:ivanti/connect_secure'], kev: [{ id: 'CVE-2026-0101', addedAt: '2026-10-01' }], listed: true, label: 'Ivanti Connect Secure' }],
+    });
+    expect(md).toContain(
+      '- **Ivanti Connect Secure** (`p:ivanti/connect_secure`): CISA added one of its CVEs to KEV (CVE-2026-0101), most recently CVE-2026-0101 on 2026-10-01. It isn’t in your list, but the product is a target.',
+    );
+  });
+
   it('heads a support list with nothing past support yet as Vendor support', () => {
     const md = exportMarkdown({
       ...feed,

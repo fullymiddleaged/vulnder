@@ -14,6 +14,10 @@ import {
   supportByItem,
   supportLines,
   supportPriority,
+  TARGETED_INTRO,
+  targetedByItem,
+  targetedCount,
+  targetedStatus,
   type ComponentGroup,
 } from './format';
 import { TEAM } from './teams';
@@ -204,6 +208,19 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
     }
   }
 
+  const targeted = feed.targeted ?? [];
+  if (targeted.length > 0) {
+    out.push('', '## Targeted by attackers', '', TARGETED_INTRO, '');
+    for (const t of targeted) {
+      const latest = t.kev[0]!;
+      out.push(
+        `- ${t.label ? `**${mdText(t.label)}** (${t.items.map(stackLine).join(', ')})` : t.items.map(stackLine).join(', ')}: CISA added ${targetedCount(t)} to KEV (${t.kev.map((k) => k.id).join(', ')}), most recently ${latest.id} on ${latest.addedAt}. ${targetedStatus(t, feed.results)}`,
+      );
+    }
+  }
+  const targetedItems = targetedByItem(targeted);
+  const isTargeted = (g: ComponentGroup) => targetedItems.has(g.component) || g.also.some((i) => targetedItems.has(itemMarks(i).name));
+
   if (n > 0) {
     out.push('', '## Fix first', '');
     // As on the page: a CVE an earlier row listed is named as such, so it's worked on once.
@@ -216,7 +233,8 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
       for (const id of fresh) shown.add(id);
       const cves = [fresh.length > 0 ? `CVEs: ${fresh.join(', ')}` : '', repeated.length > 0 ? `also in a row above: ${repeated.join(', ')}` : ''].filter(Boolean).join('; ');
       const fixes = g.listed ? '' : `; a fix for ${g.fixable} of ${g.vulns.length}`;
-      out.push(`${g.rank}. ${groupLine(g)}: ${tally}${unsupported}; total risk ${formatScore(g.score)}${fixes}. ${cves}`);
+      const hot = isTargeted(g) ? '; targeted (see above)' : '';
+      out.push(`${g.rank}. ${groupLine(g)}: ${tally}${unsupported}${hot}; total risk ${formatScore(g.score)}${fixes}. ${cves}`);
     }
     out.push('', '## Vulnerabilities', '');
     for (const p of PRIORITIES) {

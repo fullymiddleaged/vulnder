@@ -1,5 +1,5 @@
 import { isTeam, parseStack, type Team } from '../src/stack/format';
-import type { Change, FixItem, Health, PassStatus, Priority, Result, SupportNotice, SupportState } from './api';
+import type { Change, FixItem, Health, PassStatus, Priority, Result, SupportNotice, SupportState, TargetedNotice } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
 
@@ -485,6 +485,42 @@ export function supportByItem(notices: readonly SupportNotice[]): Map<string, Su
   const out = new Map<string, SupportNotice>();
   for (const n of notices) for (const item of n.items) out.set(itemMarks(item).name, n);
   return out;
+}
+
+/** Why the Targeted section is there, said once above its list. The backtest is in docs/plans/product-pressure.md. */
+export const TARGETED_INTRO =
+  'CISA added CVEs in these items to its Known Exploited Vulnerabilities catalog in the last 90 days. 1 in 3 products with a KEV add get another within 90 days: patch their next advisory within days, and check whether they face the internet. Priorities don’t change.';
+
+/** Each stack item's targeted notice, by item name without marks. */
+export function targetedByItem(notices: readonly TargetedNotice[]): Map<string, TargetedNotice> {
+  const out = new Map<string, TargetedNotice>();
+  for (const n of notices) for (const item of n.items) out.set(itemMarks(item).name, n);
+  return out;
+}
+
+/** "one of its CVEs", "3 of its CVEs". */
+export function targetedCount(n: TargetedNotice): string {
+  return n.kev.length === 1 ? 'one of its CVEs' : `${n.kev.length} of its CVEs`;
+}
+
+/**
+ * Whether the KEV CVEs are in the results below (as Act now, since KEV always
+ * is), so the notice never reads as news the list already shows, or as a
+ * contradiction when a version check left them out.
+ */
+export function targetedStatus(n: TargetedNotice, results: readonly Result[]): string {
+  const items = new Set(n.items);
+  // A listed product's CVEs match `cve:` items, not the group, so any result counts.
+  const shown = n.kev.filter((k) => results.some((r) => r.id === k.id && (n.listed || r.matched.some((m) => items.has(m))))).length;
+  const total = n.kev.length;
+  if (n.listed) {
+    if (shown === total) return `${total === 1 ? 'It’s' : total === 2 ? 'Both are' : `All ${total} are`} in your list: see Act now below.`;
+    if (shown === 0) return `${total === 1 ? 'It isn’t' : 'None are'} in your list, but the product is a target.`;
+    return `${shown} of them ${shown === 1 ? 'is' : 'are'} in your list (see Act now below); the others aren’t.`;
+  }
+  if (shown === total) return `${total === 1 ? 'It affects' : total === 2 ? 'Both affect' : `All ${total} affect`} your stack: see Act now below.`;
+  if (shown === 0) return `${total === 1 ? 'It doesn’t' : 'None'} affect the version you gave, but the product is a target.`;
+  return `${shown} of them ${shown === 1 ? 'affects' : 'affect'} your stack (see Act now below); the others affect versions you don’t run.`;
 }
 
 /**

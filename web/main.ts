@@ -21,6 +21,7 @@ import {
   type Result,
   type SupportNotice,
   type SupportState,
+  type TargetedNotice,
 } from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
@@ -59,6 +60,10 @@ import {
   supportByItem,
   supportLines,
   supportPriority,
+  TARGETED_INTRO,
+  targetedByItem,
+  targetedCount,
+  targetedStatus,
   turnstileSize,
   withItemMarks,
   type ChangeGroup,
@@ -985,6 +990,9 @@ async function renderResults(stack: string, days: number): Promise<void> {
   // Before the CVEs: out of support outweighs any one of them, and a stack can have it with none.
   const support = renderSupport(feed);
   if (support) app.append(support);
+  // Also before the CVEs, and also a finding about the item: it can hold even when no CVE matched.
+  const targeted = renderTargeted(feed);
+  if (targeted) app.append(targeted);
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
@@ -1243,6 +1251,52 @@ function supportBadge(state: SupportState): HTMLElement | null {
   );
 }
 
+/**
+ * Items whose CVEs CISA added to KEV in the last 90 days, whatever version they affect: attackers
+ * are working on that product. A finding about the item that ranks nothing, so it carries no
+ * tier colour (DESIGN.md, the Risk Colour Rule). Null when there are none.
+ */
+function renderTargeted(feed: Feed): HTMLElement | null {
+  const notices = feed.targeted ?? [];
+  if (notices.length === 0) return null;
+  return h(
+    'section',
+    { class: 'block targeted', 'aria-labelledby': 'targeted-title' },
+    h('h2', { id: 'targeted-title' }, 'Targeted by attackers'),
+    h('p', { class: 'muted small' }, TARGETED_INTRO),
+    h('ul', { class: 'targeted-list', role: 'list' }, notices.map((n) => renderTargetedItem(n, feed.results))),
+  );
+}
+
+function renderTargetedItem(n: TargetedNotice, results: readonly Result[]): HTMLElement {
+  const latest = n.kev[0]!;
+  const names = n.items.map((i) => itemMarks(i).name);
+  return h(
+    'li',
+    { class: 'targeted-item' },
+    // A listed CVE's product goes by its name, as its Fix first row does.
+    n.label
+      ? h('p', { class: 'row wrap' }, h('strong', { class: 'product-name' }, n.label), h('code', { class: 'small muted' }, names[0]!))
+      : h('p', {}, names.flatMap((name, k) => [k > 0 ? ', ' : '', h('code', {}, name)])),
+    h(
+      'p',
+      { class: 'small' },
+      `CISA added ${targetedCount(n)} to KEV, most recently `,
+      externalLink(`https://www.cve.org/CVERecord?id=${encodeURIComponent(latest.id)}`, latest.id),
+      ` on ${latest.addedAt}. `,
+      targetedStatus(n, results),
+    ),
+  );
+}
+
+function targetedBadge(): HTMLElement {
+  return h(
+    'span',
+    { class: 'badge targeted', title: 'CISA added CVEs in this product to KEV in the last 90 days. See Targeted by attackers above.' },
+    'Targeted',
+  );
+}
+
 /** Links that keep showing this stack's latest results, and exports of them as they are now. */
 function renderShare(feed: Feed): HTMLElement {
   return h(
@@ -1338,8 +1392,11 @@ const FIX_SHOWN = 5;
 function renderFixFirst(feed: Feed): HTMLElement {
   const items = componentGroups(feed.fixFirst, feed.results);
   const shown = new Set<string>();
+  const targeted = targetedByItem(feed.targeted ?? []);
+  const isTargeted = (g: ComponentGroup) => targeted.has(g.component) || g.also.some((i) => targeted.has(itemMarks(i).name));
   // role=list: Safari drops list semantics from a list styled without markers, and here the order is the point.
-  const list = (from: number, to: number) => h('ol', { class: 'fix-list', role: 'list', start: from + 1 }, items.slice(from, to).map((g) => renderFixItem(g, shown)));
+  const list = (from: number, to: number) =>
+    h('ol', { class: 'fix-list', role: 'list', start: from + 1 }, items.slice(from, to).map((g) => renderFixItem(g, shown, isTargeted(g))));
   return h(
     'section',
     { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
@@ -1370,7 +1427,7 @@ function renderFixFirst(feed: Feed): HTMLElement {
  * One stack item (or several with the same CVEs); expands to its CVEs with their links, so nobody has
  * to hunt for them further down. CVEs an earlier row already showed are listed by ID only.
  */
-function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
+function renderFixItem(g: ComponentGroup, shown: Set<string>, targeted = false): HTMLElement {
   const worst = worstOf(g);
   const total = g.vulns.length;
   const { fresh, repeated } = splitShown(g.results, shown);
@@ -1387,6 +1444,7 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>): HTMLElement {
         groupName(g).flatMap((part, i) => (i === 0 ? [part] : [pause(), part])),
         groupIsEdge(g) ? [pause(), edgeBadge()] : null,
         g.support ? [pause(), supportBadge(g.support)] : null,
+        targeted ? [pause(), targetedBadge()] : null,
         pause(),
         tally(g.counts),
         pause(),

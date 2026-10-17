@@ -374,6 +374,11 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .support-item .row { gap: 0.3rem 0.5rem; align-items: baseline; }
 .badge.support.eol { color: var(--exploited); }
 .badge.support.ending { color: var(--likely); }
+/* Targeted by attackers: evidence about the product, not a priority, so no tier colour and no edge. */
+.targeted-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.targeted-item { overflow-wrap: anywhere; }
+.targeted-item p { margin: 0.2rem 0; }
+.badge.targeted { color: var(--fg); font-weight: 700; }
 .rank { display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border-radius: 3px; background: var(--light); color: var(--on-light); font-weight: 800; font-size: 0.85rem; flex: none; font-variant-numeric: tabular-nums; }
 .score { font-size: 0.8rem; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .why { margin: 0.3rem 0; }

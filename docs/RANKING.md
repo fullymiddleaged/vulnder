@@ -70,6 +70,16 @@ Paid extended support (Microsoft ESU, Red Hat ELS, SUSE LTSS, Ubuntu Pro) keeps 
 
 An out-of-support edge device also cites CISA's BOD 26-02, which has US federal agencies replace end-of-support edge devices.
 
+## Targeted by attackers
+
+When CISA has added any of a stack item's CVEs to KEV in the last 90 days, whatever version they affect, the item gets a **Targeted by attackers** notice above the priorities and a "Targeted" badge in Fix first. The notice names the latest KEV add and says whether those CVEs are in your results (they're Act now when they are) or affect only versions you don't run. A pasted CVE list gets the same for each product its CVEs are grouped under in Fix first, saying whether the KEV CVEs are in your list.
+
+It's advice about the product, not a ranking signal. It never changes a CVE's priority, score or response window, or Fix first's order. A backtest over KEV adds from January 2025 to October 2026 (`npm run backtest -- --trend --product-kev`, docs/plans/product-pressure.md) found:
+- a product with a KEV add in the last 90 days had another within 90 days about a third of the time (31.8%), 12 times the rate for products overall;
+- ranking that product's other CVEs higher made the ranking worse: it added 24,000 flags and moved KEV CVEs out of the top 1%, because the next KEV add is usually a new CVE.
+
+So the notice says: patch this product's next advisory within days, and check whether it faces the internet.
+
 ## Teams
 
 When a description reads as an enterprise stack (Jev's screen says enterprise with 0.5 confidence or more), each item gets the team that usually looks after it: Network, Database, Front-end, Back-end, Platform, Endpoints or Business apps. Jev answers for each component you named, reading your own description; a fixed table of ecosystems, vendors and product names fills whatever Jev leaves open or can't answer. Items neither knows are Unassigned. The team goes into the link (see [STACK_FORMAT.md](STACK_FORMAT.md)), and you can change it under Edit stack. Home, small-business and lockfile stacks get no teams.
@@ -137,5 +147,7 @@ The JSON feed carries on each result:
 For a stack with listed CVEs the feed also carries `listed`: `rejected` (each `id` with the `replacedBy` IDs its rejection names, empty when none) and `notFound`. Fix first entries that group listed CVEs have `listed: true` and the product's `label`.
 
 The feed also carries `support`: one entry per out-of-support finding, with `state` (`eol`, `ending` or `covered`), `name`, `date`, `esuUntil`, `esu`, `edge`, `source` (`endoflife` or `cve`), `cve` and the stack `items` it's about. Fix first entries carry the same `support` state. The Atom feed has an entry for each item out of support or losing it soon.
+
+The feed also carries `targeted`: one entry per set of stack `items` with CVEs CISA added to KEV in the last 90 days, with `kev`, those CVEs newest first (`id`, `addedAt` as YYYY-MM-DD). Close matches with the same KEV adds share one entry. An entry for a listed CVE's product, rather than an item the stack names, has `listed: true` and the product's `label`. The Atom feed has an entry for each, dated by the latest add, with a new entry when CISA adds another.
 
 The feed also has a `fixFirst` list. Atom entries carry the priority, the window and the reasons. The badge counts exploited CVEs.
