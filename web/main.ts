@@ -12,6 +12,7 @@ import {
   getHealth,
   earnPass,
   getPass,
+  oneAtATime,
   resolve,
   type AppConfig,
   type Feed,
@@ -70,6 +71,7 @@ declare global {
     turnstile?: {
       render(el: HTMLElement, opts: Record<string, unknown>): string;
       reset(id?: string): void;
+      remove(id: string): void;
     };
   }
 }
@@ -386,9 +388,14 @@ function cveForm(prefill: string): Panel {
 /**
  * Ranks a list of CVE IDs. The verification check earns this browser its pass
  * first, so a list counts against the same hourly allowance as a stack; then
- * the IDs go straight to the feed, with nothing else sent.
+ * the IDs go straight to the feed, with nothing else sent. The form stays up
+ * while the pass is checked, so a second click is dropped (see `sending`).
  */
-async function rankCves(ids: string[]): Promise<void> {
+function rankCves(ids: string[]): Promise<boolean> {
+  return sending(() => sendCves(ids));
+}
+
+async function sendCves(ids: string[]): Promise<void> {
   if (isLocked()) return say(passNotice(pass) ?? '');
   const token = takeToken("The verification check couldn't run, so a list can't be ranked right now. Reload the page to try again.");
   if (!token) return;
@@ -506,6 +513,15 @@ function stackForm(prefill: string, toCves: () => void): Panel {
 const TURNSTILE_WAIT_MS = 15_000;
 
 function mountTurnstile(box: HTMLElement): void {
+  // The last form's widget went with its page, and can no longer say when its
+  // token expires: drop both, so a submit waits for this widget's own token.
+  try {
+    if (turnstileWidget) window.turnstile?.remove(turnstileWidget);
+  } catch {
+    // Already gone; nothing to tidy.
+  }
+  turnstileWidget = undefined;
+  turnstileToken = null;
   turnstileFailed = false;
   if (!config) return void (turnstileFailed = true);
   const started = Date.now();
@@ -684,8 +700,19 @@ function takeToken(failed: string, action?: HTMLElement): string | null {
   return token;
 }
 
+/**
+ * One lookup at a time, from either tab. Each send also spends the single-use
+ * verification token, so a repeat that slipped through would be refused anyway;
+ * this keeps it from being sent at all.
+ */
+const sending = oneAtATime();
+
 /** Sends a description or parsed entries; `note` (e.g. what a big file left out) shows with the results. */
-async function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<void> {
+function submit(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note = ''): Promise<boolean> {
+  return sending(() => sendStack(body, note));
+}
+
+async function sendStack(body: { text: string } | { candidates: import('../src/resolve/types').Candidate[] }, note: string): Promise<void> {
   if (isLocked()) return say(passNotice(pass) ?? '');
   const token = takeToken("The verification check couldn't run, so a description can't be read right now. Reload the page to try again.", addByHandButton());
   if (!token) return;
@@ -924,6 +951,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
     await busy.done(true);
   } catch (err) {
     void busy.done();
+    // Left for another page while it failed: that page stays, without this error under it.
+    if (at !== routes) return;
     say('');
     if (err instanceof ApiError && err.reason === 'pass-limit') {
       // Answered from the lock cookie, without a database read.
