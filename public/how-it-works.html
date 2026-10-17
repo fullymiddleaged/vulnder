@@ -127,7 +127,7 @@
             <path class="box" d="M224 220V262A98 6 0 0 0 420 262V220" />
             <ellipse class="box" cx="322" cy="220" rx="98" ry="6" />
             <text class="t" x="322" y="239">D1</text>
-            <text class="s" x="322" y="253">90 days · catalog</text>
+            <text class="s" x="322" y="253">CVEs · catalog</text>
 
             <path class="wire" d="M224 222H120" />
             <text class="s" x="196" y="214">catalog</text>
@@ -237,9 +237,9 @@
           Evidence of exploitation outranks prediction (EPSS, NIST LEV), which outranks severity (CVSS).
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or actively exploited, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited CVEs come first.</span></li>
-          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code a scanner can find, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
-          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept or other public exploit code, rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it), or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or actively exploited, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited CVEs come first.</span></li>
+          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code for a bug that is automatable or gives full control, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
+          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept or other public exploit code, rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it), any bug CISA has assessed on an edge device, or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
           <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack and nothing above applies. Next routine update.</span></li>
         </ul>
         <table class="prose-table keyed">
@@ -262,7 +262,7 @@
         <table class="prose-table keyed">
           <tbody>
             <tr><th scope="row">Export for AI</th><td>A Markdown brief from the results page for an assistant or coding agent: upgrade anything out of support, check each finding, fix or mitigate it, report one outcome per CVE. Advisory text is marked as quoted data, never instructions, so a planted line can't steer the agent.</td></tr>
-            <tr><th scope="row">JSON feed</th><td><code>/api/feed?s=…</code> has the same priorities, scores, reasons and Fix first list.</td></tr>
+            <tr><th scope="row">JSON feed</th><td><code>/api/feed?s=…</code>, the API behind the results page, has the same priorities, scores, reasons and Fix first list. The page itself doesn't link it.</td></tr>
             <tr><th scope="row">Atom feed</th><td>One entry per change.</td></tr>
             <tr><th scope="row">Badge</th><td>Counts known-exploited CVEs, for a README.</td></tr>
             <tr><th scope="row">llms.txt</th><td><a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build and fetch a stack itself.</td></tr>
