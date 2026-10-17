@@ -1523,7 +1523,8 @@ function renderBrief(r: Result): HTMLElement {
   return h(
     'li',
     { class: `brief ${light}` },
-    h('p', { class: 'row wrap' }, h('span', { class: `pill ${light}` }, RISK[r.priority].label), h('strong', {}, externalLink(r.links.advisory, r.id)), r.title ? h('span', { class: 'title' }, r.title) : null),
+    // One line per CVE, so every row's pill and ID line up: a long title is clipped, in full on hover and in the results below.
+    h('p', { class: 'row head' }, h('span', { class: `pill ${light}` }, RISK[r.priority].label), h('strong', {}, externalLink(r.links.advisory, r.id)), r.title ? h('span', { class: 'title', title: r.title }, r.title) : null),
     h(
       'p',
       { class: 'small links' },

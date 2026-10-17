@@ -71,7 +71,8 @@ spacing:
   gutter: "1rem"
   stack: "0.6rem"
   section: "2.25rem"
-  column: "48rem"
+  column: "54rem"
+  measure: "72ch"
 components:
   button-primary:
     backgroundColor: "{colors.match-violet}"
@@ -113,7 +114,7 @@ components:
 
 Vulnder reads like a working ledger kept by someone who patches things for a living. Sections sit directly on the page, divided by hairline rules, not boxed into cards. The order is the point: the headline count, a strip in proportion to each priority, then a numbered "Fix first" list and the evidence behind every line. IDs, versions and package names are set in mono so they can be copied and compared. Colour is spent almost entirely on risk; everything else is lavender-tinted paper and plum ink.
 
-The density is that of a tool, not a landing page. One column (48rem) carries everything, and type does the hierarchy work: a large heavy headline asks or answers the question, and the rest is body text at a comfortable 1.55 line height. Playfulness is kept to the logo (a magnifier with a heart inside, the "it's a match" nod), the loader that sweeps the lens and beats the heart, and the tagline. Anything that describes a vulnerability stays plain.
+The density is that of a tool, not a landing page. One column (54rem) carries everything, and type does the hierarchy work: a large heavy headline asks or answers the question, and the rest is body text at a comfortable 1.55 line height. Playfulness is kept to the logo (a magnifier with a heart inside, the "it's a match" nod), the loader that sweeps the lens and beats the heart, and the tagline. Anything that describes a vulnerability stays plain.
 
 Atkinson Hyperlegible was chosen because it tells 0/O and 1/l/I apart on pages full of CVE IDs and version strings. Fonts are self-hosted: the CSP allows no third-party fonts, and a font CDN would see every visitor.
 
@@ -169,7 +170,7 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 - **Display** (800, clamp(2.1rem, 6vw, 3.4rem), 1.02): the results headline ("the match"). One per view.
 - **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the compose question on the home page, prose page titles, the loader message.
 - **Title** (700, 1.3rem, 1.25): section headings (h2), tier headings.
-- **Body** (400, 1rem, 1.55): everything else, within the 48rem column. Small text is 0.875rem.
+- **Body** (400, 1rem, 1.55): everything else, within the 54rem column, with running text held to a 72ch measure (68ch on the prose pages). Small text is 0.875rem.
 - **Label** (700, 0.8rem): priority pills, scores, counts, tags. Counts and scores use tabular numerals.
 - **Mono** (0.9em): CVE and GHSA IDs, package names, versions, code.
 
@@ -182,7 +183,7 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 
 ## Layout
 
-A single centred column, max 48rem, with a 1rem gutter on each side. The header, main, status line and footer all share it. Sections in `main` stack on a grid with a 2.25rem gap; inside a section, items stack at about 0.6rem. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem and one below 36rem. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
+A single centred column, max 54rem (`--column`), with a 1rem gutter on each side. The header, main, status line and footer all share it. Rows, the ledger, Fix first and tables use its full width; sentences (result summaries, section intros, notices) stop at 72ch (`--measure`) so lines stay readable. In Fix first, each CVE is one line: its pill and ID keep their size and a long title clips with an ellipsis, so every row lines up. Sections in `main` stack on a grid with a 2.25rem gap; inside a section, items stack at about 0.6rem. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem and one below 36rem. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
 
 ## Elevation & Depth
 
@@ -248,7 +249,7 @@ The logo's lens circles its own centre while the heart beats, beside a headline 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep every page in the single 48rem column with the 1rem gutter.
+- **Do** keep every page in the single 54rem column with the 1rem gutter, and running text within the 72ch measure.
 - **Do** tie each result to its tier with the 4px left border and the tier's `--light` / `--ink` pair.
 - **Do** set IDs, package names and versions in Atkinson Mono.
 - **Do** define every colour as a token in both the light and dark blocks.
