@@ -9,9 +9,9 @@ import type { Candidate } from './types';
  * schema, and anything that does not validate is discarded.
  */
 
-import { MAX_TEXT_CHARS } from './limits';
+import { EXTRACT_DEADLINE_MS, EXTRACT_HEDGE_MS, MAX_TEXT_CHARS } from './limits';
 
-export { MAX_TEXT_CHARS };
+export { EXTRACT_DEADLINE_MS, EXTRACT_HEDGE_MS, MAX_TEXT_CHARS };
 const MAX_ITEMS = 50;
 
 const ECOSYSTEMS = ['npm', 'PyPI', 'crates.io', 'Go', 'Maven', 'NuGet', 'Packagist', 'RubyGems', 'Hex', 'Pub'] as const;
@@ -64,9 +64,12 @@ export interface Extraction {
 }
 
 export class ExtractionUnavailable extends Error {
-  constructor(message: string) {
+  /** The underlying error's name (TimeoutError, AiError…), safe to log where the message isn't. */
+  readonly reason: string;
+  constructor(message: string, reason = 'error') {
     super(message);
     this.name = 'ExtractionUnavailable';
+    this.reason = reason;
   }
 }
 
@@ -111,13 +114,8 @@ export function keepMentioned(extraction: Extraction, text: string): Extraction 
   return { ...extraction, candidates };
 }
 
-/**
- * A stuck model call gives up after this and the request falls back to adding
- * items by hand, like an outage. Measured 3.3-5.4 s in October 2026.
- */
-export const EXTRACT_TIMEOUT_MS = 12_000;
-
-export async function extractCandidates(ai: Ai, model: string, text: string): Promise<Extraction> {
+/** One extraction call, given up when `signal` aborts. */
+export async function extractCandidates(ai: Ai, model: string, text: string, signal: AbortSignal = AbortSignal.timeout(EXTRACT_DEADLINE_MS)): Promise<Extraction> {
   const input = fenceInput(text);
   let raw: unknown;
   try {
@@ -130,12 +128,59 @@ export async function extractCandidates(ai: Ai, model: string, text: string): Pr
       chat_template_kwargs: { enable_thinking: false },
       max_completion_tokens: 1500,
       temperature: 0,
-    } as never, { signal: AbortSignal.timeout(EXTRACT_TIMEOUT_MS) });
+    } as never, { signal });
   } catch (err) {
     // Quota exhaustion and outages both mean "use the manual path".
-    throw new ExtractionUnavailable(err instanceof Error ? err.message : String(err));
+    throw new ExtractionUnavailable(err instanceof Error ? err.message : String(err), err instanceof Error ? err.name : typeof err);
   }
   return keepMentioned(parseModelOutput(raw), text);
+}
+
+export interface ExtractTiming {
+  /** When the fallback starts if the primary hasn't answered. */
+  hedgeMs: number;
+  /** When both are given up. */
+  deadlineMs: number;
+}
+
+const EXTRACT_TIMING: ExtractTiming = { hedgeMs: EXTRACT_HEDGE_MS, deadlineMs: EXTRACT_DEADLINE_MS };
+
+/**
+ * Extraction with a hedge: the primary model runs first, and the fallback
+ * starts alongside it at `hedgeMs`, or as soon as the primary fails. The first
+ * to answer wins and the other is aborted. Workers AI's speed varies by model
+ * from day to day, and a slow primary would otherwise send people to add items
+ * by hand. Throws ExtractionUnavailable only when every model tried has failed.
+ */
+export async function extractWithFallback(ai: Ai, primary: string, fallback: string | null, text: string, timing: ExtractTiming = EXTRACT_TIMING): Promise<Extraction> {
+  const deadline = AbortSignal.timeout(timing.deadlineMs);
+  const calls: AbortController[] = [];
+  const attempt = (model: string) => {
+    const call = new AbortController();
+    calls.push(call);
+    return extractCandidates(ai, model, text, AbortSignal.any([deadline, call.signal]));
+  };
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const first = attempt(primary);
+    if (!fallback) return await first;
+    let start!: (why: string) => void;
+    const hedge = new Promise<string>((resolve) => (start = resolve));
+    timer = setTimeout(() => start('slow'), timing.hedgeMs);
+    first.catch((err: unknown) => start(err instanceof ExtractionUnavailable ? err.reason : 'error'));
+    const second = hedge.then((why) => {
+      // The reason only: an error's message could echo the input.
+      console.log(`extract fallback started: ${why}`);
+      return attempt(fallback);
+    });
+    return await Promise.any([first, second]);
+  } catch (err) {
+    if (err instanceof AggregateError) throw new ExtractionUnavailable('every extraction model failed');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    for (const call of calls) call.abort();
+  }
 }
 
 /** Pulls the JSON out of either response shape and keeps only valid items. */
@@ -168,7 +213,12 @@ export function parseModelOutput(raw: unknown): Extraction {
 
 function messageContent(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null) return raw;
-  const r = raw as { choices?: { message?: { content?: unknown } }[]; response?: unknown };
-  if (Array.isArray(r.choices)) return r.choices[0]?.message?.content;
+  const r = raw as { choices?: { message?: { content?: unknown; reasoning?: unknown } }[]; response?: unknown };
+  if (Array.isArray(r.choices)) {
+    const message = r.choices[0]?.message;
+    // Qwen3 on Workers AI returns schema-constrained output as `reasoning`, with
+    // `content` null, when thinking is off. It is validated like any other output.
+    return message?.content ?? message?.reasoning;
+  }
   return r.response;
 }

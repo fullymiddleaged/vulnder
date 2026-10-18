@@ -7,7 +7,7 @@ import { earnPass, passLimited, readLock } from './pass';
 import { clientKey } from '../lib/client';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
 import { resolveCandidates, TooManyProducts, type ResolveResult } from '../resolve/catalog';
-import { extractCandidates, ExtractionUnavailable, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
+import { ExtractionUnavailable, extractWithFallback, keepMentioned, MAX_TEXT_CHARS, normalizeInput, parseModelOutput, sha256Hex } from '../resolve/extract';
 import { looksLikeInjection } from '../resolve/injection';
 import { MAX_MANIFEST_ENTRIES } from '../resolve/limits';
 import { blocks, fitTargets, judgeStack, screenText, teamTargets, type Judgement } from '../resolve/jev';
@@ -39,11 +39,13 @@ const MAX_BODY_BYTES = 1_000_000;
 const MAX_MANIFEST_TEXT = 200_000;
 const PARSE_CACHE_SECONDS = 7 * 86_400;
 /**
- * A parse is about 13 neurons of extraction, so 600 a day stays inside the free
- * 10,000. Jev is billed separately, in AI Gateway credits (about $0.0001 a parse).
+ * Extraction is 7-10 neurons a call. A slow parse also asks the fallback
+ * model (6-9 neurons), so a parse is at most about 18, and 500 a day stays
+ * inside the free 10,000 even if every one is hedged. Jev is billed
+ * separately, in AI Gateway credits (about $0.0001 a parse).
  */
 const DEFAULT_PARSE_PER_CLIENT = 30;
-const DEFAULT_PARSE_TOTAL = 600;
+const DEFAULT_PARSE_TOTAL = 500;
 const MANUAL_HINT = 'add items manually or upload a manifest';
 
 const ECOSYSTEMS = Object.values(PREFIXES) as [string, ...string[]];
@@ -238,7 +240,8 @@ async function cachedParse(env: Env, text: string, quota: () => Promise<QuotaRes
     throw new InjectionBlocked();
   }
   const profile = screen?.profile ?? NO_PROFILE;
-  const { candidates } = await extractCandidates(env.AI, env.AI_MODEL, text);
+  // Keyed by AI_MODEL above whichever model answers: both are asked the same question.
+  const { candidates } = await extractWithFallback(env.AI, env.AI_MODEL, env.AI_FALLBACK_MODEL || null, text);
   if (cache) {
     const items = candidates.map((c) =>
       c.kind === 'package'

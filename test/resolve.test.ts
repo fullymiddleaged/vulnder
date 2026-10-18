@@ -444,6 +444,16 @@ describe('model output', () => {
   it('accepts a fenced JSON string', () => {
     expect(parseModelOutput({ response: '```json\n{"items":[{"name":"Redis","version":null,"type":"product","ecosystem":null,"vendor":null}]}\n```' }).candidates).toHaveLength(1);
   });
+
+  it('reads the answer from reasoning when content is empty, as Qwen3 sends it', () => {
+    const json = '{"items":[{"name":"Redis","version":"7","type":"product","ecosystem":null,"vendor":null}]}';
+    expect(parseModelOutput({ choices: [{ message: { content: null, reasoning: json } }] }).candidates).toEqual([
+      { kind: 'product', name: 'Redis', vendor: null, version: '7', direct: true },
+    ]);
+    // Content wins when both are present; reasoning that isn't the JSON answer yields nothing.
+    expect(parseModelOutput({ choices: [{ message: { content: '{"items":[]}', reasoning: json } }] }).candidates).toEqual([]);
+    expect(parseModelOutput({ choices: [{ message: { content: null, reasoning: 'Let me think about Redis…' } }] }).candidates).toEqual([]);
+  });
 });
 
 describe('POST /api/resolve', () => {
@@ -597,6 +607,19 @@ describe('POST /api/resolve', () => {
     const calls = (e.AI.run as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown[][];
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) expect(call[2]).toEqual({ signal: expect.any(AbortSignal) });
+  });
+
+  it('answers from the fallback model when the primary fails', async () => {
+    stubTurnstile();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const e = testEnv(async (model) => {
+      if (model === env.AI_MODEL) throw new Error('3040: capacity temporarily exceeded');
+      return MODEL_REPLY;
+    });
+    const res = await post({ text: `${BRIEF_EXAMPLE} ${++textSalt}`, turnstileToken: 't' }, e);
+    expect(res.status).toBe(200);
+    expect(aiCalls(e, env.AI_FALLBACK_MODEL)).toHaveLength(1);
+    expect(((await res.json()) as { chips: unknown[] }).chips.length).toBeGreaterThan(0);
   });
 
   it('caps model calls per client per day, without counting cached parses', async () => {

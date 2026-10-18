@@ -1,4 +1,15 @@
+import { EXTRACT_HEDGE_MS, READ_DEADLINE_MS } from '../src/resolve/limits';
 import type { Candidate } from '../src/resolve/types';
+
+export { READ_DEADLINE_MS };
+
+/** Jev's screen runs before extraction, typically under a second, so the second model has usually started by then. */
+export const READ_SLOW_MS = EXTRACT_HEDGE_MS + 1_000;
+
+/** What the loader says under "Reading your stack" after `elapsedMs`. */
+export function readHint(elapsedMs: number): string {
+  return elapsedMs < READ_SLOW_MS ? 'This usually takes a few seconds.' : 'Taking longer than usual. When the first AI model is slow, Vulnder asks a second one.';
+}
 
 export interface AppConfig {
   displayName: string;
@@ -195,12 +206,12 @@ async function json<T>(res: Response): Promise<T> {
 
 /**
  * How long the browser waits before saying a request is stuck, rather than
- * loading forever: about twice a slow normal answer. Reading a description
- * (4-9 s uncached) waits longest, and the server gives up on its own model
- * calls within it (3 + 12 + 3 s), so its fallbacks answer first. A feed is
+ * loading forever. Reading a description waits longest: the server gives up
+ * on its own model calls within READ_DEADLINE_MS, so its manual fallback
+ * answers first, with a few seconds spare for D1 and the network. A feed is
  * cached or takes a few seconds; OSV gives up after 5.
  */
-export const RESOLVE_TIMEOUT_MS = 20_000;
+export const RESOLVE_TIMEOUT_MS = READ_DEADLINE_MS + 4_000;
 export const FEED_TIMEOUT_MS = 15_000;
 export const SMALL_TIMEOUT_MS = 10_000;
 
