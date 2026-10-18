@@ -312,11 +312,12 @@
         <h3 class="sub">Other ways in</h3>
         <table class="prose-table keyed">
           <tbody>
-            <tr><th scope="row">Export for AI</th><td>A Markdown brief from the results page for an assistant or coding agent: upgrade anything out of support, check each finding, fix or mitigate it, report one outcome per CVE. Advisory text is marked as quoted data, never instructions, so a planted line can't steer the agent.</td></tr>
+            <tr><th scope="row">Export for AI</th><td>A Markdown brief from the results page for an assistant or coding agent: upgrade anything out of support, check each finding, fix or mitigate it, report one outcome per CVE. Advisory text is marked as quoted data, never instructions, so a planted line can't steer the agent. It ends with a dated record of the check: how fresh each source was, and a decisions table to fill in.</td></tr>
             <tr><th scope="row">JSON feed</th><td><code>/api/feed?s=…</code>, the API behind the results page, has the same priorities, scores, reasons and Fix first list. The page itself doesn't link it.</td></tr>
             <tr><th scope="row">Atom feed</th><td>One entry per change.</td></tr>
             <tr><th scope="row">Badge</th><td>Counts known-exploited CVEs, for a README.</td></tr>
             <tr><th scope="row">llms.txt</th><td><a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build and fetch a stack itself.</td></tr>
+            <tr><th scope="row">NIS2 and the CRA</th><td><a href="/nis2">How Vulnder maps to NIS2's vulnerability rules and the CRA</a>, and a weekly review routine your agent can run and log.</td></tr>
             <tr><th scope="row">Full guide</th><td><a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/AI_AGENTS.md" rel="noreferrer">AI_AGENTS.md</a> covers setup for each client, the tools' inputs and outputs, and the limits.</td></tr>
           </tbody>
         </table>
@@ -358,6 +359,7 @@
         <a href="/">Check your stack</a>
         <a href="/about">About</a>
         <a href="/how-it-works">How it works</a>
+        <a href="/nis2">NIS2 and CRA</a>
         <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">Source on GitHub</a>
       </p>
       <p class="small muted">

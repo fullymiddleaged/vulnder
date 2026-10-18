@@ -1,6 +1,6 @@
 import { describeHours } from '../src/lib/time';
 import { formatItem, isCveItem, parseStack } from '../src/stack/format';
-import type { Feed, Priority, Reason, Result } from './api';
+import type { Feed, Health, Priority, Reason, Result } from './api';
 import { safeHref } from './url';
 import {
   componentGroups,
@@ -154,7 +154,8 @@ function mdResult(r: Result): string[] {
   return lines;
 }
 
-export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
+/** `sources` is /api/health's, for the record's data-source times; without it the record says they weren't available. */
+export function exportMarkdown(feed: Feed, name = 'Vulnder', sources?: Health['sources'] | null): string {
   const n = feed.results.length;
   const counts = PRIORITIES.map((p) => `${RISK[p].label} ${feed.priorities[p]}`).join(' · ');
   // Parsed, not split: a long stack's link is compressed.
@@ -254,7 +255,69 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder'): string {
   if (watching.length > 0) {
     out.push('## No CVEs in this window', '', `Still watched: ${watching.map(stackLine).join(', ')}`, '');
   }
+  out.push('', ...checkRecord(feed, sources));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+}
+
+/** The data sources a record names, in the footer's order and words. */
+export const RECORD_SOURCES: [key: string, label: string][] = [
+  ['cve', 'CVE records (MITRE)'],
+  ['ghsa', 'GitHub advisories'],
+  ['kev', 'CISA KEV'],
+  ['epss', 'EPSS (FIRST)'],
+  ['eol', 'End-of-life dates (endoflife.date)'],
+  ['metasploit', 'Metasploit modules'],
+  ['nuclei', 'Nuclei templates'],
+];
+
+/** "2026-10-18 09:12 UTC" */
+function utc(iso: string): string {
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+}
+
+/**
+ * A dated record of this check, for the file's owner to keep: when it ran,
+ * how fresh each source was, and a table of decisions to fill in for what
+ * needs a response soon. Vulnder keeps no copy, so this file is the record.
+ */
+export function checkRecord(feed: Feed, sources?: Health['sources'] | null): string[] {
+  const lines = ['## Record of this check', '', 'Keep this file with your vulnerability records: Vulnder keeps no copy of your stack or its results.', ''];
+  lines.push(`- **Checked:** ${utc(feed.generatedAt)}`, `- **Results now:** ${mdLink(feed.links.page) ?? ''}`);
+  const known = sources ? RECORD_SOURCES.filter(([key]) => sources[key]) : [];
+  if (known.length === 0) {
+    lines.push('- **Data sources:** when each last updated wasn’t available when this was saved.');
+  } else {
+    lines.push('- **Data sources, last updated:**');
+    for (const [key, label] of known) {
+      const s = sources![key]!;
+      const when = s.lastSuccessAt ? utc(s.lastSuccessAt) : 'never';
+      lines.push(`  - ${label}: ${when}${s.health === 'ok' ? '' : ` (${s.health === 'stale' ? 'behind schedule' : s.health === 'error' ? 'last update failed' : 'not run yet'})`}`);
+    }
+  }
+
+  const rows: string[] = [];
+  for (const s of feed.support ?? []) {
+    if (s.state !== 'eol') continue;
+    rows.push(`| ${mdText(s.name)} | Out of support | Upgrade urgently | | | | |`);
+  }
+  for (const r of feed.results) {
+    if (r.priority !== 'act' && r.priority !== 'attend') continue;
+    const by = r.respondWithinHours === null ? '' : new Date(Date.parse(feed.generatedAt) + r.respondWithinHours * 3_600_000).toISOString().slice(0, 10);
+    rows.push(`| ${r.id} | ${RISK[r.priority].label} | ${by} | | | | |`);
+  }
+  lines.push('', '### Decisions', '');
+  if (rows.length === 0) {
+    lines.push('Nothing here is Act now, Attend or out of support. Add a row for anything you act on or decide to accept.');
+  } else {
+    lines.push(
+      '"Respond by" is the suggested window from when this was checked, as guidance. Add a row for anything else you act on, and say why when you decide not to fix something.',
+      '',
+      '| Item | Priority | Respond by | Owner | Action | Decided on | Done on |',
+      '|---|---|---|---|---|---|---|',
+      ...rows,
+    );
+  }
+  return lines;
 }
 
 /** "vulnder-2026-10-08.md" */

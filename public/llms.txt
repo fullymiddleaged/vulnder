@@ -40,6 +40,12 @@ Full guide: [AI_AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/
 - `https://vulnder.com/badge.svg?s=…`: README badge counting known-exploited CVEs
 - `days` (1–90, default 30) sets the window. Stack links describe someone's infrastructure: don't publish one without its owner's say-so.
 
+## NIS2 and the CRA (EU)
+
+- [NIS2 and the CRA](https://vulnder.com/nis2): how Vulnder maps to section 6.10 (vulnerability handling) of NIS2 Implementing Regulation 2024/2690 and to CRA Article 14 (notifying actively exploited vulnerabilities), point by point, with what stays with the organisation. It isn't legal advice, and using Vulnder doesn't make anyone compliant.
+- [Weekly review routine](https://github.com/fullymiddleaged/vulnder/blob/main/docs/agents/nis2-weekly-review.md): instructions for an agent to run weekly. It reads the stack from the user's repository, calls `rank_stack`, opens or updates a ticket for each Act now, Attend and out-of-support item with a date to respond by, and writes a dated log with each data source's freshness from `https://vulnder.com/api/health`. Vulnder keeps no copy; the log is the user's record.
+- Without an agent: Export for AI on a results page ends with a "Record of this check" section (when it ran, source freshness, a decisions table).
+
 ## Reading the results
 
 - Priorities and suggested response windows: `act` (Act now: on CISA KEV or actively exploited, 24 hours; about to be exploited, 3 days), `attend` (7 days), `watch` (30 days), `track` (next routine update). Windows are guidance, not deadlines.

@@ -1987,9 +1987,14 @@ function copyButtons(feed: Feed): HTMLElement {
 
 /** Saves the results as Markdown for an AI agent, built here from the feed already loaded. */
 function exportButtons(feed: Feed): HTMLElement {
-  const save = () => {
+  const save = async () => {
     const file = exportFileName(feed);
-    const url = URL.createObjectURL(new Blob([exportMarkdown(feed, config?.displayName ?? 'Vulnder')], { type: 'text/markdown;charset=utf-8' }));
+    // The record names how fresh each source was; without the answer it says so.
+    const sources = await getHealth().then(
+      (h) => h.sources,
+      () => null,
+    );
+    const url = URL.createObjectURL(new Blob([exportMarkdown(feed, config?.displayName ?? 'Vulnder', sources)], { type: 'text/markdown;charset=utf-8' }));
     const a = h('a', { href: url, download: file });
     document.body.append(a);
     a.click();

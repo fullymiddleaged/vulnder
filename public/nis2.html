@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="How Vulnder maps to NIS2's vulnerability monitoring and handling rules and the CRA's reporting of exploited vulnerabilities, and how your own AI agent can keep the record. Free, no account, nothing stored." />
+    <title>NIS2 and the CRA: vulnerability monitoring with Vulnder</title>
+    <!-- Self-hosting under another name? Change vulnder.com here and in robots.txt, sitemap.xml and llms.txt. -->
+    <link rel="canonical" href="https://vulnder.com/nis2" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Vulnder" />
+    <meta property="og:url" content="https://vulnder.com/nis2" />
+    <meta property="og:title" content="NIS2 and the CRA: vulnerability monitoring with Vulnder" />
+    <meta property="og:description" content="What NIS2's implementing rules ask of vulnerability handling, what Vulnder does for each point, and what stays with you." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site">
+      <a href="/" class="brand" aria-label="Vulnder home">
+        <svg class="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <g fill="currentColor">
+            <path fill-rule="evenodd" d="M20 3a17 17 0 1 0 0.01 0ZM20 8.5a11.5 11.5 0 1 1-0.01 0Z" />
+            <path d="M31.5 35.5l4-4 10 10a2.8 2.8 0 0 1-4 4Z" />
+            <path d="M20 27.7C14.96 24.1 12.44 21.22 12.44 17.62 12.44 15.1 14.24 13.3 16.58 13.3 18.02 13.3 19.28 14.2 20 15.46 20.72 14.2 21.98 13.3 23.42 13.3 25.76 13.3 27.56 15.1 27.56 17.62 27.56 21.22 25.04 24.1 20 27.7Z" />
+          </g>
+        </svg>
+        <span>Vulnder</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/">Check your stack</a>
+        <a href="/about">About</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/how-it-works#agents">Use it with AI</a>
+      </nav>
+    </header>
+
+    <main id="main" class="prose" tabindex="-1">
+      <h1>NIS2 and the CRA</h1>
+      <p class="lede">
+        Vulnder can be one of the ways your organisation monitors and handles vulnerabilities under NIS2, and an early warning for manufacturers under the Cyber Resilience Act.
+        It's free and needs no account. Your own AI agent can run the routine and keep the record; Vulnder keeps no copy of your stack or its results.
+      </p>
+      <p class="notice">This page maps Vulnder's features to the legal texts. It isn't legal advice, and using Vulnder doesn't make you compliant.</p>
+
+      <section class="block" aria-labelledby="who">
+        <h2 id="who">Who the detailed rules cover</h2>
+        <p>
+          NIS2 Article 21 asks essential and important entities for "appropriate and proportionate" measures, including "vulnerability handling and disclosure" (Article 21(2)(e)).
+          Each member state sets the details in national law.
+        </p>
+        <p>
+          Implementing Regulation 2024/2690 spells them out for DNS service providers, TLD name registries, cloud computing, data centre and content delivery network providers,
+          managed service providers, managed security service providers, online marketplaces, online search engines, social networking platforms and trust service providers.
+          Section 6.10 of its Annex is the vulnerability part. Other organisations often meet similar expectations through national law, or as a supplier to one of these.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="points">
+        <h2 id="points">How Vulnder helps, point by point</h2>
+        <table class="prose-table obligations">
+          <thead>
+            <tr><th scope="col">Implementing Regulation 2024/2690</th><th scope="col">What Vulnder does</th><th scope="col">What stays with you</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">6.10.2(a): "monitor information about vulnerabilities through appropriate channels"</th>
+              <td data-label="Vulnder">Your stack link and its Atom feed track CVE records, GitHub advisories and CISA KEV hourly, and EPSS and end-of-life dates daily. An AI agent can check on a schedule through the MCP server.</td>
+              <td data-label="You">Keeping your stack list matching what you run.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.4: review the monitoring channels "at planned intervals"</th>
+              <td data-label="Vulnder">Every saved record and agent log lists each data source and when it last updated.</td>
+              <td data-label="You">The review itself.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.2(b): vulnerability scans where appropriate, with "evidence of the results" recorded</th>
+              <td data-label="Vulnder">Vulnder doesn't scan. It ranks your scanner's report (Nessus, Qualys, Tenable, Trivy, Grype) by its CVE IDs, and Export for AI saves a dated record.</td>
+              <td data-label="You">Running the scans.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.2(c): address critical vulnerabilities "without undue delay"</th>
+              <td data-label="Vulnder">Act now and Attend, with suggested response windows, a Fix first list, and out-of-support notices.</td>
+              <td data-label="You">Deciding what is critical to your operations, and fixing it.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.2(d) and 6.6.1(a): fit change and patch management; patches "within a reasonable time"</th>
+              <td data-label="Vulnder">Teams per item, Export for AI for a coding agent, and a weekly routine that opens tickets with a date to respond by.</td>
+              <td data-label="You">Your change process.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.3: a mitigation plan, or documented reasons for not remediating</th>
+              <td data-label="Vulnder">What to do meanwhile for results with no fix yet, and a decisions table in every saved record.</td>
+              <td data-label="You">The decisions and their reasons.</td>
+            </tr>
+            <tr>
+              <th scope="row">6.10.2(e): a disclosure procedure under your national coordinated vulnerability disclosure policy</th>
+              <td data-label="Vulnder">Nothing.</td>
+              <td data-label="You">All of it.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>Incident reporting under NIS2 Article 23, your asset inventory, accepting risk and keeping your records stay with you too.</p>
+      </section>
+
+      <section class="block" aria-labelledby="agent">
+        <h2 id="agent">With your own AI agent</h2>
+        <ol class="guide">
+          <li>
+            <h3>Connect your AI agent to Vulnder</h3>
+            <p>Add the MCP server <code>https://vulnder.com/mcp</code>. <a href="/how-it-works#agents">Setup for each client</a>.</p>
+          </li>
+          <li>
+            <h3>Schedule the weekly review</h3>
+            <p>
+              Keep your stack in your repository and give your agent the
+              <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/agents/nis2-weekly-review.md" rel="noreferrer">weekly review routine</a>.
+              It ranks the stack, opens or updates a ticket for everything due soon, and writes a dated log, with how fresh each data source was.
+            </p>
+          </li>
+          <li>
+            <h3>Keep the logs</h3>
+            <p>They live in your repository and ticket system. Vulnder keeps no copy.</p>
+          </li>
+        </ol>
+        <p>Without an agent, save Export for AI from the results page each week. It ends with a record of the check: when it ran, how fresh each source was, and a decisions table to fill in.</p>
+      </section>
+
+      <section class="block" aria-labelledby="cra">
+        <h2 id="cra">Manufacturers and the CRA</h2>
+        <p>
+          Since 11 September 2026, CRA Article 14 has required manufacturers to notify any actively exploited vulnerability in a product with digital elements through ENISA's single reporting platform:
+          an early warning within 24 hours of becoming aware, a notification within 72 hours, and a final report within 14 days of a fix being available. They must also inform affected users.
+        </p>
+        <p>
+          Rank your product's SBOM in Vulnder and follow its Atom feed. A component CVE on CISA KEV is an Act now result, and "Targeted by attackers" flags components with recent KEV additions.
+          CISA KEV doesn't list every exploited vulnerability, so other sources of awareness count too. The rest of the CRA, including Article 24 for open-source software stewards, applies from 11 December 2027.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="privacy">
+        <h2 id="privacy">Privacy and where it runs</h2>
+        <p>
+          Nothing you enter is stored by Vulnder. Lockfiles, SBOMs and scan reports are read in your browser. Vulnder runs on Cloudflare, which processes every request.
+          To keep everything on infrastructure you choose, <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/SELF_HOSTING.md" rel="noreferrer">run your own copy</a>: it's open source under Apache 2.0.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="texts">
+        <h2 id="texts">The texts</h2>
+        <ul class="sources small">
+          <li><a href="https://eur-lex.europa.eu/eli/dir/2022/2555/oj" rel="noreferrer">Directive (EU) 2022/2555 (NIS2)</a>, Article 21</li>
+          <li><a href="https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj" rel="noreferrer">Commission Implementing Regulation (EU) 2024/2690</a>, Annex sections 6.6 and 6.10</li>
+          <li><a href="https://eur-lex.europa.eu/eli/reg/2024/2847/oj" rel="noreferrer">Regulation (EU) 2024/2847 (Cyber Resilience Act)</a>, Articles 14, 24 and 71</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site">
+      <p class="small footer-nav">
+        <a href="/">Check your stack</a>
+        <a href="/about">About</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/nis2" aria-current="page">NIS2 and CRA</a>
+        <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">Source on GitHub</a>
+      </p>
+      <p class="small muted">
+        Data: <a href="https://github.com/CVEProject/cvelistV5" rel="noreferrer">CVE records (MITRE)</a>
+        with <a href="https://github.com/cisagov/vulnrichment" rel="noreferrer">CISA Vulnrichment</a>,
+        <a href="https://github.com/advisories" rel="noreferrer">GitHub Advisory Database</a>,
+        <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noreferrer">CISA KEV</a>,
+        <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
+        <a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks,
+        end-of-life dates from <a href="https://endoflife.date" rel="noreferrer">endoflife.date</a>,
+        and the <a href="https://github.com/rapid7/metasploit-framework" rel="noreferrer">Metasploit</a> and <a href="https://github.com/projectdiscovery/nuclei-templates" rel="noreferrer">Nuclei</a> template indexes.
+        Open source under the Apache License 2.0.
+      </p>
+    </footer>
+  </body>
+</html>

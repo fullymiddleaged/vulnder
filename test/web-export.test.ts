@@ -280,6 +280,35 @@ describe('a listed CVE list', () => {
     expect(remediationSteps(replacement)).toEqual(['Patch every system it was found on, using the fixed version or workaround in the advisory.']);
   });
 
+  it('ends with a dated record of the check, its sources and a decisions table for what is due soon', () => {
+    const sources = {
+      cve: { health: 'ok' as const, lastSuccessAt: '2026-10-08T08:15:30.000Z' },
+      kev: { health: 'stale' as const, lastSuccessAt: '2026-10-06T08:00:00.000Z' },
+      nuclei: { health: 'never' as const, lastSuccessAt: null },
+    };
+    const md = exportMarkdown(feed, 'Vulnder', sources);
+    const record = md.slice(md.indexOf('## Record of this check'));
+    expect(md.indexOf('## Record of this check')).toBeGreaterThan(md.indexOf('## No CVEs in this window'));
+    expect(record).toContain('- **Checked:** 2026-10-08 09:00 UTC');
+    expect(record).toContain('- **Results now:** <https://vulnder.test/?s=x>');
+    expect(record).toContain('  - CVE records (MITRE): 2026-10-08 08:15 UTC\n');
+    expect(record).toContain('  - CISA KEV: 2026-10-06 08:00 UTC (behind schedule)');
+    expect(record).toContain('  - Nuclei templates: never (not run yet)');
+    expect(record).not.toContain('GitHub advisories');
+    // Act now is due 24 hours after the check; the Watch result isn't listed.
+    expect(record).toContain('| CVE-2026-0001 | Act now | 2026-10-09 | | | | |');
+    expect(record).not.toContain('CVE-2026-0002');
+  });
+
+  it('says when source times weren’t available, and lists out-of-support items as decisions too', () => {
+    const quiet = { ...feed, results: [closeMatch], support: [{ state: 'eol' as const, name: 'Windows | 10', date: '2025-10-14', items: ['p:microsoft/windows_10'] }] } as Feed;
+    const record = exportMarkdown(quiet).split('## Record of this check')[1]!;
+    expect(record).toContain('- **Data sources:** when each last updated wasn’t available when this was saved.');
+    expect(record).toContain('| Windows \\| 10 | Out of support | Upgrade urgently | | | | |');
+    const none = exportMarkdown({ ...feed, results: [closeMatch] }).split('## Record of this check')[1]!;
+    expect(none).toContain('Nothing here is Act now, Attend or out of support.');
+  });
+
   it('exports the list: no window, the rejected and unknown IDs, products in Fix first', () => {
     const md = exportMarkdown(list);
     expect(md).toContain('# 2 vulnerabilities from this list, ranked');

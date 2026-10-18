@@ -502,6 +502,13 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
   .prose-table tbody :is(th, td), .prose-table tbody tr:last-child > * { border: 0; padding: 0; }
   .prose-table tbody td { margin-top: 0.15rem; }
   .priorities tbody td:nth-child(2) { width: auto; color: var(--muted); }
+  /* Without the column headings, each cell names its column. */
+  .obligations tbody td[data-label]::before { content: attr(data-label) ': '; font-weight: 700; }
+}
+/* The requirement is quoted text, so it sits in body weight beside its columns; stacked on a narrow screen it heads its block in bold. */
+.obligations tbody td:last-child { color: var(--muted); }
+@media (min-width: 36.0625rem) {
+  .obligations tbody th { width: 15rem; font-weight: 400; }
 }
 .prose ul + ul, .prose ul + table { margin-top: 1.75rem; }
 .prose li { margin: 0.8rem 0; }
@@ -515,12 +522,12 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose .guide { padding-left: 1.4rem; }
 .prose .guide > li { margin: 0 0 1.75rem; }
 .prose .guide > li::marker { font-weight: 800; color: var(--fg); }
-.guide h3 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+.guide h3 { font-size: 1rem; margin: 0 0 0.4rem; }
 .prose .guide p + ul { margin-top: 0.5rem; padding-left: 1.2rem; }
 .prose .guide ul li { margin: 0.35rem 0; }
 .prose .guide ul + p, .prose .snippet + p { margin-top: 0.75rem; }
 /* A subheading inside a section: more room above than below, so it leads what follows. */
-.prose h3.sub { font-size: 1.05rem; margin: 2.25rem 0 0.6rem; }
+.prose h3.sub { font-size: 1rem; margin: 2.25rem 0 0.6rem; }
 .snippet { margin: 0.75rem 0 0; max-width: 68ch; }
 .snippet figcaption { font-size: 0.875rem; color: var(--muted); margin-bottom: 0.25rem; }
 .snippet pre {

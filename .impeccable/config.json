@@ -38,6 +38,15 @@
         ],
         "createdAt": "2026-10-16T09:19:47.246Z",
         "reason": "Claude: .prose .block sets border-top 0 (styles.css), so prose sections have no top border; rendered screenshot confirms. Detector misses the override."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "public/nis2.html"
+        ],
+        "createdAt": "2026-10-18T09:28:23.047Z",
+        "reason": "Claude, from styles.css: .prose .block sets border-top: 0 on prose pages (DESIGN.md: prose pages separate sections with space), so no border exists; the detector reads only the global .block rule"
       }
     ]
   }
