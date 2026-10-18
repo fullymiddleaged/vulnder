@@ -244,7 +244,7 @@ A 3px-radius label filled with the tier colour, 0.8rem bold. Rank squares in Fix
 Four segments sized by the count in each tier, 0.9rem tall and 3px apart. They grow in from the left on load (0.6s, staggered 80ms), and not at all under reduced motion.
 
 ### Loader
-The logo's lens circles its own centre while the heart beats, beside a headline and a checklist of steps (pending, spinning, ticked green). It fades in after 150ms so a fast response never flashes it.
+The logo's lens circles its own centre while the heart beats, beside a headline and a checklist of steps (pending, spinning, ticked green). Reading a description, the one step with a deadline, shows a ring that turns slowly and fills Fixed Green over the most the request can take, so the end is in sight, with a muted hint below that says when it's running long. It ends in the green tick, or in an Act Red ✗ held for 700ms before the form returns with its error (a blocking problem, per the red extension). Under reduced motion the ring stops turning but still fills. The loader fades in after 150ms so a fast response never flashes it.
 
 ## Do's and Don'ts
 

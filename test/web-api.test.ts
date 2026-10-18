@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, oneAtATime, request } from '../web/api';
+import { EXTRACT_DEADLINE_MS, EXTRACT_HEDGE_MS, JEV_TIMEOUT_MS } from '../src/resolve/limits';
+import { ApiError, oneAtATime, READ_DEADLINE_MS, READ_SLOW_MS, readHint, request, RESOLVE_TIMEOUT_MS } from '../web/api';
+
+describe('reading a description', () => {
+  it("waits longer than the server's own model deadlines, so the manual fallback answers first", () => {
+    expect(READ_DEADLINE_MS).toBe(JEV_TIMEOUT_MS + EXTRACT_DEADLINE_MS + JEV_TIMEOUT_MS);
+    expect(RESOLVE_TIMEOUT_MS).toBeGreaterThan(READ_DEADLINE_MS);
+  });
+
+  it('says it is running long once the second model would have started', () => {
+    expect(READ_SLOW_MS).toBeGreaterThan(EXTRACT_HEDGE_MS);
+    expect(readHint(0)).toBe('This usually takes a few seconds.');
+    expect(readHint(READ_SLOW_MS - 1)).toBe(readHint(0));
+    expect(readHint(READ_SLOW_MS)).toMatch(/^Taking longer than usual\. When the first AI model is slow, Vulnder asks a second one\.$/);
+  });
+});
 
 /** A server that never answers: settles only when the request's signal aborts it. */
 const hang: typeof fetch = (_url, init) =>
