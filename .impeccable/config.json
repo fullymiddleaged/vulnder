@@ -43,7 +43,7 @@
         "rule": "cramped-padding",
         "value": "*",
         "files": [
-          "public/nis2.html"
+          "public/compliance.html"
         ],
         "createdAt": "2026-10-18T09:28:23.047Z",
         "reason": "Claude, from styles.css: .prose .block sets border-top: 0 on prose pages (DESIGN.md: prose pages separate sections with space), so no border exists; the detector reads only the global .block rule"
