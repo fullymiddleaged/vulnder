@@ -11,6 +11,7 @@ import {
   VULNS_BY_ID_SQL,
 } from '../src/match/components';
 import { eventsSinceSql, RECENT_EVENTS_SQL } from '../src/match/match';
+import { RECENT_KEV_PRODUCTS_SQL } from '../src/match/targeted';
 import { KEY_RANGE_SQL, KNOWN_KEYS_SQL, PREFIX_NEAR_SQL, PREFIX_SQL, VENDOR_SQL, VENDOR_TOP_SQL } from '../src/resolve/catalog';
 import { STACK_SIZE_SQL } from '../src/routes/feeds';
 import { HEALTH_META_SQL } from '../src/routes/health';
@@ -54,6 +55,7 @@ describe('request-path query plans', () => {
     ['catalog keys', KNOWN_KEYS_SQL, ['["npm:next","cisco/ios_xe"]']],
     ['affected packages', AFFECTED_PACKAGES_SQL, ['[["npm","next"]]']],
     ['affected products', AFFECTED_PRODUCTS_SQL, ['[["cisco","ios_xe"]]']],
+    ['recent KEV adds by product', RECENT_KEV_PRODUCTS_SQL, ['2026-07-20']],
     ['vulns by id', VULNS_BY_ID_SQL, ['["CVE-2026-0001"]']],
     ['events since', eventsSinceSql(SINCE), ['["CVE-2026-0001"]']],
     ['recent events', RECENT_EVENTS_SQL, [SINCE]],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -375,6 +375,51 @@ describe('support notices', () => {
   it('keeps an out-of-support item out of a row with a supported one, even with the same CVEs', () => {
     const fix = (item: string, support?: 'eol') => ({ item, score: 1, counts: { act: 0, attend: 0, watch: 0, track: 1 }, vulns: ['CVE-1'], fixable: 0, ...(support && { support }) });
     expect(componentGroups([fix('p:microsoft/windows_server_2012_r2', 'eol'), fix('p:microsoft/windows_server_2016')], [])).toHaveLength(2);
+  });
+});
+
+describe('targeted notices', () => {
+  const kev = (id: string, addedAt = '2026-10-01') => ({ id, addedAt });
+  const hit = (id: string, matched: string[]) => ({ id, matched }) as unknown as Result;
+
+  it('counts one or many', () => {
+    expect(targetedCount({ items: [], kev: [kev('CVE-1')] })).toBe('one of its CVEs');
+    expect(targetedCount({ items: [], kev: [kev('CVE-1'), kev('CVE-2')] })).toBe('2 of its CVEs');
+  });
+
+  it('says whether the KEV CVEs are in the results for that item', () => {
+    const n = { items: ['p:ivanti/connect_secure'], kev: [kev('CVE-1'), kev('CVE-2')] };
+    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure']), hit('CVE-2', ['p:ivanti/connect_secure'])])).toBe('Both affect your stack: see Act now below.');
+    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure'])])).toBe('1 of them affects your stack (see Act now below); the others affect versions you don’t run.');
+    const three = { ...n, kev: [kev('CVE-1'), kev('CVE-2'), kev('CVE-3')] };
+    expect(targetedStatus(three, ['CVE-1', 'CVE-2', 'CVE-3'].map((id) => hit(id, ['p:ivanti/connect_secure'])))).toBe('All 3 affect your stack: see Act now below.');
+    expect(targetedStatus(n, [])).toBe('None affect the version you gave, but the product is a target.');
+    // A result for the same CVE under another item doesn't count for this one.
+    expect(targetedStatus(n, [hit('CVE-1', ['p:other/thing'])])).toBe('None affect the version you gave, but the product is a target.');
+    const one = { items: ['npm:next@14.2.3'], kev: [kev('CVE-9')] };
+    expect(targetedStatus(one, [hit('CVE-9', ['npm:next@14.2.3'])])).toBe('It affects your stack: see Act now below.');
+    expect(targetedStatus(one, [])).toBe('It doesn’t affect the version you gave, but the product is a target.');
+  });
+
+  it('talks about the list for a listed CVE’s product, where results match cve: items', () => {
+    const n = { items: ['p:ivanti/connect_secure'], kev: [kev('CVE-1'), kev('CVE-2')], listed: true as const, label: 'Ivanti Connect Secure' };
+    const listed = (id: string) => hit(id, [`cve:${id.slice(4)}`]);
+    expect(targetedStatus(n, [listed('CVE-1'), listed('CVE-2')])).toBe('Both are in your list: see Act now below.');
+    expect(targetedStatus(n, [listed('CVE-1')])).toBe('1 of them is in your list (see Act now below); the others aren’t.');
+    expect(targetedStatus(n, [])).toBe('None are in your list, but the product is a target.');
+    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [listed('CVE-1')])).toBe('It’s in your list: see Act now below.');
+    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [])).toBe('It isn’t in your list, but the product is a target.');
+  });
+
+  it('finds each item’s notice by its name, whatever its marks', () => {
+    const n = { items: ['?p:microsoft/windows_11_24h2;endpoints'], kev: [kev('CVE-1')] };
+    expect(targetedByItem([n]).get('p:microsoft/windows_11_24h2')).toBe(n);
+  });
+
+  it('stays on KEV’s word and keeps priorities out of it', () => {
+    expect(TARGETED_INTRO).toContain('Known Exploited Vulnerabilities catalog');
+    expect(TARGETED_INTRO).toContain('Priorities don’t change.');
+    expect(TARGETED_INTRO).not.toMatch(/EPSS/);
   });
 });
 

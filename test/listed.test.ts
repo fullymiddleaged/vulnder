@@ -161,6 +161,61 @@ describe('matchStack with listed CVEs', () => {
     expect(queries).toBe(3);
   });
 
+  describe('targeted products', () => {
+    // A PostgreSQL CVE CISA added to KEV 10 days ago, and an OpenSSL one 200 days ago.
+    beforeEach(async () => {
+      await applyPatches(
+        store(),
+        [
+          {
+            source: 'kev',
+            id: 'CVE-2026-2001',
+            aliases: [],
+            fields: { title: 'PostgreSQL auth bypass', kevAddedAt: daysAgo(10), kevRansomware: false, kevDueDate: null },
+            affected: [{ kind: 'product', vendor: 'postgresql', product: 'postgresql', ranges: [], fixedVersion: null }],
+          },
+          {
+            source: 'kev',
+            id: 'CVE-2026-2002',
+            aliases: [],
+            fields: { title: 'OpenSSL leak', kevAddedAt: daysAgo(200), kevRansomware: false, kevDueDate: null },
+            affected: [{ kind: 'product', vendor: 'openssl', product: 'openssl', ranges: [], fixedVersion: null }],
+          },
+        ],
+        { now: NOW, windowStart: daysAgo(90), epssEvents: true },
+      );
+    });
+
+    it('notes a listed CVE’s product with a recent KEV add, by its label, in one more query', async () => {
+      const counting = store();
+      const all = counting.all.bind(counting);
+      const sql: string[] = [];
+      counting.all = ((s: string, p?: unknown[]) => (sql.push(s), all(s, p))) as typeof counting.all;
+      const res = await matchStack(counting, parseStack('cve:2026-1003,cve:2014-0160'), { now: NOW, days: 30, osv: noOsv });
+      expect(res.targeted).toEqual([
+        { items: ['p:postgresql/postgresql'], kev: [{ id: 'CVE-2026-2001', addedAt: daysAgo(10).slice(0, 10) }], listed: true, label: 'PostgreSQL' },
+      ]);
+      // OpenSSL's KEV add is too old; the lookup ran once for both products.
+      expect(sql.filter((s) => s.includes('CROSS JOIN affected'))).toHaveLength(1);
+      expect(res.fixFirst.find((f) => f.item === 'p:postgresql/postgresql')?.listed).toBe(true);
+    });
+
+    it('leaves it to the stack item when the stack names the same product', async () => {
+      const res = await matchStack(store(), parseStack('p:postgresql/postgresql,cve:2026-1003'), { now: NOW, days: 30, osv: noOsv });
+      expect(res.targeted).toEqual([{ items: ['p:postgresql/postgresql'], kev: [{ id: 'CVE-2026-2001', addedAt: daysAgo(10).slice(0, 10) }] }]);
+    });
+
+    it('skips the lookup for a list with no products', async () => {
+      const sql: string[] = [];
+      const spy = store();
+      const all = spy.all.bind(spy);
+      spy.all = ((s: string, p?: unknown[]) => (sql.push(s), all(s, p))) as typeof spy.all;
+      const res = await matchStack(spy, parseStack('cve:2018-1000'), { now: NOW, days: 30, osv: noOsv });
+      expect(res.targeted).toEqual([]);
+      expect(sql.some((s) => s.includes('CROSS JOIN affected'))).toBe(false);
+    });
+  });
+
   it('ranks a listed CVE on its exploit reference and a Metasploit module, however old', async () => {
     await index([
       { id: 'CVE-2016-2000', published_at: '2016-01-01T00:00:00.000Z', title: 'Old with a PoC', cvss_score: 5, exploit_ref: 'https://example.com/poc' },

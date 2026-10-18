@@ -100,6 +100,18 @@ export interface FixItem {
 export type SupportState = 'eol' | 'ending' | 'covered';
 
 /** A stack item's vendor support finding (src/match/support.ts). */
+/** Stack items whose CVEs CISA added to KEV in the last 90 days, whatever version they affect (src/match/targeted.ts). */
+export interface TargetedNotice {
+  /** The stack items it's about. */
+  items: string[];
+  /** Newest first; addedAt is YYYY-MM-DD. */
+  kev: { id: string; addedAt: string }[];
+  /** The product of listed CVEs (a Fix first group), not an item the stack names. */
+  listed?: true;
+  /** That product's display name, when known. */
+  label?: string;
+}
+
 export interface SupportNotice {
   state: SupportState;
   /** "Windows Server 2012 R2". */
@@ -138,6 +150,8 @@ export interface Feed {
   fixFirst: FixItem[];
   /** Out of support, losing it soon, or on paid extended support; absent from feeds cached before it existed. */
   support?: SupportNotice[];
+  /** Items with CVEs CISA added to KEV in the last 90 days; absent from feeds cached before it existed. */
+  targeted?: TargetedNotice[];
   changes: Change[];
   results: Result[];
   watching: string[];

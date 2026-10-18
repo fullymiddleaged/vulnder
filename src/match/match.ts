@@ -11,6 +11,7 @@ import { matchListed, type Listed } from './listed';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 import { supportFor, type Support, type SupportState } from './support';
+import { recentKev, recentKevByProduct, type KevAdd } from './targeted';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -113,8 +114,21 @@ export interface MatchResult {
   fixFirst: FixItem[];
   /** Stack items out of support, losing it soon, or kept going by paid extended support (src/match/support.ts). */
   support: SupportNotice[];
+  /** Stack items with CVEs CISA added to KEV in the last 90 days, whatever version they affect (src/match/targeted.ts). */
+  targeted: TargetedNotice[];
   /** For a stack with `cve:` items: the listed IDs that were rejected or aren't published CVEs. */
   listed?: Listed;
+}
+
+export interface TargetedNotice {
+  /** The stack items (canonical form) it's about; close matches with the same KEV adds share one. */
+  items: string[];
+  /** Their CVEs added to KEV in the last 90 days, newest first. */
+  kev: KevAdd[];
+  /** The product of listed CVEs (a Fix first group), not an item the stack names; present only then. */
+  listed?: true;
+  /** That product's display name, when the index has one. */
+  label?: string;
 }
 
 export interface SupportNotice extends Support {
@@ -335,6 +349,35 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
     (a, b) => SUPPORT_ORDER.indexOf(a.state) - SUPPORT_ORDER.indexOf(b.state) || a.name.localeCompare(b.name) || a.items[0]!.localeCompare(b.items[0]!),
   );
 
+  // 6. Products attackers are working on, per item: its CVEs CISA added to KEV
+  // lately, whatever version they affect. A note only; nothing ranks by it.
+  const byKev = new Map<string, TargetedNotice>();
+  for (const item of items) {
+    const kev = recentKev(loaded.get(itemKey(item))?.vulns ?? [], opts.now);
+    if (kev.length === 0) continue;
+    const same = JSON.stringify(kev.map((k) => k.id));
+    const notice = byKev.get(same);
+    if (notice) notice.items.push(formatItem(item));
+    else byKev.set(same, { items: [formatItem(item)], kev });
+  }
+  // Listed CVEs' products, unless the stack names the same item: one small query for all of them.
+  const named = new Set(items.map(formatItem));
+  const listedProducts = [...new Set(fixGroup.values())].filter((g) => g.startsWith('p:') && !named.has(g));
+  const listedNotices: TargetedNotice[] = [];
+  if (listedProducts.length > 0) {
+    const byProduct = await recentKevByProduct(store, opts.now);
+    for (const group of listedProducts) {
+      const p = parseComponent(group);
+      const kev = p.kind === 'product' ? byProduct.get(`${p.vendor}/${p.product}`) : undefined;
+      if (!kev) continue;
+      const label = labels.get(group);
+      listedNotices.push({ items: [group], kev, listed: true, ...(label && { label }) });
+    }
+  }
+  const targeted = [...byKev.values(), ...listedNotices].sort(
+    (a, b) => b.kev.length - a.kev.length || b.kev[0]!.addedAt.localeCompare(a.kev[0]!.addedAt) || a.items[0]!.localeCompare(b.items[0]!),
+  );
+
   // In Fix first a listed CVE counts under its group, not under its own `cve:` item.
   const ranked = fixFirst(
     results.map((r) => {
@@ -351,7 +394,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
     const label = labels.get(f.item);
     if (label) f.label = label;
   }
-  return { results, watching, versionCheckUnavailable, fixFirst: ranked, support, ...(listed && { listed }) };
+  return { results, watching, versionCheckUnavailable, fixFirst: ranked, support, targeted, ...(listed && { listed }) };
 }
 
 /**

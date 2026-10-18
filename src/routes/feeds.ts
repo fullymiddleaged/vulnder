@@ -2,8 +2,9 @@ import { Hono, type Context } from 'hono';
 import { D1BindingStore } from '../ingest/d1-store';
 import { CHECKS_SERVED_KEY, DATA_VERSION_KEY, getMeta } from '../ingest/meta';
 import { addDays, describeHours } from '../lib/time';
-import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult, type SupportNotice } from '../match/match';
+import { changesFor, matchStack, type ChangeEvent, type MatchedVuln, type MatchResult, type SupportNotice, type TargetedNotice } from '../match/match';
 import { supportText } from '../match/support';
+import { targetedName, targetedText } from '../match/targeted';
 import { getCookie } from 'hono/cookie';
 import { clientKey } from '../lib/client';
 import { isSpent, lockedStatus, PASS_COOKIE, usePass } from '../lib/pass';
@@ -255,6 +256,7 @@ export const feeds = new Hono<AppEnv>()
         priorities: Object.fromEntries(PRIORITIES.map((p) => [p, match.results.filter((r) => r.priority === p).length])),
         fixFirst: match.fixFirst,
         support: match.support,
+        targeted: match.targeted,
         changes: changes.map((e) => ({ ...e, title: byId.get(e.vulnId)?.title ?? null, tier: byId.get(e.vulnId)?.tier })),
         results: match.results,
         watching: match.watching,
@@ -285,6 +287,7 @@ export const feeds = new Hono<AppEnv>()
         events,
         vulns: new Map(match.results.map((r) => [r.id, r])),
         support: match.support,
+        targeted: match.targeted,
       });
       return c.body(xml, 200, { 'Content-Type': 'application/atom+xml; charset=utf-8' });
     });
@@ -349,6 +352,8 @@ export function atomFeed(opts: {
   vulns: Map<string, MatchedVuln>;
   /** Out-of-support findings: one entry each, dated when support ended (or ends). */
   support?: SupportNotice[];
+  /** Products with CVEs CISA added to KEV in the last 90 days: one entry each, dated by the latest add. */
+  targeted?: TargetedNotice[];
 }): string {
   const links = stackLinks(opts.base, opts.canonical, opts.days);
   const updated = opts.events[0]?.occurredAt ?? opts.now.toISOString();
@@ -368,6 +373,19 @@ export function atomFeed(opts: {
     <summary type="text">${xml([...supportText(s), `Matched: ${s.items.join(', ')}.`].join('\n\n'))}</summary>
   </entry>`;
     });
+  const targetedEntries = (opts.targeted ?? []).map((t) => {
+    const latest = t.kev[0]!;
+    // Stable until CISA adds another of its CVEs, so a reader shows it once per add.
+    const id = `${opts.base}/targeted/${encodeURIComponent(t.items[0]!)}/${encodeURIComponent(latest.id)}`;
+    return `  <entry>
+    <id>${xml(id)}</id>
+    <title>${xml(`Targeted: ${targetedName(t)}`)}</title>
+    <updated>${xml(`${latest.addedAt}T00:00:00.000Z`)}</updated>
+    <link rel="alternate" href="${xml(links.page)}"/>
+    <category term="targeted"/>
+    <summary type="text">${xml([...targetedText(t), `Matched: ${t.items.join(', ')}.`].join('\n\n'))}</summary>
+  </entry>`;
+  });
   const entries = opts.events.map((e) => {
     const v = opts.vulns.get(e.vulnId);
     const id = `${opts.base}/events/${encodeURIComponent(e.vulnId)}/${e.type}/${encodeURIComponent(e.occurredAt)}`;
@@ -390,7 +408,7 @@ export function atomFeed(opts: {
   <link rel="self" href="${xml(links.atom)}"/>
   <link rel="alternate" href="${xml(links.page)}"/>
   <generator>${xml(opts.displayName)}</generator>
-${[...supportEntries, ...entries].join('\n')}
+${[...supportEntries, ...targetedEntries, ...entries].join('\n')}
 </feed>
 `;
 }

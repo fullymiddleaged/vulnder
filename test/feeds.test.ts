@@ -514,6 +514,73 @@ describe('vendor support', () => {
   });
 });
 
+describe('targeted products', () => {
+  it('notes items with CVEs added to KEV in the last 90 days, without touching the ranking', async () => {
+    const res = await matchStack(store(), parseStack(STACK), { now: NOW, days: 30, osv: fakeOsv() });
+    const day = (n: number) => daysAgo(n).slice(0, 10);
+    expect(res.targeted).toEqual([
+      { items: ['p:cisco/ios_xe'], kev: [{ id: 'CVE-2026-1005', addedAt: day(1) }] },
+      { items: ['npm:next@14.2.3'], kev: [{ id: 'CVE-2026-1001', addedAt: day(3) }] },
+    ]);
+    // The same bands and scores as without it (see 'returns the tiered results').
+    expect(res.results.map((r) => [r.id, r.priority, r.score])).toEqual([
+      ['CVE-2026-1001', 'act', 91],
+      ['CVE-2026-1005', 'act', 60],
+      ['CVE-2026-1003', 'watch', 0.9],
+    ]);
+  });
+
+  it('counts a KEV add the version given isn’t affected by, and leaves out older ones', async () => {
+    await applyPatches(
+      store(),
+      [
+        // OSV says next@14.2.3 isn't affected by 1002, so no result; it still shows Next.js is targeted.
+        { source: 'kev', id: 'CVE-2026-1002', aliases: [], fields: { kevAddedAt: daysAgo(20), kevRansomware: false, kevDueDate: null } },
+        // PostgreSQL's KEV add is 120 days old: outside the 90.
+        { source: 'kev', id: 'CVE-2026-1003', aliases: [], fields: { kevAddedAt: daysAgo(120), kevRansomware: false, kevDueDate: null } },
+      ],
+      { now: NOW, windowStart: daysAgo(90), epssEvents: true },
+    );
+    const res = await matchStack(store(), parseStack('npm:next@14.2.3,p:postgresql/postgresql@16'), { now: NOW, days: 30, osv: fakeOsv() });
+    expect(res.results.map((r) => r.id)).not.toContain('CVE-2026-1002');
+    expect(res.targeted).toEqual([{ items: ['npm:next@14.2.3'], kev: [{ id: 'CVE-2026-1001', addedAt: daysAgo(3).slice(0, 10) }, { id: 'CVE-2026-1002', addedAt: daysAgo(20).slice(0, 10) }] }]);
+  });
+
+  it('groups close matches that share the same KEV adds', async () => {
+    await applyPatches(
+      store(),
+      [
+        {
+          source: 'kev',
+          id: 'CVE-2026-1201',
+          aliases: [],
+          fields: { title: 'Windows SMB', kevAddedAt: daysAgo(5), kevRansomware: false, kevDueDate: null },
+          affected: [
+            { kind: 'product', vendor: 'microsoft', product: 'windows_11_24h2', ranges: [], fixedVersion: null },
+            { kind: 'product', vendor: 'microsoft', product: 'windows_11_23h2', ranges: [], fixedVersion: null },
+          ],
+        },
+      ],
+      { now: NOW, windowStart: daysAgo(90), epssEvents: true },
+    );
+    const res = await matchStack(store(), parseStack('?p:microsoft/windows_11_24h2,?p:microsoft/windows_11_23h2'), { now: NOW, days: 30, osv: fakeOsv() });
+    // Canonical stack order.
+    expect(res.targeted).toEqual([{ items: ['?p:microsoft/windows_11_23h2', '?p:microsoft/windows_11_24h2'], kev: [{ id: 'CVE-2026-1201', addedAt: daysAgo(5).slice(0, 10) }] }]);
+  });
+
+  it('serves them in the JSON feed and as Atom entries', async () => {
+    stubOsvFetch();
+    const s = encodeURIComponent('p:cisco/ios_xe');
+    const body = (await (await app.request(`/api/feed?s=${s}`, {}, env)).json()) as { targeted: { items: string[]; kev: { id: string }[] }[] };
+    expect(body.targeted).toMatchObject([{ items: ['p:cisco/ios_xe'], kev: [{ id: 'CVE-2026-1005' }] }]);
+    const xml = await (await app.request(`/feed.xml?s=${s}`, {}, env)).text();
+    expect(xml).toContain('<title>Targeted: cisco/ios_xe</title>');
+    expect(xml).toContain(`<id>${env.BASE_URL}/targeted/p%3Acisco%2Fios_xe/CVE-2026-1005</id>`);
+    expect(xml).toContain(`<updated>${daysAgo(1).slice(0, 10)}T00:00:00.000Z</updated>`);
+    expect(xml).toContain('CISA added one of its CVEs to its Known Exploited Vulnerabilities catalog in the last 90 days, most recently CVE-2026-1005');
+  });
+});
+
 describe('GET /feed.xml', () => {
   it('has one entry per event, with IDs built from the base URL', async () => {
     stubOsvFetch();
@@ -521,9 +588,11 @@ describe('GET /feed.xml', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('application/atom+xml');
     const xml = await res.text();
-    const entries = xml.match(/<entry>/g) ?? [];
+    const entries = xml.match(/<id>[^<]*\/events\//g) ?? [];
     // 1005: kev_added; 1001: published + kev_added; 1003: published (KEV stub 1005 has no publication date).
     expect(entries).toHaveLength(4);
+    // Plus one "targeted" entry per item with a recent KEV add: Next.js and IOS XE.
+    expect(xml.match(/<category term="targeted"\/>/g) ?? []).toHaveLength(2);
     expect(xml).toContain(`<id>${env.BASE_URL}/events/CVE-2026-1001/kev_added/`);
     expect(xml).toContain('Known exploited (added to CISA KEV): CVE-2026-1005: Cisco IOS XE web UI privilege escalation');
     expect(xml).not.toMatch(/weaponi[sz]ed/i);
