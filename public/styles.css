@@ -429,7 +429,8 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .loader p { margin: 0.3rem 0 0; }
 /* Circles the lens about its own centre without turning it, like a hand sweeping a magnifier. */
 .loader .lens { transform-box: view-box; transform-origin: 20px 20px; animation: sweep 1.8s linear infinite; }
-.loader .heart { transform-box: fill-box; transform-origin: center; animation: beat 1.2s ease-in-out infinite; }
+/* The shield's right half swings on the foot of its crack, closing and opening the break. */
+.loader .crack { transform-box: fill-box; transform-origin: 0% 100%; animation: crack 1.6s ease-in-out infinite; }
 /* What the feed load checks: pending, then the one in progress, then ticked. */
 .loader .steps { list-style: none; padding: 0; margin: 0.9rem 0 0; display: grid; gap: 0.2rem; }
 /* Pending steps are muted by colour, not opacity, so they keep text contrast. */
@@ -446,11 +447,9 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
   from { transform: rotate(0deg) translateX(3px) rotate(0deg); }
   to { transform: rotate(360deg) translateX(3px) rotate(-360deg); }
 }
-@keyframes beat {
-  0%, 45%, 100% { transform: scale(1); }
-  12% { transform: scale(1.22); }
-  26% { transform: scale(1.06); }
-  34% { transform: scale(1.16); }
+@keyframes crack {
+  0%, 100% { transform: rotate(-6deg); }
+  45%, 70% { transform: rotate(3deg); }
 }
 
 /* About and How it works: static pages of prose. */
@@ -493,6 +492,19 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .keyed tbody th { width: 11rem; }
 .priorities tbody th { width: 6rem; white-space: nowrap; }
 .priorities tbody td:nth-child(2) { width: 9rem; }
+/* Brand page: each logo file on the paper it's meant for, whatever the page theme, so both versions are always shown. */
+.prose .brand-assets { list-style: none; padding: 0; margin: 1.25rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; }
+.prose .brand-assets li { max-width: none; }
+.brand-asset { border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.brand-asset .art { display: grid; place-items: center; min-height: 9rem; padding: 1.5rem; }
+.brand-asset .art img { width: 6rem; height: 6rem; }
+.brand-asset .art img.wide { width: min(100%, 14rem); height: auto; }
+.brand-asset .on-light { background: #f5f3f8; }
+.brand-asset .on-dark { background: #131118; }
+.brand-asset .meta { flex: 1; display: grid; align-content: start; gap: 0.2rem; padding: 0.75rem 1rem; background: var(--card); border-top: 1px solid var(--border); }
+.brand-asset .files { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; }
+.swatch { display: inline-block; width: 1rem; height: 1rem; margin-right: 0.5rem; border: 1px solid var(--border); border-radius: 0.25rem; vertical-align: -0.15rem; }
+.swatch + code { margin-right: 0.5rem; }
 /* On a narrow screen each row becomes a block: label, then its lines. Column headings drop out, so cells must read alone. */
 @media (max-width: 36rem) {
   .prose-table, .prose-table tbody, .prose-table tr, .prose-table th, .prose-table td { display: block; width: auto; }
@@ -590,7 +602,7 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 @media (prefers-reduced-motion: reduce) {
   .expand::after { transition: none; }
   .risk-strip span { animation: none; }
-  .loader, .loader .lens, .loader .heart { animation: none; }
+  .loader, .loader .lens, .loader .crack { animation: none; }
   .loader .step { transition: none; }
   .loader .step[data-state='active']::before { animation: none; border-top-color: var(--accent); }
   .loader .step[data-state='done']::before { animation: none; }

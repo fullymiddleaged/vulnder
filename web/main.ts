@@ -606,7 +606,7 @@ const STEP_FINISH_MS = 450;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** The logo at work: the magnifier circles as if scanning while the heart beats. */
+/** The logo at work: the magnifier circles as if scanning while the broken shield's right half swings on its crack. */
 function loader(title: string, detail: string, steps: HTMLElement | null): HTMLElement {
   const mark = svg(
     'svg',
@@ -616,9 +616,10 @@ function loader(title: string, detail: string, steps: HTMLElement | null): HTMLE
       { class: 'lens', fill: 'currentColor' },
       svg('path', { 'fill-rule': 'evenodd', d: 'M20 3a17 17 0 1 0 0.01 0ZM20 8.5a11.5 11.5 0 1 1-0.01 0Z' }),
       svg('path', { d: 'M31.5 35.5l4-4 10 10a2.8 2.8 0 0 1-4 4Z' }),
+      svg('path', { d: 'M18.34 11.74L12.23 13.9L12.23 19.36C12.23 23.73 15.05 26.79 18.74 28.71L19.38 24.58L17.35 21.42L19.83 18.11L17.68 15.37Z' }),
       svg('path', {
-        class: 'heart',
-        d: 'M20 27.7C14.96 24.1 12.44 21.22 12.44 17.62 12.44 15.1 14.24 13.3 16.58 13.3 18.02 13.3 19.28 14.2 20 15.46 20.72 14.2 21.98 13.3 23.42 13.3 25.76 13.3 27.56 15.1 27.56 17.62 27.56 21.22 25.04 24.1 20 27.7Z',
+        class: 'crack',
+        d: 'M22.06 11.8L28.25 14.88L27.58 20.3C27.07 24.49 24.1 27.14 20.39 28.62L21.57 24.46L20.16 21.54L23.11 18.47L21.04 15.05Z',
       }),
     ),
   );

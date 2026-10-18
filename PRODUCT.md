@@ -43,7 +43,7 @@ Ranks by evidence of exploitation (CISA KEV, SSVC "active") ahead of prediction 
 ## Brand Commitments
 
 - Name: Vulnder. The brand is about vulnerabilities (bugs, CVEs, scanning), never vultures.
-- Logo: a playful Tinder nod (heart, match) combined with a bug or scanner image.
+- Logo: a magnifying glass finding a broken shield. The crack is drawn like a broken heart's, keeping the Tinder nod, and the subject is the weak spot someone could get through, not the bug itself. The favicon (the icon) is the broken shield alone. Files and usage notes live at `/brand`.
 - Type: Atkinson Next and Atkinson Mono.
 - Playfulness lives in the logo, tagline and empty states only. Tiers, scores, reasons and anything describing a vulnerability stay plain and factual.
 - British spelling in copy.

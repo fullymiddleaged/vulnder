@@ -6,6 +6,9 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- **Brand and logo files** (`/brand`): the logo, the icon and the logo with the name, as SVG and transparent PNG for light and dark backgrounds, with the colours and short notes on using them. Every page's footer and the sitemap link to it.
+- **Shared links show a preview card.** Every page now has a 1200 × 630 social image with the logo and tagline, so links posted to chat apps and social sites show a large card.
+- **robots.txt welcomes AI use**: a Content-Signal line says search engines, AI assistants answering questions, and AI training may all use Vulnder's pages.
 - **NIS2 and the CRA** (`/nis2`, and docs/NIS2.md): how Vulnder maps, point by point, to the vulnerability monitoring and handling rules in NIS2's Implementing Regulation 2024/2690 (Annex 6.10) and to CRA Article 14's reporting of actively exploited vulnerabilities, with what stays with you. Every page's footer, How it works, the sitemap and llms.txt link to it. It isn't legal advice.
 - **A weekly review routine for your AI agent** (docs/agents/nis2-weekly-review.md): it ranks the stack kept in your repository through the MCP server, opens or updates a ticket for each Act now, Attend and out-of-support item with a date to respond by, and writes a dated log with how fresh each data source was. Vulnder keeps no copy.
 - **Export for AI ends with a record of the check**: when it ran, when each data source last updated, and a decisions table (owner, action, decided on, done on) with a row for each Act now, Attend and out-of-support item and the date to respond by. It's built in your browser; the only extra request is the data-source status the footer already loads.
@@ -23,6 +26,8 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - **For self-hosters: an index of every CVE ever assigned** (migration 0009, table `cve_index`), groundwork for ranking a pasted list of CVEs whatever their age. It holds about 404,000 slim rows. Ingest keeps it current with a few thousand row writes a day, and no table reads beyond one per changed record. On an existing deployment, apply the migration, then run `npm run backfill -- --index-only --remote` once (add `--max-rows 80000` and repeat daily on Workers Free). Without the migration, ingest runs exactly as before and skips the index.
 
 ### Changed
+
+- **A new logo**: the magnifying glass now finds a broken shield instead of a heart, because a vulnerability matters when someone can get through it. The crack still nods to the dating-app joke. The favicon is the broken shield on its own, which stays readable at 16 pixels, and the loader's shield cracks open while the lens sweeps.
 
 - **Wider pages on desktop.** Every page now uses a column up to 864px wide (it was 768px), so Fix first rows, badges and tables have more room. Sentences such as summaries and notices still stop at a comfortable reading width.
 - **Fix first CVE rows stay on one line.** A long CVE title is clipped with an ellipsis instead of wrapping onto its own line, so every row's priority and ID line up. Hover for the full title; it's also shown in full in the results below.
