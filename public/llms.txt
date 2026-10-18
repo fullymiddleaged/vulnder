@@ -1,6 +1,6 @@
 # Vulnder
 
-> A stack-aware CVE feed. Describe what you run (free text, a manifest, or items added by hand) and see the vulnerabilities from the last 30 days that affect it, ranked by real-world exploitation: CISA KEV and CISA's active-exploitation reports first, then EPSS predictions, then CVSS severity. No account; the stack lives in the URL.
+> A stack-aware CVE feed. Describe what you run (free text, a manifest, items added by hand, or a list of CVE IDs) and see the vulnerabilities that affect it (the last 30 days by default), ranked by what to fix first: CISA KEV and CISA's active-exploitation reports first, then EPSS predictions, then CVSS severity. No account; the stack lives in the URL.
 
 Every result has a priority (Act now, Attend, Watch, Track), a 0–100 risk score for ordering within a priority, and the reasons for both. Scores are heuristics, not probabilities. Only CISA KEV and CISA's active-exploitation reports count as evidence of exploitation; EPSS is a predicted probability.
 

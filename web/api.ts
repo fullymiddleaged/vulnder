@@ -216,6 +216,25 @@ export async function request(url: string, init: RequestInit, timeoutMs: number,
   }
 }
 
+/**
+ * A lock for sends: `run` does nothing, and says so, while an earlier send is
+ * still out, so a double click or a second drop sends one request. Shared by
+ * both tabs, since either one's lookup spends the same allowance.
+ */
+export function oneAtATime(): (send: () => Promise<void>) => Promise<boolean> {
+  let busy = false;
+  return async (send) => {
+    if (busy) return false;
+    busy = true;
+    try {
+      await send();
+    } finally {
+      busy = false;
+    }
+    return true;
+  };
+}
+
 export const getPass = () => request('/api/pass', {}, SMALL_TIMEOUT_MS).then((r) => json<PassStatus>(r));
 /** Trades a Turnstile token for a pass, as a description's lookup does; the CVE list tab's lookup goes straight to the feed. */
 export const earnPass = (turnstileToken: string) =>

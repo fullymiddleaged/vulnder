@@ -79,7 +79,7 @@
             <tr><th scope="col">Priority</th><th scope="col">Respond</th><th scope="col">Main triggers</th></tr>
           </thead>
           <tbody>
-            <tr><th scope="row">Act now</th><td>Within 24 hours, or 3 days before exploitation is seen</td><td>In CISA KEV or actively exploited. Before that: EPSS 50%+, a critical bug with EPSS 10%+, or an edge device an attacker can take over automatically.</td></tr>
+            <tr><th scope="row">Act now</th><td>Within 24 hours, or 3 days before exploitation is seen</td><td>In CISA KEV or actively exploited. Before that: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, or an edge device an attacker can take over automatically.</td></tr>
             <tr><th scope="row">Attend</th><td>Within 7 days</td><td>EPSS 10%+, NIST LEV 20%+, CVSS 9.0+, a Metasploit exploit module, or a similar CVE in the product exploited.</td></tr>
             <tr><th scope="row">Watch</th><td>Within 30 days</td><td>CVSS 8.0+, public proof-of-concept code, or rated automatable by CISA.</td></tr>
             <tr><th scope="row">Track</th><td>Next routine update</td><td>Affects your stack; nothing above applies.</td></tr>
@@ -95,7 +95,7 @@
         <h2 id="principles">Design choices</h2>
         <table class="prose-table keyed">
           <tbody>
-            <tr><th scope="row">No account</th><td>The stack is encoded in the URL. The same link gives a JSON feed, an Atom feed and a badge.</td></tr>
+            <tr><th scope="row">No account</th><td>The stack is encoded in the URL, so results can be bookmarked or shared. The same link gives an Atom feed, a README badge and, for scripts, a JSON feed.</td></tr>
             <tr><th scope="row">Private</th><td>Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. Vulnder doesn't store your stack, your files or your CVE lists; files and CVE lists are read in your browser. <a href="/how-it-works#privacy">Privacy details</a></td></tr>
             <tr><th scope="row">Nothing hidden</th><td>Every match is shown. Close matches for broad names are labelled as close.</td></tr>
             <tr><th scope="row">AI extracts, code ranks</th><td>A model turns free text into stack items. Code does the matching and ranking. <a href="/how-it-works#ai">Where AI is used</a></td></tr>

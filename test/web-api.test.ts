@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, request } from '../web/api';
+import { ApiError, oneAtATime, request } from '../web/api';
 
 /** A server that never answers: settles only when the request's signal aborts it. */
 const hang: typeof fetch = (_url, init) =>
@@ -23,5 +23,27 @@ describe('request', () => {
     const res = await request('/api/resolve', { method: 'POST', body: '{}' }, 1000, ok);
     expect(await res.json()).toEqual({ ok: true });
     expect(seen).toMatchObject({ method: 'POST', body: '{}', signal: expect.any(AbortSignal) });
+  });
+});
+
+describe('oneAtATime', () => {
+  it('drops a second send while the first is out, and takes the next one after it settles', async () => {
+    const run = oneAtATime();
+    let release!: () => void;
+    let sends = 0;
+    const slow = () => new Promise<void>((r) => ((sends += 1), (release = r)));
+    const first = run(slow);
+    expect(await run(slow)).toBe(false);
+    expect(sends).toBe(1);
+    release();
+    expect(await first).toBe(true);
+    expect(await run(async () => void (sends += 1))).toBe(true);
+    expect(sends).toBe(2);
+  });
+
+  it('lets go after a send that fails', async () => {
+    const run = oneAtATime();
+    await expect(run(async () => Promise.reject(new Error('down')))).rejects.toThrow('down');
+    expect(await run(async () => {})).toBe(true);
   });
 });
