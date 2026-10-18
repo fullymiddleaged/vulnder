@@ -27,6 +27,15 @@ export interface ManifestParser {
   matchesFilename(filename: string): boolean;
   /** True when content alone identifies the format, for pasted text. */
   sniff(text: string): boolean;
-  /** Returns candidates; throws if the text is not this format after all. */
-  parse(text: string): Candidate[];
+  /**
+   * Returns candidates, with a note for anything the file holds that can't be
+   * checked; throws if the text is not this format after all.
+   */
+  parse(text: string): Candidate[] | ParsedManifest;
+}
+
+export interface ParsedManifest {
+  candidates: Candidate[];
+  /** Shown with the results, never sent: what the file holds that Vulnder couldn't check. */
+  note?: string;
 }

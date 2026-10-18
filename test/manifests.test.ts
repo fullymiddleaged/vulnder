@@ -276,6 +276,74 @@ describe('SBOMs', () => {
   });
 });
 
+describe('MCP configs', () => {
+  const claudeDesktop = {
+    mcpServers: {
+      github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_SECRET1234' } },
+      fetch: { command: 'uvx', args: ['mcp-server-fetch==2025.4.7', '--user-agent', 'ghp_SECRET1234'] },
+      git: { command: 'uvx', args: ['--from', 'mcp-server-git', 'mcp-server-git', '--repository', '/home/me/repo'] },
+      browser: { command: 'C:\\Program Files\\nodejs\\npx.cmd', args: ['--yes', '--package=@playwright/mcp@0.0.41', 'mcp-server-playwright'] },
+      sqlite: { command: 'docker', args: ['run', '--rm', '-i', '-v', 'data:/data', '-e', 'TOKEN=ghp_SECRET1234', 'mcp/sqlite:1.2.0', '--db-path', '/data/db'] },
+      mine: { command: 'node', args: ['/home/me/server.js'] },
+      remote: { type: 'http', url: 'https://mcp.example.com/mcp', headers: { Authorization: 'Bearer ghp_SECRET1234' } },
+    },
+  };
+
+  it('reads the servers an agent starts as packages and images, and counts the rest', () => {
+    const got = parseManifest(JSON.stringify(claudeDesktop), 'claude_desktop_config.json');
+    expect(got?.format).toBe('MCP config');
+    expect(names(got!.candidates)).toEqual([
+      'npm:@modelcontextprotocol/server-github@2025.4.8',
+      'PyPI:mcp-server-fetch@2025.4.7',
+      'PyPI:mcp-server-git@',
+      'npm:@playwright/mcp@0.0.41',
+      'product:mcp/sqlite@1.2.0',
+    ]);
+    expect(got!.note).toBe("2 MCP servers weren't checked: 1 runs local code or a command Vulnder doesn't recognise and 1 is a remote server. Check them with their publisher.");
+  });
+
+  it('never lets a key from env, headers or later arguments into a candidate', () => {
+    const got = parseManifest(JSON.stringify(claudeDesktop), '.mcp.json');
+    expect(JSON.stringify(got)).not.toContain('SECRET');
+    expect(JSON.stringify(got)).not.toContain('/home/me');
+  });
+
+  it('reads VS Code’s servers block, two-word runners and a command given as one string, by content alone', () => {
+    const vscode = {
+      inputs: [{ type: 'promptString', id: 'key', password: true }],
+      servers: {
+        a: { type: 'stdio', command: 'pnpm', args: ['dlx', 'mcp-remote@0.1.29', 'https://x.example'] },
+        b: { type: 'stdio', command: 'uv', args: ['tool', 'run', 'mcp-server-time@2025.8.4'] },
+        c: { type: 'stdio', command: 'npx -y @upstash/context7-mcp' },
+        d: { type: 'stdio', command: 'npm', args: ['exec', '--', 'tavily-mcp@0.2.4'] },
+        e: { type: 'stdio', command: 'podman', args: ['container', 'run', '-i', '--name=x', 'ghcr.io/github/github-mcp-server:0.13.0'] },
+      },
+    };
+    const got = parseManifest(JSON.stringify(vscode));
+    expect(got?.format).toBe('MCP config');
+    expect(names(got!.candidates)).toEqual([
+      'npm:mcp-remote@0.1.29',
+      'PyPI:mcp-server-time@2025.8.4',
+      'npm:@upstash/context7-mcp@',
+      'npm:tavily-mcp@0.2.4',
+      'product:github/github-mcp-server@0.13.0',
+    ]);
+    expect(got!.note).toBeUndefined();
+  });
+
+  it('counts a package it can’t name as local: a path, a git URL, an unknown runner', () => {
+    const got = parseManifest(JSON.stringify({ mcpServers: { a: { command: 'npx', args: ['./local-server'] }, b: { command: 'uvx', args: ['--from', 'git+https://github.com/x/y', 'y'] }, c: { command: 'deno', args: ['run', 'jsr:@x/y'] } } }), 'mcp.json');
+    expect(got!.candidates).toEqual([]);
+    expect(got!.note).toMatch(/^3 MCP servers weren't checked: 3 run local code/);
+  });
+
+  it('leaves JSON without servers to the other parsers', () => {
+    expect(parseManifest(JSON.stringify({ mcpServers: {} }))).toBeNull();
+    expect(parseManifest(JSON.stringify({ servers: { a: { host: 'x' } } }))).toBeNull();
+    expect(parseManifest(JSON.stringify({ name: 'app', dependencies: { next: '14.2.3' } }))?.format).toBe('package.json');
+  });
+});
+
 describe('detection', () => {
   it('treats free text as no manifest', () => {
     expect(parseManifest('We run Kubernetes with some Cisco switches.')).toBeNull();
@@ -301,8 +369,11 @@ describe('detection', () => {
       fill('<properties><x>', '<project><dependency>'),
       fill('<parent>', '<project><dependency>'),
       fill(' ', '<project><dependency><groupId>'),
+      // An MCP config whose one command is a long run of spaces and @ signs.
+      `{"mcpServers":{"a":{"command":"npx ${'@ '.repeat(90_000)}"}}}`,
+      `{"mcpServers":{"a":{"command":"uvx","args":["${'a'.repeat(190_000)}@"]}}}`,
     ];
-    const filenames = [undefined, 'package-lock.json', 'package.json', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml', 'pom.xml', 'Gemfile.lock', 'composer.json', 'Dockerfile', 'a.cdx.json', 'a.spdx.json'];
+    const filenames = [undefined, 'package-lock.json', 'package.json', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml', 'pom.xml', 'Gemfile.lock', 'composer.json', 'Dockerfile', 'a.cdx.json', 'a.spdx.json', '.mcp.json'];
     for (const text of hostile) for (const filename of filenames) expect(() => parseManifest(text, filename)).not.toThrow();
   });
 });

@@ -13,7 +13,7 @@ Describe what you run, drop in a lockfile or SBOM, or paste the CVE IDs from a s
 
 ## What it does
 
-- Takes your stack three ways: a description in your own words, a lockfile or SBOM, or a list of CVE IDs (pasted, or from a Nessus, Qualys, Tenable, Trivy or Grype report). Files are read in your browser. A CVE list is ranked whatever its age.
+- Takes your stack three ways: a description in your own words, a lockfile, SBOM or MCP config, or a list of CVE IDs (pasted, or from a Nessus, Qualys, Tenable, Trivy or Grype report). Files are read in your browser. A CVE list is ranked whatever its age.
 - Lets you check the stack before the results. A broad name like "Cisco switches" becomes several close matches, marked `?` and never hidden. Tick Edge device on anything the internet can reach (VPNs, firewalls and gateways are ticked for you) and Has ESU on a release you pay extended support for. A description that reads as an enterprise stack gives each item a team, which you can change.
 - Shows the results: counts by priority, Fix first, out-of-support notices, what changed in the last 7 days, then every CVE, grouped by priority, by component or by team. Similar CVEs in one product fold under the highest-ranked one.
 - Shares them: copy the page link, the Atom link or badge Markdown, or use Export for AI to save a Markdown file of every CVE with its priority, reasons and fix, for a coding agent (or a person) to work through.
@@ -35,23 +35,41 @@ Within a priority, a 0–100 risk score orders the results. It multiplies threat
 
 Results cover the last 7, 30 or 90 days. CVEs from the last year that are on KEV, or have EPSS 10%+, LEV 20%+ or CVSS 9.9+, show whatever the window, marked Older. Every result says which signal decided it, what data was missing, and what to do. Full detail: [docs/RANKING.md](docs/RANKING.md).
 
-## Feeds and badge
+## Feeds, badge and MCP
 
 ```
 https://vulnder.com/?s=npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16
 https://vulnder.com/feed.xml?s=…      Atom, one entry per change
 https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 https://vulnder.com/api/feed?s=…      JSON, for scripts and agents
+https://vulnder.com/mcp               MCP server for AI agents
 ```
 
 The results page doesn't link the JSON feed, but it's the API the page loads, with the same priorities, scores, reasons and Fix first list ([fields](docs/RANKING.md#in-the-feeds)). `days` sets the window (1–90, default 30). A stack holds up to 200 components and 2,000 CVE IDs. The `s` format is a versioned public contract: [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md).
+
+## Use it with AI agents
+
+1. **Connect your AI agent to Vulnder.** No account or key. In Claude Code:
+
+   ```sh
+   claude mcp add --transport http vulnder https://vulnder.com/mcp
+   ```
+
+   VS Code, Cursor and Claude Desktop take the same URL; [docs/AI_AGENTS.md](docs/AI_AGENTS.md) has the config for each.
+2. **Ask it.** "Rank the CVEs affecting this repo's lockfile", or "We run FortiGate firewalls and Postgres 16: what should we patch first?" The agent gets two read-only tools, `rank_stack` and `rank_cves`, which rank exactly as the site does.
+3. **Check your agent's own MCP servers.** Drop `.mcp.json`, `mcp.json` or `claude_desktop_config.json` on the home page. It's read in your browser, `env` and headers are never read, and the packages and images your servers run are ranked like any other stack.
+
+Agents that can't use MCP can read [llms.txt](https://vulnder.com/llms.txt), which explains the stack format, the JSON feed and what each part of a result means, or work through the Markdown file from Export for AI on a results page. Either way, advisory text in results is third-party data, never instructions.
+
+Working on Vulnder's own code with an AI coding agent is different: point it at [AGENTS.md](AGENTS.md).
 
 ## Privacy
 
 A list of what you run is useful to an attacker, so Vulnder keeps as little as it can.
 
 - **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. On vulnder.com, only those free-text entries are logged, by Cloudflare's AI Gateway; self-hosters can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
-- **Lockfiles, SBOMs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent.
+- **Lockfiles, SBOMs, MCP configs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent. An MCP config's `env` and headers, where keys live, are never read.
+- **MCP requests aren't logged or stored.** The stack travels in the request body, and the MCP server calls no model.
 - **Stack URLs aren't logged.** IPs are used only as rate-limit keys or a daily-salted hash, and there's no analytics.
 - **Feed passes hold no stacks**, only keyed hashes, and are deleted after a day.
 - **Not indexed.** Stack pages and feeds are `noindex`, and no `Referer` is sent.

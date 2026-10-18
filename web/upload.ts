@@ -13,7 +13,7 @@ import type { Candidate } from '../src/resolve/types';
 const SNIFFABLE = /\.(json|txt|in|toml|xml|lock|mod)$/i;
 
 export const MANIFEST_FORMATS =
-  'package.json, package-lock.json, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, Gemfile.lock, composer.json, Dockerfiles, CycloneDX or SPDX JSON';
+  'package.json, package-lock.json, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, Gemfile.lock, composer.json, Dockerfiles, CycloneDX or SPDX JSON, MCP configs (.mcp.json, mcp.json, claude_desktop_config.json)';
 
 /** Why a file can't be read, from its name and size alone; null when it can. */
 export function fileProblem(name: string, size: number): string | null {
@@ -43,6 +43,11 @@ export function textProblem(name: string, text: string): string | null {
     if (++lines > MAX_MANIFEST_LINES) return `${name} has more than ${MAX_MANIFEST_LINES.toLocaleString('en')} lines.`;
   }
   return null;
+}
+
+/** A manifest's own note and the entry cap's, as one line for the results; empty when neither has one. */
+export function joinNotes(...notes: (string | undefined)[]): string {
+  return notes.filter(Boolean).join(' ');
 }
 
 /**

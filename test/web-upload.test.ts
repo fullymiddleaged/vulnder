@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_MANIFEST_BYTES, MAX_MANIFEST_ENTRIES, MAX_MANIFEST_LINES, MAX_TEXT_CHARS } from '../src/resolve/limits';
 import type { Candidate } from '../src/resolve/types';
 import { MAX_SCAN_BYTES } from '../src/resolve/cve-list';
-import { capEntries, fileProblem, scanFileProblem, textProblem } from '../web/upload';
+import { capEntries, fileProblem, joinNotes, scanFileProblem, textProblem } from '../web/upload';
 
 describe('scanFileProblem', () => {
   it('takes text exports from scanners, up to its own size limit', () => {
@@ -18,7 +18,7 @@ describe('scanFileProblem', () => {
 
 describe('fileProblem', () => {
   it('takes the names parsers know, and sniffable extensions', () => {
-    for (const name of ['package.json', 'package-lock.json', 'requirements-dev.txt', 'go.mod', 'Dockerfile', 'Dockerfile.prod', 'app.cdx.json', 'sbom.spdx.json', 'bom.json', 'deps.toml', 'C:\\work\\Gemfile.lock']) {
+    for (const name of ['package.json', 'package-lock.json', 'requirements-dev.txt', 'go.mod', 'Dockerfile', 'Dockerfile.prod', 'app.cdx.json', 'sbom.spdx.json', 'bom.json', 'deps.toml', 'C:\\work\\Gemfile.lock', '.mcp.json', 'mcp.json', 'claude_desktop_config.json']) {
       expect(fileProblem(name, 1000), name).toBeNull();
     }
   });
@@ -62,5 +62,13 @@ describe('capEntries', () => {
     expect(sent.map((c) => c.name)).toEqual(['d1', 'd2', 't1']);
     expect(note).toBe('Checked 3 of 5 entries: every direct dependency and the first indirect ones.');
     expect(capEntries([pkg('d1', true), pkg('d2', true), pkg('t1', false)], 1).note).toBe('Checked 1 of 3 entries: the first 1 direct dependencies.');
+  });
+});
+
+describe('joinNotes', () => {
+  it('joins the notes there are, in order, and is empty without any', () => {
+    expect(joinNotes("1 MCP server wasn't checked.", 'Checked 3 of 5 entries.')).toBe("1 MCP server wasn't checked. Checked 3 of 5 entries.");
+    expect(joinNotes(undefined, '')).toBe('');
+    expect(joinNotes(undefined, 'Checked 3 of 5 entries.')).toBe('Checked 3 of 5 entries.');
   });
 });

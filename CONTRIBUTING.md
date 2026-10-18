@@ -33,9 +33,10 @@ Parsers live in [`src/resolve/manifests/index.ts`](src/resolve/manifests/index.t
    - `id`: the format name shown to users, e.g. `'poetry.lock'`.
    - `matchesFilename(name)`: true when the file name alone identifies the format.
    - `sniff(text)`: true when pasted content identifies the format. Be strict. Free-text stack descriptions must not match, and a bare word list must not look like a `requirements.txt`.
-   - `parse(text)`: returns `Candidate[]`. Use OSV ecosystem names (`npm`, `PyPI`, `crates.io`, `Go`, `Maven`, …). Only return **exact** versions; turn ranges like `^1.2` into `version: null`, because a range doesn't say what is installed. Set `direct: false` for transitive dependencies from lockfiles.
+   - `parse(text)`: returns `Candidate[]`, or `{ candidates, note }` when the file holds things that can't be checked (the note is shown with the results and never sent). Use OSV ecosystem names (`npm`, `PyPI`, `crates.io`, `Go`, `Maven`, …). Only return **exact** versions; turn ranges like `^1.2` into `version: null`, because a range doesn't say what is installed. Set `direct: false` for transitive dependencies from lockfiles. Never read fields that can hold secrets, such as `env` in a config file.
 2. Add it to `PARSERS`. More specific formats go first.
 3. Add tests to [`test/manifests.test.ts`](test/manifests.test.ts) with a realistic sample. Cover exact versus range versions, direct versus transitive dependencies, and anything that should be skipped.
+   Another AI agent's MCP config format (a new file name or server block) goes in [`src/resolve/manifests/mcp-config.ts`](src/resolve/manifests/mcp-config.ts), with a sample in the "MCP configs" tests.
 4. If the format belongs to a new ecosystem, add its prefix to `PREFIXES` in [`src/stack/format.ts`](src/stack/format.ts) and to [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md). Prefixes are a public contract, so never rename one.
 
 ## Adding a data source

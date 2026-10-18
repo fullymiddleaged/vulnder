@@ -31,6 +31,7 @@
     "build:web": "esbuild web/main.ts --bundle --format=esm --target=es2022 --minify --sourcemap --outfile=public/app.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
     "fflate": "^0.8.3",
     "hono": "^4.13.13",
     "smol-toml": "^1.9.0",
@@ -39,6 +40,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.0",
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
     "@types/node": "^22.20.5",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
