@@ -28,7 +28,7 @@ import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
 import { exportFileName, exportMarkdown, remediationSteps } from './export';
 import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
-import { capEntries, fileProblem, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProblem, textProblem } from './upload';
+import { capEntries, fileProblem, joinNotes, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProblem, textProblem } from './upload';
 import {
   checksServedText,
   sourceAge,
@@ -86,6 +86,7 @@ const EXAMPLES = [
   { label: 'AI app', text: 'FastAPI on Python 3.14, LangGraph agents, vLLM and Ollama serving models, LiteLLM gateway, Open WebUI, pgvector on Postgres 18' },
   { label: 'Cloud platform', text: 'Astro and a NestJS API on AWS: EKS with Cilium and Envoy Gateway, Aurora Postgres 18, Valkey, Keycloak SSO, OpenTelemetry into Grafana' },
   { label: 'Office network', text: 'FortiGate firewalls, Cisco Catalyst switches, Windows Server 2025 domain controllers, Exchange Server SE' },
+  { label: 'AI coding agents', text: 'Claude Code and Cursor, MCP servers for GitHub, Playwright and Postgres, Ollama for local models, n8n automations' },
 ];
 const MAX_TEXT = MAX_TEXT_CHARS;
 const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
@@ -457,7 +458,7 @@ function stackForm(prefill: string, toCves: () => void): Panel {
       'Have a manifest? Drop it here or ',
       h('label', { for: 'file', class: 'link' }, 'choose a file'),
       '. ',
-      h('span', { class: 'muted' }, 'Lockfiles, SBOMs and more, read in your browser: only package names and versions are sent.'),
+      h('span', { class: 'muted' }, 'Lockfiles, SBOMs, MCP configs and more, read in your browser: only package names and versions are sent.'),
     ],
     (file) => void onFile(file),
   );
@@ -470,11 +471,11 @@ function stackForm(prefill: string, toCves: () => void): Panel {
     if (unusable) return report(unusable);
     const manifest = parseManifest(text, file.name);
     if (!manifest) return report(`${file.name} isn't a manifest format Vulnder reads. Try ${MANIFEST_FORMATS}.`);
-    if (manifest.candidates.length === 0) return report(`${file.name} lists no packages.`);
+    if (manifest.candidates.length === 0) return report(manifest.note ?? `${file.name} lists no packages.`);
     report('');
     const { sent, note } = capEntries(manifest.candidates);
     say(`Read ${manifest.candidates.length} entries from ${file.name}.`);
-    await submit({ candidates: sent }, note);
+    await submit({ candidates: sent }, joinNotes(manifest.note, note));
   };
 
   const error = errorSlot();
@@ -488,8 +489,9 @@ function stackForm(prefill: string, toCves: () => void): Panel {
         if (!text) return report('Describe your stack, or upload a manifest, first.');
         const manifest = parseManifest(text);
         if (manifest) {
+          if (manifest.candidates.length === 0) return report(manifest.note ?? 'That manifest lists no packages.');
           const { sent, note } = capEntries(manifest.candidates);
-          return void submit({ candidates: sent }, note);
+          return void submit({ candidates: sent }, joinNotes(manifest.note, note));
         }
         if (text.length > MAX_TEXT) return report(`Descriptions are limited to ${MAX_TEXT} characters. Shorten it, or upload a manifest file instead.`);
         void submit({ text });

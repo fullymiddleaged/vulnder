@@ -511,6 +511,33 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose sup { line-height: 0; font-size: 0.7em; }
 .sources { padding-left: 1.1rem; }
 .sources li { overflow-wrap: anywhere; }
+/* The agents guide: numbered steps, each with what to paste. A snippet is a quiet card in mono that scrolls sideways inside itself, never the page. */
+.prose .guide { padding-left: 1.4rem; }
+.prose .guide > li { margin: 0 0 1.75rem; }
+.prose .guide > li::marker { font-weight: 800; color: var(--fg); }
+.guide h3 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+.prose .guide p + ul { margin-top: 0.5rem; padding-left: 1.2rem; }
+.prose .guide ul li { margin: 0.35rem 0; }
+.prose .guide ul + p, .prose .snippet + p { margin-top: 0.75rem; }
+/* A subheading inside a section: more room above than below, so it leads what follows. */
+.prose h3.sub { font-size: 1.05rem; margin: 2.25rem 0 0.6rem; }
+.snippet { margin: 0.75rem 0 0; max-width: 68ch; }
+.snippet figcaption { font-size: 0.875rem; color: var(--muted); margin-bottom: 0.25rem; }
+.snippet pre {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+.snippet pre:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Code breaks anywhere in running text; in a snippet it keeps its lines and scrolls. */
+.snippet code { font-size: inherit; overflow-wrap: normal; }
 
 /* The pipeline: steps on a rail. A model-backed step gets an accent dot and an AI tag; the rest are plain code. */
 .lane h3 { margin: 2.5rem 0 0.9rem; }

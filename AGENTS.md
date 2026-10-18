@@ -42,7 +42,7 @@ Before calling work done, run `npm run lint && npm run typecheck && npm test` (v
 - `src/ingest/`: pulls CVE records, GitHub advisories, CISA KEV, EPSS and endoflife.date into D1. Runs from the cron on Workers Paid or from GitHub Actions on Free (`scripts/`).
 - `src/resolve/`: turns input into stack items (model extraction, catalog matching, manifest parsers in `manifests/`, injection screening).
 - `src/match/`: matches a stack to CVEs and ranks them (`priority.ts`: Act/Attend/Watch/Track, scores, reasons, "Fix first").
-- `src/routes/`: `POST /api/resolve`, `GET /api/feed`, `/feed.xml`, `/badge.svg`.
+- `src/routes/`: `POST /api/resolve`, `GET /api/feed`, `/feed.xml`, `/badge.svg`, and the MCP server at `/mcp` (`mcp.ts`), whose tools answer through the JSON feed (docs/AI_AGENTS.md).
 - `web/`: the front end. UI design lives in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
 - `test/`: vitest in workerd, with recorded fixtures.
 

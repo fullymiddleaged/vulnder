@@ -1,6 +1,8 @@
 import { parse as parseToml } from 'smol-toml';
 import type { Ecosystem } from '../../lib/normalize';
 import type { Candidate, ManifestParser } from '../types';
+import { imageCandidate } from './image';
+import { mcpConfig } from './mcp-config';
 import { parsePurl } from './purl';
 import { exactCargo, exactSemver, parsePep508 } from './versions';
 
@@ -351,18 +353,9 @@ const dockerfile: ManifestParser = {
       if (!m) continue;
       const ref = m[1]!;
       if (m[2]) stages.add(m[2].toLowerCase());
-      if (ref === 'scratch' || stages.has(ref.toLowerCase()) || ref.includes('$')) continue;
-      // [registry/][namespace/]name[:tag][@digest]
-      const noDigest = ref.split('@')[0]!;
-      const colon = noDigest.lastIndexOf(':');
-      const hasTag = colon > noDigest.lastIndexOf('/');
-      const path = hasTag ? noDigest.slice(0, colon) : noDigest;
-      const tag = hasTag ? noDigest.slice(colon + 1) : null;
-      const parts = path.split('/');
-      const name = parts[parts.length - 1]!;
-      const vendor = parts.length > 1 && !parts[parts.length - 2]!.includes('.') ? parts[parts.length - 2]! : null;
-      const version = tag && /^\d/.test(tag) ? (/^[\d.]+/.exec(tag)?.[0] ?? null)?.replace(/\.$/, '') ?? null : null;
-      out.push({ kind: 'product', name, vendor: vendor === 'library' ? null : vendor, version, direct: true });
+      if (stages.has(ref.toLowerCase())) continue;
+      const image = imageCandidate(ref);
+      if (image) out.push(image);
     }
     return out;
   },
@@ -416,6 +409,7 @@ export const PARSERS: ManifestParser[] = [
   packageLock,
   cyclonedx,
   spdx,
+  mcpConfig,
   composerJson,
   packageJson,
   goMod,
@@ -430,6 +424,8 @@ export const PARSERS: ManifestParser[] = [
 export interface ManifestResult {
   format: string;
   candidates: Candidate[];
+  /** What the file holds that couldn't be checked, for the results page. */
+  note?: string;
 }
 
 /**
@@ -448,7 +444,9 @@ export function parseManifest(text: string, filename?: string): ManifestResult |
   const candidates = byName ? [byName] : PARSERS.filter((p) => p.sniff(text));
   for (const parser of candidates) {
     try {
-      return { format: parser.id, candidates: dedupe(parser.parse(text)) };
+      const parsed = parser.parse(text);
+      if (Array.isArray(parsed)) return { format: parser.id, candidates: dedupe(parsed) };
+      return { format: parser.id, candidates: dedupe(parsed.candidates), ...(parsed.note && { note: parsed.note }) };
     } catch {
       // try the next one
     }

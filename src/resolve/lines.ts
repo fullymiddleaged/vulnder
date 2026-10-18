@@ -138,6 +138,17 @@ export const PRODUCT_LINES: ProductLine[] = [
   { names: ['crushftp'], keys: ['crushftp/crushftp'] },
   { names: ['moveit', 'moveit_transfer', 'progress_moveit'], keys: ['progress/moveit_transfer', 'progress_software/moveit_transfer', 'progress_software_corporation/moveit_transfer'] },
   { names: ['n8n'], keys: ['n8n_io/n8n', 'n8n/n8n'] },
+  // AI runtimes, apps and coding agents: filed under more than one vendor, or under names people don't use.
+  { names: ['ollama'], keys: ['ollama/ollama', 'ollama_ai/ollama'] },
+  { names: ['vllm', 'vllm_project'], keys: ['vllm_project/vllm', 'vllm/vllm', 'vllm_project/vllm_project_vllm'] },
+  { names: ['litellm', 'litellm_proxy', 'berriai_litellm'], keys: ['berriai/litellm', 'litellm/litellm'] },
+  { names: ['open_webui', 'openwebui', 'ollama_webui'], keys: ['open_webui/open_webui'] },
+  { names: ['langflow'], keys: ['ibm/langflow_oss', 'langflow_ai/langflow', 'langflow/langflow', 'ibm/langflow'] },
+  { names: ['flowise', 'flowiseai'], keys: ['flowiseai/flowise', 'flowise/flowise', 'flowiseai/flowise_components', 'flowise/flowise_components'] },
+  { names: ['anythingllm', 'anything_llm'], keys: ['mintplex_labs/anything_llm', 'mintplex_labs/mintplex_labs_anything_llm'] },
+  { names: ['text_generation_webui', 'oobabooga', 'text_gen_webui'], keys: ['oobabooga/text_generation_webui'] },
+  { names: ['cursor', 'cursor_ide', 'cursor_editor'], keys: ['cursor/cursor', 'anysphere_inc/cursor'] },
+  { names: ['claude_code'], keys: ['anthropics/claude_code', 'anthropic/anthropic_ai_claude_code'] },
 ];
 
 const LINE_BY_NAME = new Map(PRODUCT_LINES.flatMap((line) => line.names.map((n) => [n, line] as const)));

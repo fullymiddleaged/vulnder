@@ -17,6 +17,17 @@ describe('lineFor', () => {
     for (const name of ['AD', 'Active Directory', 'WSUS', 'Hyper-V']) expect(keysOf(name), name).toBe(WINDOWS_SERVER);
   });
 
+  it('knows AI runtimes and coding agents under every vendor their CVEs are filed under', () => {
+    expect(keysOf('Ollama')).toEqual(['ollama/ollama', 'ollama_ai/ollama']);
+    expect(keysOf('vLLM')).toContain('vllm_project/vllm');
+    expect(keysOf('LiteLLM')).toEqual(keysOf('LiteLLM proxy'));
+    expect(keysOf('Open WebUI')).toEqual(['open_webui/open_webui']);
+    expect(keysOf('OpenWebUI')).toBe(keysOf('Open WebUI'));
+    expect(keysOf('AnythingLLM')).toContain('mintplex_labs/anything_llm');
+    expect(keysOf('Cursor')).toEqual(['cursor/cursor', 'anysphere_inc/cursor']);
+    expect(keysOf('Claude Code')).toContain('anthropics/claude_code');
+  });
+
   it('splits a version off the end of the name, longest name first', () => {
     expect(lineFor('RHEL 8', null)).toEqual({ line: lineFor('RHEL', null)!.line, version: '8' });
     expect(lineFor('rhel8', null)?.version).toBe('8');

@@ -7,6 +7,7 @@ import { limitFromVar } from './lib/quota';
 import { feeds } from './routes/feeds';
 import { config } from './routes/config';
 import { health } from './routes/health';
+import { mcp } from './routes/mcp';
 import { pass } from './routes/pass';
 import { resolve } from './routes/resolve';
 import type { AppEnv } from './types';
@@ -37,6 +38,7 @@ app.route('/api/health', health);
 app.route('/api/config', config);
 app.route('/api/resolve', resolve);
 app.route('/api/pass', pass);
+app.route('/mcp', mcp);
 app.route('/', feeds);
 
 app.notFound((c) => {

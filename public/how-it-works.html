@@ -260,6 +260,56 @@
 
       <section class="block" aria-labelledby="agents">
         <h2 id="agents">Use it with an AI assistant</h2>
+        <p>Vulnder runs an MCP server, so a coding agent or chat assistant can rank CVEs for you while it works. There's no account or key to set up.</p>
+        <ol class="guide">
+          <li>
+            <h3>Connect your AI agent to Vulnder</h3>
+            <p>Add the server <code>https://vulnder.com/mcp</code> in whichever tool you use.</p>
+            <figure class="snippet">
+              <figcaption id="snip-claude-code">Claude Code, in a terminal</figcaption>
+              <pre tabindex="0" role="region" aria-labelledby="snip-claude-code"><code>claude mcp add --transport http vulnder https://vulnder.com/mcp</code></pre>
+            </figure>
+            <figure class="snippet">
+              <figcaption id="snip-vscode">VS Code: <code>.vscode/mcp.json</code></figcaption>
+              <pre tabindex="0" role="region" aria-labelledby="snip-vscode"><code>{
+  "servers": {
+    "vulnder": { "type": "http", "url": "https://vulnder.com/mcp" }
+  }
+}</code></pre>
+            </figure>
+            <figure class="snippet">
+              <figcaption id="snip-cursor">Cursor: <code>.cursor/mcp.json</code></figcaption>
+              <pre tabindex="0" role="region" aria-labelledby="snip-cursor"><code>{
+  "mcpServers": {
+    "vulnder": { "url": "https://vulnder.com/mcp" }
+  }
+}</code></pre>
+            </figure>
+            <p>In Claude Desktop or claude.ai, open Settings, then Connectors, choose Add custom connector and paste the same address.</p>
+          </li>
+          <li>
+            <h3>Ask it</h3>
+            <p>The agent gets two tools: <code>rank_stack</code> for packages and products, and <code>rank_cves</code> for a list of CVE IDs. Try:</p>
+            <ul>
+              <li>"Use Vulnder to rank the CVEs affecting this repo's lockfile, and fix the Act now ones."</li>
+              <li>"We run FortiGate firewalls, Exchange Server SE and Postgres 16. What should we patch first?"</li>
+              <li>"Rank the CVEs in this Trivy report with Vulnder."</li>
+            </ul>
+            <p>Answers come with the same priorities, reasons and Fix first list as this site, and a link to the full results page.</p>
+          </li>
+          <li>
+            <h3>Check your agent's own MCP servers</h3>
+            <p>
+              MCP servers are software too, with CVEs of their own. Drop your <code>.mcp.json</code>, <code>mcp.json</code> or <code>claude_desktop_config.json</code> on the
+              <a href="/">home page</a>. Vulnder reads the servers it starts with <code>npx</code>, <code>uvx</code> or <code>docker</code>, in your browser, and sends only their package names and versions.
+              It never reads <code>env</code> or headers, where your keys live. Servers that run local code or sit at a remote URL are listed as not checked.
+            </p>
+          </li>
+        </ol>
+        <p>
+          Agents have a rate limit of their own: new lookups are limited per address, and repeat lookups are free. Connectors in claude.ai and other hosted assistants call from the provider's servers, so their users share that limit. If you hit it, connect from a local agent such as Claude Code, or run your own copy.
+        </p>
+        <h3 class="sub">Other ways in</h3>
         <table class="prose-table keyed">
           <tbody>
             <tr><th scope="row">Export for AI</th><td>A Markdown brief from the results page for an assistant or coding agent: upgrade anything out of support, check each finding, fix or mitigate it, report one outcome per CVE. Advisory text is marked as quoted data, never instructions, so a planted line can't steer the agent.</td></tr>
@@ -267,6 +317,7 @@
             <tr><th scope="row">Atom feed</th><td>One entry per change.</td></tr>
             <tr><th scope="row">Badge</th><td>Counts known-exploited CVEs, for a README.</td></tr>
             <tr><th scope="row">llms.txt</th><td><a href="/llms.txt">llms.txt</a> describes the feeds and the <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md" rel="noreferrer">stack link format</a>, so an agent can build and fetch a stack itself.</td></tr>
+            <tr><th scope="row">Full guide</th><td><a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/AI_AGENTS.md" rel="noreferrer">AI_AGENTS.md</a> covers setup for each client, the tools' inputs and outputs, and the limits.</td></tr>
           </tbody>
         </table>
         <p class="notice">
@@ -279,7 +330,8 @@
         <ul>
           <li>Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. They go to Cloudflare Workers AI to pick out component names.</li>
           <li>Vulnder doesn't store your stack or what you type. Parses are cached under a hash of the text, never the text.</li>
-          <li>Lockfiles and SBOMs are read in your browser and never reach the model or Vulnder's storage. Only package names and versions are sent.</li>
+          <li>Lockfiles, SBOMs and MCP configs are read in your browser and never reach the model or Vulnder's storage. Only package names and versions are sent; an MCP config's <code>env</code> and headers, where keys live, aren't read at all.</li>
+          <li>MCP requests from AI agents aren't logged or stored, and the MCP server calls no model.</li>
           <li>CVE lists and scan reports are read in your browser too, and aren't stored. Only the CVE IDs go into the stack link; host names, addresses and the rest of the report stay on your machine.</li>
           <li>Stack links are kept out of logs, and pages send no <code>Referer</code>, so advisory links don't leak your stack.</li>
           <li>IP addresses are only rate-limit keys, or a hash salted afresh each day.</li>
@@ -294,7 +346,7 @@
           <tbody>
             <tr><th scope="row">No scanning</th><td>Vulnder knows only what you give it. A lockfile gives exact versions; a description gives matches to confirm.</td></tr>
             <tr><th scope="row">Time window</th><td>Stack results cover the last 7, 30 (default) or 90 days, plus the older CVEs above. A pasted CVE list is ranked whatever its age.</td></tr>
-            <tr><th scope="row">Coverage</th><td>Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products named in CVE records. Anything else shows as unrecognised.</td></tr>
+            <tr><th scope="row">Coverage</th><td>Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products named in CVE records. Anything else shows as unrecognised. In an MCP config, only servers started from a package or container image can be checked.</td></tr>
             <tr><th scope="row">New CVEs</th><td>Many arrive without a score. Results show which data is missing.</td></tr>
           </tbody>
         </table>

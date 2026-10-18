@@ -45,28 +45,36 @@ export const HEAVY_STACK_VULNS = 1000;
 export const STACK_SIZE_SQL = `SELECT COALESCE(SUM(count), 0) AS n FROM catalog
   WHERE kind IN ('package', 'product') AND key IN (SELECT value FROM json_each(?))`;
 
-interface StackRequest {
+export interface StackRequest {
   items: StackItem[];
   canonical: string;
   days: number;
 }
 
-function readParams(c: Context<AppEnv>): StackRequest | Response {
-  const s = c.req.query('s');
-  if (!s) return c.json({ error: 'missing the s parameter; see docs/STACK_FORMAT.md' }, 400);
+export interface StackRequestError {
+  error: string;
+  invalid?: string[];
+}
+
+/** A stack and window from their raw values: the query string's, or an MCP tool call's. */
+export function stackRequest(s: string | undefined, days: number | undefined): StackRequest | StackRequestError {
+  if (!s) return { error: 'missing the s parameter; see docs/STACK_FORMAT.md' };
   let items: StackItem[];
   try {
     items = parseStack(s);
   } catch (err) {
-    if (err instanceof StackFormatError) return c.json({ error: err.message, invalid: err.invalid }, 400);
+    if (err instanceof StackFormatError) return { error: err.message, invalid: err.invalid };
     throw err;
   }
+  const d = days ?? DEFAULT_DAYS;
+  if (!Number.isInteger(d) || d < 1 || d > MAX_DAYS) return { error: `days must be a whole number from 1 to ${MAX_DAYS}` };
+  return { items, canonical: serializeStack(items), days: d };
+}
+
+function readParams(c: Context<AppEnv>): StackRequest | Response {
   const daysParam = c.req.query('days');
-  const days = daysParam === undefined ? DEFAULT_DAYS : Number(daysParam);
-  if (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) {
-    return c.json({ error: `days must be a whole number from 1 to ${MAX_DAYS}` }, 400);
-  }
-  return { items, canonical: serializeStack(items), days };
+  const req = stackRequest(c.req.query('s'), daysParam === undefined ? undefined : Number(daysParam));
+  return 'error' in req ? c.json(req, 400) : req;
 }
 
 export function baseUrl(env: Env): string {
@@ -88,6 +96,8 @@ async function cached(
   route: string,
   req: StackRequest,
   build: (dataVersion: number) => Promise<Response>,
+  /** Prefixed to the IP limit key, so one client's agent and browser have separate buckets. */
+  limitPrefix = '',
 ): Promise<Response> {
   const now = new Date();
   // A locked browser is turned away before anything touches D1 or the cache.
@@ -99,7 +109,7 @@ async function cached(
   // and gives the browser limits of its own in place of its IP's, which a shared
   // office IP would hit. It still has limits: one pass can ask for each of its
   // stacks under three routes and 90 windows, all of them cache misses at once.
-  let limitKey = clientKey(c.req.header('cf-connecting-ip'));
+  let limitKey = `${limitPrefix}${clientKey(c.req.header('cf-connecting-ip'))}`;
   // Set once the pass is spent: this stack, if it took the last place, still
   // loads, and the browser is locked from the next request on.
   let lockUntil: string | null = null;
@@ -227,11 +237,18 @@ export function componentCache(c: Context<AppEnv>, dataVersion: number, cache: C
   };
 }
 
-export const feeds = new Hono<AppEnv>()
-  .get('/api/feed', async (c) => {
-    const req = readParams(c);
-    if (req instanceof Response) return req;
-    const res = await cached(c, 'feed', req, async (dataVersion) => {
+/**
+ * The JSON feed for a stack: from the edge cache, or built and cached, under
+ * the feed limits. A 200 counts as a stack check served. MCP tool calls use
+ * this too, with their own limit-key prefix, so they answer exactly as
+ * /api/feed does.
+ */
+export async function feedResponse(c: Context<AppEnv>, req: StackRequest, limitPrefix = ''): Promise<Response> {
+  const res = await cached(
+    c,
+    'feed',
+    req,
+    async (dataVersion) => {
       const now = new Date();
       const match = await runMatch(c, req, now, dataVersion);
       const byId = new Map(match.results.map((r) => [r.id, r]));
@@ -262,9 +279,18 @@ export const feeds = new Hono<AppEnv>()
         watching: match.watching,
         ...(match.listed && { listed: match.listed }),
       });
-    });
-    if (res.status === 200) await countCheck(c);
-    return res;
+    },
+    limitPrefix,
+  );
+  if (res.status === 200) await countCheck(c);
+  return res;
+}
+
+export const feeds = new Hono<AppEnv>()
+  .get('/api/feed', async (c) => {
+    const req = readParams(c);
+    if (req instanceof Response) return req;
+    return feedResponse(c, req);
   })
   .get('/feed.xml', async (c) => {
     const req = readParams(c);
