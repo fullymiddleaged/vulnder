@@ -3,7 +3,11 @@
 # links elsewhere, because the crawler never sees its noindex. Instead, every
 # Worker response carries X-Robots-Tag: noindex, and the page adds a robots
 # noindex meta whenever a stack is in the URL.
+# Content-Signal (contentsignals.org): AI assistants may use these pages to
+# answer questions and to train on. Cloudflare's managed robots.txt and AI bot
+# blocking must stay off for this to be what crawlers see.
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 
 Sitemap: https://vulnder.com/sitemap.xml

@@ -26,7 +26,7 @@ This is a summary. [LICENSE](../LICENSE) is what binds.
 
 The licence grants no rights to the name (section 6). "Vulnder" and its logo identify this project, so a fork or a public deployment needs a name and logo of its own. Saying where it came from ("based on Vulnder") is fine and welcome.
 
-To rename a deployment, change `DISPLAY_NAME` and `BASE_URL` in `wrangler.jsonc`, the name and `vulnder.com` in `public/index.html`, `public/robots.txt`, `public/sitemap.xml` and `public/llms.txt`, the logo in `public/index.html` and `public/favicon.svg`, and `name` in `package.json`. Point `public/.well-known/security.txt` at your own security contact, or delete it, so reports about your deployment reach you.
+To rename a deployment, change `DISPLAY_NAME` and `BASE_URL` in `wrangler.jsonc`, the name and `vulnder.com` in `public/index.html`, `public/robots.txt`, `public/sitemap.xml` and `public/llms.txt`, the logo in every page's header (`public/*.html`), the loader in `web/main.ts`, `public/favicon.svg` and the files in `public/brand/` (including the `og:image` social card every page links to), and `name` in `package.json`. Rewrite or delete `public/brand.html`, which describes Vulnder's logo. Point `public/.well-known/security.txt` at your own security contact, or delete it, so reports about your deployment reach you.
 
 ## Requests from the author (not required by the licence)
 

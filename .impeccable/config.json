@@ -47,6 +47,15 @@
         ],
         "createdAt": "2026-10-18T09:28:23.047Z",
         "reason": "Claude, from styles.css: .prose .block sets border-top: 0 on prose pages (DESIGN.md: prose pages separate sections with space), so no border exists; the detector reads only the global .block rule"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "public/brand.html"
+        ],
+        "createdAt": "2026-10-18T10:37:36.040Z",
+        "reason": "Claude: flags section.block's border-top, but .prose .block sets border-top: 0 in styles.css so none is drawn; same markup as about.html"
       }
     ]
   }

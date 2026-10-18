@@ -114,7 +114,7 @@ components:
 
 Vulnder reads like a working ledger kept by someone who patches things for a living. Sections sit directly on the page, divided by hairline rules, not boxed into cards. The order is the point: the headline count, a strip in proportion to each priority, then a numbered "Fix first" list and the evidence behind every line. IDs, versions and package names are set in mono so they can be copied and compared. Colour is spent almost entirely on risk; everything else is lavender-tinted paper and plum ink.
 
-The density is that of a tool, not a landing page. One column (54rem) carries everything, and type does the hierarchy work: a large heavy headline asks or answers the question, and the rest is body text at a comfortable 1.55 line height. Playfulness is kept to the logo (a magnifier with a heart inside, the "it's a match" nod), the loader that sweeps the lens and beats the heart, and the tagline. Anything that describes a vulnerability stays plain.
+The density is that of a tool, not a landing page. One column (54rem) carries everything, and type does the hierarchy work: a large heavy headline asks or answers the question, and the rest is body text at a comfortable 1.55 line height. Playfulness is kept to the logo (a magnifier finding a broken shield, its crack drawn like a broken heart's), the loader that sweeps the lens while the shield cracks open, and the tagline. Anything that describes a vulnerability stays plain.
 
 Atkinson Hyperlegible was chosen because it tells 0/O and 1/l/I apart on pages full of CVE IDs and version strings. Fonts are self-hosted: the CSP allows no third-party fonts, and a font CDN would see every visitor.
 
@@ -244,7 +244,7 @@ A 3px-radius label filled with the tier colour, 0.8rem bold. Rank squares in Fix
 Four segments sized by the count in each tier, 0.9rem tall and 3px apart. They grow in from the left on load (0.6s, staggered 80ms), and not at all under reduced motion.
 
 ### Loader
-The logo's lens circles its own centre while the heart beats, beside a headline and a checklist of steps (pending, spinning, ticked green). Reading a description, the one step with a deadline, shows a ring that turns slowly and fills Fixed Green over the most the request can take, so the end is in sight, with a muted hint below that says when it's running long. It ends in the green tick, or in an Act Red ✗ held for 700ms before the form returns with its error (a blocking problem, per the red extension). Under reduced motion the ring stops turning but still fills. The loader fades in after 150ms so a fast response never flashes it.
+The logo's lens circles its own centre while the right half of the broken shield swings on the foot of its crack, beside a headline and a checklist of steps (pending, spinning, ticked green). Reading a description, the one step with a deadline, shows a ring that turns slowly and fills Fixed Green over the most the request can take, so the end is in sight, with a muted hint below that says when it's running long. It ends in the green tick, or in an Act Red ✗ held for 700ms before the form returns with its error (a blocking problem, per the red extension). Under reduced motion the ring stops turning but still fills. The loader fades in after 150ms so a fast response never flashes it.
 
 ## Do's and Don'ts
 
@@ -265,5 +265,6 @@ The logo's lens circles its own centre while the heart beats, beside a headline 
 - **Don't** nest containers or wrap whole sections in cards.
 - **Don't** load third-party fonts or font CDNs.
 - **Don't** switch to the category's default faces (Geist, Geist Mono, Inter, Mona Sans, Space Grotesk, Instrument Sans).
-- **Don't** add vulture imagery; the brand is bugs, scanning and the match.
+- **Don't** add vulture imagery; the brand is vulnerabilities, scanning and the match.
+- **Don't** colour the logo with the risk or green colours; it stays Match Violet (files and rules at `/brand`).
 - **Don't** put jokes or brand playfulness into tier names, scores, reasons or vulnerability text.

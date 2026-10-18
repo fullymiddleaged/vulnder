@@ -6,6 +6,9 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- **Brand and logo files** (`/brand`): the logo, the icon and the logo with the name, as SVG and transparent PNG for light and dark backgrounds, with the colours and short notes on using them. Every page's footer and the sitemap link to it.
+- **Shared links show a preview card.** Every page now has a 1200 × 630 social image with the logo and tagline, so links posted to chat apps and social sites show a large card.
+- **robots.txt welcomes AI use**: a Content-Signal line says search engines, AI assistants answering questions, and AI training may all use Vulnder's pages.
 - **NIS2 and the CRA** (`/compliance`, and docs/NIS2.md): how Vulnder maps, point by point, to the vulnerability monitoring and handling rules in NIS2's Implementing Regulation 2024/2690 (Annex 6.10) and to CRA Article 14's reporting of actively exploited vulnerabilities, with what stays with you. Every page's footer, How it works, the sitemap and llms.txt link to it. It isn't legal advice.
 - **A weekly review routine for your AI agent** (docs/agents/nis2-weekly-review.md): it ranks the stack kept in your repository through the MCP server, opens or updates a ticket for each Act now, Attend and out-of-support item with a date to respond by, and writes a dated log with how fresh each data source was. Vulnder keeps no copy.
 - **Export for AI ends with a record of the check**: when it ran, when each data source last updated, and a decisions table (owner, action, decided on, done on) with a row for each Act now, Attend and out-of-support item and the date to respond by. It's built in your browser; the only extra request is the data-source status the footer already loads.
@@ -24,6 +27,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Changed
 
+- **A new logo**: the magnifying glass now finds a broken shield instead of a heart, because a vulnerability matters when someone can get through it. The crack still nods to the dating-app joke. The favicon is the broken shield on its own, which stays readable at 16 pixels, and the loader's shield cracks open while the lens sweeps.
 - **The NIS2 and CRA page is now Compliance**, at `/compliance` (`/nis2` redirects there), ready for other regulations. Every page's top navigation links to it, and About has a short "In the EU?" section pointing to it.
 - **Clearer MCP answers for agents.** The first line of a `rank_stack` answer now says it covers CVEs new in the window plus the past year's riskiest, and names items with nothing in it, so "0 CVEs" isn't read as "no known CVEs". A `rank_cves` answer says how many IDs were sent and ranked, and names rejected and unpublished IDs. An empty stack gets an error that no longer mentions the feed's `s` parameter.
 - **Reading a description no longer fails on a slow AI day.** If the first model hasn't answered within 8 seconds, or fails, Vulnder asks a second one too (Qwen3 30B on Workers AI) and takes whichever answers first. While it reads, the "Reading your stack" circle fills green over the most it can take, then shows a ✓, or a ✗ before the form comes back so you can add items by hand. For self-hosters: set `AI_FALLBACK_MODEL` (empty turns it off). The free-plan default for `PARSE_DAILY_TOTAL` is now 500, down from 600, so even if every parse needs both models it stays inside 10,000 neurons a day.
