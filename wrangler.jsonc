@@ -47,13 +47,17 @@
     "INGEST_RUNTIME": "actions",
     // Workers AI model for free-text extraction. Must support json_schema output.
     "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+    // Asked too when AI_MODEL is slow or fails (src/resolve/extract.ts); the
+    // first answer wins. Must also support json_schema output. Empty: no fallback.
+    "AI_FALLBACK_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
     // Daily caps on free-text parses that reach the model (cached parses are
-    // free): per client, and in total. A parse is about 13 neurons, so 600 a
-    // day stays inside the free plan's 10,000 neurons. Jev (prompt-injection
-    // screening and close-match ordering) is billed in AI Gateway credits,
-    // not neurons; without credits it is skipped and parsing still works.
+    // free): per client, and in total. A parse is at most about 18 neurons
+    // when both models are asked, so 500 a day stays inside the free plan's
+    // 10,000 neurons. Jev (prompt-injection screening and close-match
+    // ordering) is billed in AI Gateway credits, not neurons; without credits
+    // it is skipped and parsing still works.
     "PARSE_DAILY_PER_CLIENT": "30",
-    "PARSE_DAILY_TOTAL": "600",
+    "PARSE_DAILY_TOTAL": "500",
     // Turnstile site key (public: every visitor's browser gets it). The widget
     // only works on vulnder.com, so local dev overrides it in .dev.vars with
     // Cloudflare's always-pass test key. The matching secret, TURNSTILE_SECRET_KEY,
@@ -110,9 +114,10 @@
         // per invocation; raise this only if Cloudflare confirms a higher one.
         "CRON_MAX_D1_QUERIES": "900",
         "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+        "AI_FALLBACK_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
         "PARSE_DAILY_PER_CLIENT": "30",
         // Paid bills neurons past the free 10,000 a day, so the total is higher
-        // here: 5,000 parses is about 65,000 neurons at most. Jev's AI Gateway
+        // here: 5,000 parses is about 90,000 neurons at most. Jev's AI Gateway
         // credits come on top. Keep a cap so cost stays bounded.
         "PARSE_DAILY_TOTAL": "5000",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAFPH90_hA9uyf8E9"

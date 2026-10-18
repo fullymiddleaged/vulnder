@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TEAMS, type Team } from '../stack/format';
 import type { Chip } from './catalog';
 import { MAX_TEXT_CHARS } from './extract';
+import { JEV_TIMEOUT_MS } from './limits';
 import { HOSTINGS, rankableChips, SCALES, type AxisGuess, type StackProfile } from './profile';
 
 /**
@@ -178,8 +179,7 @@ export function parseJudgement(raw: unknown, fitCount: number, teamCount: number
   };
 }
 
-/** Each Jev call gives up after this and parsing carries on without it, as on any other failure. Measured 0.4-0.8 s in October 2026. */
-export const JEV_TIMEOUT_MS = 3_000;
+export { JEV_TIMEOUT_MS };
 
 async function runJev(ai: Ai, input: unknown): Promise<unknown> {
   try {

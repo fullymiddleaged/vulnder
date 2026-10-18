@@ -440,6 +440,19 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .loader .step[data-state='active']::before { border-color: var(--accent); border-top-color: transparent; animation: spin 0.8s linear infinite; }
 .loader .step[data-state='done'] { color: var(--fg); opacity: 1; }
 .loader .step[data-state='done']::before { content: '✓'; border: none; color: var(--ok); font-weight: 800; width: 0.85rem; height: auto; line-height: 1; text-align: center; animation: tick 0.3s cubic-bezier(0.2, 0.7, 0.2, 1.4) both; }
+/* A step with a deadline (reading a description): its ring fills green over the
+   time the request may take while turning slowly, so the end is in sight. */
+.loader .step[data-deadline][data-state='active']::before {
+  border: none;
+  background: conic-gradient(var(--ok) var(--fill), var(--rule) 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: fill var(--deadline) linear forwards, spin 3s linear infinite;
+}
+.loader .step[data-state='failed'] { color: var(--fg); }
+.loader .step[data-state='failed']::before { content: '✗'; border: none; color: var(--exploited); font-weight: 800; width: 0.85rem; height: auto; line-height: 1; text-align: center; animation: tick 0.3s cubic-bezier(0.2, 0.7, 0.2, 1.4) both; }
+.loader .step-hint { margin-top: 0.6rem; }
+@property --fill { syntax: '<angle>'; inherits: false; initial-value: 0turn; }
+@keyframes fill { to { --fill: 1turn; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes tick { from { transform: scale(0.3); opacity: 0; } }
 @keyframes appear { from { opacity: 0; } }
@@ -605,6 +618,8 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
   .loader, .loader .lens, .loader .crack { animation: none; }
   .loader .step { transition: none; }
   .loader .step[data-state='active']::before { animation: none; border-top-color: var(--accent); }
-  .loader .step[data-state='done']::before { animation: none; }
+  .loader .step[data-state='done']::before, .loader .step[data-state='failed']::before { animation: none; }
+  /* No turning, but the fill still grows: it says how long is left. */
+  .loader .step[data-deadline][data-state='active']::before { animation: fill var(--deadline) linear forwards; }
   .notice.nudge { animation: none; outline: 2px solid var(--exploited); outline-offset: 2px; }
 }

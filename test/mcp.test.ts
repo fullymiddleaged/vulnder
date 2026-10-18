@@ -6,7 +6,8 @@ import { applyPatches } from '../src/ingest/apply';
 import { bumpDataVersionStatement } from '../src/ingest/meta';
 import type { VulnPatch } from '../src/ingest/types';
 import { OSV_QUERYBATCH_URL } from '../src/match/osv';
-import { cveStack, MAX_RESULT_LIMIT } from '../src/routes/mcp';
+import type { MatchedVuln } from '../src/match/match';
+import { cveStack, headline, MAX_RESULT_LIMIT } from '../src/routes/mcp';
 import { parseStack } from '../src/stack/format';
 import { resetDb, store } from './helpers/db';
 
@@ -157,6 +158,17 @@ describe.each<Era>(['modern', 'legacy'])('MCP over the %s protocol', (era) => {
     const got = result.structuredContent as unknown as Structured;
     expect(got.results.map((r) => r.id).sort()).toEqual(['CVE-2026-1001', 'CVE-2026-1005']);
     expect(got.listed?.notFound).toEqual(['CVE-2026-9999']);
+    // Agents that read only the text still see what wasn't ranked.
+    expect(text(result).split('\n')[0]).toMatch(/^3 CVE IDs sent: 2 CVEs ranked \(.*\)\. Not published CVEs \(reserved or mistyped\): CVE-2026-9999\./);
+    await client.close();
+  });
+
+  it('answers an empty stack in an agent’s terms, not the feed URL’s', async () => {
+    const client = await connect(era);
+    const result = await client.callTool({ name: 'rank_stack', arguments: { stack: ' ' } });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/^Invalid stack: it's empty\. Comma-separated stack items/);
+    expect(text(result)).not.toContain('s parameter');
     await client.close();
   });
 
@@ -203,6 +215,44 @@ describe('MCP limits', () => {
     await client.close();
     const logged = spies.flatMap((s) => s.mock.calls.flat().map(String)).join('\n');
     expect(logged).not.toMatch(/next@14\.2\.3|ios_xe|secret-host/);
+  });
+});
+
+describe('headline', () => {
+  const none = { act: 0, attend: 0, watch: 0, track: 0 };
+  const result = { id: 'CVE-2026-1001' } as MatchedVuln;
+
+  it('never lets "0 CVEs" read as safe: it says what the window covers and names the quiet items', () => {
+    const line = headline({ stack: 'npm:lodash@4.17.20', days: 30, priorities: none, results: [], watching: ['npm:lodash@4.17.20'] });
+    expect(line).toBe(
+      '0 CVEs affect this stack (Act now 0, Attend 0, Watch 0, Track 0): new in the last 30 days, plus older ones from the past year that CISA reports exploited or that score high on EPSS, LEV or CVSS. Nothing in that window for npm:lodash@4.17.20 ("watching"): older CVEs can still affect them, so don\'t report them as safe.',
+    );
+  });
+
+  it('names five quiet items and counts the rest', () => {
+    const watching = Array.from({ length: 7 }, (_, i) => `npm:pkg-${i}`);
+    const line = headline({ stack: watching.join(','), days: 90, priorities: none, results: [], watching });
+    expect(line).toContain('Nothing in that window for npm:pkg-0, npm:pkg-1, npm:pkg-2, npm:pkg-3, npm:pkg-4 and 2 more ("watching")');
+    expect(line).toContain('new in the last 90 days');
+  });
+
+  it('counts a CVE list as sent and ranked, naming rejected and unpublished IDs', () => {
+    const line = headline({
+      stack: 'cve:2021-44228,cve:2099-99999,cve:2021-45046,cve:2017-0001',
+      days: 30,
+      priorities: { ...none, act: 1 },
+      results: [result],
+      watching: [],
+      listed: { rejected: [{ id: 'CVE-2021-45046', replacedBy: ['CVE-2021-44228'] }, { id: 'CVE-2017-0001', replacedBy: [] }], notFound: ['CVE-2099-99999'] },
+    });
+    expect(line).toBe(
+      '4 CVE IDs sent: 1 CVE ranked (Act now 1, Attend 0, Watch 0, Track 0). Rejected: CVE-2021-45046 (replaced by CVE-2021-44228, ranked instead), CVE-2017-0001 (no replacement). Not published CVEs (reserved or mistyped): CVE-2099-99999.',
+    );
+  });
+
+  it('says listed CVEs in a mixed stack count whatever their age', () => {
+    const line = headline({ stack: 'npm:next@14.2.3,cve:2021-44228', days: 30, priorities: { ...none, act: 1 }, results: [result], watching: [] });
+    expect(line).toMatch(/^1 CVE affects this stack .*, plus the listed CVEs whatever their age\.$/);
   });
 });
 

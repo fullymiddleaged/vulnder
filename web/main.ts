@@ -13,6 +13,9 @@ import {
   earnPass,
   getPass,
   oneAtATime,
+  READ_DEADLINE_MS,
+  READ_SLOW_MS,
+  readHint,
   resolve,
   type AppConfig,
   type Feed,
@@ -607,7 +610,7 @@ const STEP_FINISH_MS = 450;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** The logo at work: the magnifier circles as if scanning while the broken shield's right half swings on its crack. */
-function loader(title: string, detail: string, steps: HTMLElement | null): HTMLElement {
+function loader(title: string, detail: string, steps: HTMLElement | null, hint: HTMLElement | null = null): HTMLElement {
   const mark = svg(
     'svg',
     { viewBox: '0 0 48 48', 'aria-hidden': 'true', focusable: 'false' },
@@ -623,8 +626,11 @@ function loader(title: string, detail: string, steps: HTMLElement | null): HTMLE
       }),
     ),
   );
-  return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail), steps));
+  return h('div', { class: 'loader' }, mark, h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, detail), steps, hint));
 }
+
+/** How long a failed step's cross stays up before the form comes back. */
+const FAIL_HOLD_MS = 700;
 
 interface Busy {
   el: HTMLElement;
@@ -632,6 +638,8 @@ interface Busy {
   next(): void;
   /** `done(true)` ticks off the rest before the loader goes; `done()` removes it at once. */
   done(complete?: boolean): Promise<void>;
+  /** Crosses out the current step, holds it long enough to see, then removes the loader. */
+  fail(): Promise<void>;
 }
 
 /** A submit's loader, kept on screen for the results page to carry on with. */
@@ -642,12 +650,13 @@ let handoff: Busy | null = null;
  * page underneath is left intact, so a failed request can show the form again
  * as it was. With steps, one is ticked off every STEP_MS while waiting; with
  * `timed` false the first step waits for `next()` instead, for a request of
- * its own.
+ * its own. With `deadlineMs` too, that first step's circle fills green over
+ * the time the request may take, and a hint below says when it's running long.
  */
-function showBusy(title: string, detail: string, steps: readonly string[] = [], timed = true): Busy {
+function showBusy(title: string, detail: string, steps: readonly string[] = [], timed = true, deadlineMs = 0): Busy {
   const rows = steps.map((s) => h('li', { class: 'step' }, s));
   let at = 0;
-  const mark = (i: number, state: 'active' | 'done') => {
+  const mark = (i: number, state: 'active' | 'done' | 'failed') => {
     rows[i]?.setAttribute('data-state', state);
     if (state === 'active') rows[i]?.setAttribute('aria-current', 'step');
     else rows[i]?.removeAttribute('aria-current');
@@ -657,19 +666,41 @@ function showBusy(title: string, detail: string, steps: readonly string[] = [], 
     mark(++at, 'active');
   };
   mark(0, 'active');
+  let hint: HTMLElement | null = null;
+  let slow: ReturnType<typeof setTimeout> | undefined;
+  if (deadlineMs > 0 && rows[0]) {
+    rows[0].setAttribute('data-deadline', '');
+    rows[0].style.setProperty('--deadline', `${deadlineMs}ms`);
+    hint = h('p', { class: 'step-hint small muted', 'aria-live': 'polite' }, readHint(0));
+    slow = setTimeout(() => hint && (hint.textContent = readHint(READ_SLOW_MS)), READ_SLOW_MS);
+  }
+  const endHint = () => {
+    clearTimeout(slow);
+    hint?.remove();
+  };
   let timer: ReturnType<typeof setInterval> | undefined;
   const time = () => (timer = setInterval(() => at < rows.length - 1 && advance(), STEP_MS));
   if (timed) time();
-  const el = loader(title, detail, rows.length > 0 ? h('ol', { class: 'steps small' }, rows) : null);
+  const el = loader(title, detail, rows.length > 0 ? h('ol', { class: 'steps small' }, rows) : null, hint);
   app.setAttribute('aria-busy', 'true');
   app.prepend(el);
   const next = () => {
     clearInterval(timer);
+    endHint();
     if (at < rows.length - 1) advance();
     time();
   };
+  const fail = async () => {
+    clearInterval(timer);
+    endHint();
+    mark(at, 'failed');
+    await sleep(FAIL_HOLD_MS);
+    el.remove();
+    app.removeAttribute('aria-busy');
+  };
   const done = async (complete = false) => {
     clearInterval(timer);
+    endHint();
     if (complete && rows.length > 0) {
       while (at < rows.length - 1) {
         await sleep(STEP_FINISH_MS);
@@ -682,7 +713,7 @@ function showBusy(title: string, detail: string, steps: readonly string[] = [], 
     el.remove();
     app.removeAttribute('aria-busy');
   };
-  return { el, next, done };
+  return { el, next, done, fail };
 }
 
 /** Shown on the results page after a submit, e.g. names that matched nothing; cleared once shown. */
@@ -725,7 +756,8 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
   const token = takeToken("The verification check couldn't run, so a description can't be read right now. Reload the page to try again.", addByHandButton());
   if (!token) return;
   say('Working out what is in your stack…');
-  const busy = showBusy(FEED_TITLE, FEED_DETAIL, [READ_STEP, ...FEED_STEPS], false);
+  // Only free text waits on the models; entries from a file come straight back.
+  const busy = showBusy(FEED_TITLE, FEED_DETAIL, [READ_STEP, ...FEED_STEPS], false, 'text' in body ? READ_DEADLINE_MS : 0);
   try {
     const res = await resolve(body, token);
     const items = res.chips.flatMap((c) => c.items.map((i) => i.item));
@@ -757,7 +789,7 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
     handoff = busy;
     navigate(serializeStack(stack), 30);
   } catch (err) {
-    void busy.done();
+    await busy.fail();
     if (err instanceof ApiError && err.fallback === 'manual') {
       renderEdit([]);
       report(err.message);
