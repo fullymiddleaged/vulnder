@@ -1,9 +1,10 @@
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import type { Listed } from '../match/listed';
 import type { MatchedVuln } from '../match/match';
 import { PRIORITIES, type FixItem, type Priority } from '../match/priority';
-import { MAX_CVE_ITEMS, serializeStack, type CveItem } from '../stack/format';
+import { isCveItem, MAX_CVE_ITEMS, parseStack, serializeStack, type CveItem } from '../stack/format';
 import type { AppEnv } from '../types';
 import { DEFAULT_DAYS, feedResponse, MAX_DAYS, stackRequest } from './feeds';
 
@@ -49,7 +50,7 @@ interface Feed {
   targeted: unknown[];
   results: MatchedVuln[];
   watching: string[];
-  listed?: unknown;
+  listed?: Listed;
 }
 
 /** One result, trimmed to what an agent needs to decide and act. */
@@ -98,10 +99,48 @@ export function toolResult(feed: Feed, resultLimit: number): CallToolResult {
     links: feed.links,
     note: RANKING_NOTE,
   };
-  const counts = PRIORITIES.map((p) => `${PRIORITY_LABEL[p]} ${feed.priorities[p]}`).join(', ');
   const more = feed.results.length > shown.length ? ` Showing the top ${shown.length} of ${feed.results.length}; the rest are at ${feed.links.json}.` : '';
-  const head = `${feed.results.length} CVE${feed.results.length === 1 ? '' : 's'} affect this stack (${counts}).${more} Results page: ${feed.links.page}`;
+  const head = `${headline(feed)}${more} Results page: ${feed.links.page}`;
   return { content: [{ type: 'text', text: `${head}\n\n${JSON.stringify(structured)}` }], structuredContent: structured };
+}
+
+/** Items and IDs named in the text before the rest are counted. */
+const MAX_NAMED_QUIET = 5;
+const MAX_NAMED_IDS = 10;
+
+/**
+ * The count, and what it covers. Components only get CVEs from the window
+ * plus the safety net, so "0 CVEs" never means "no known CVEs": an agent that
+ * reads only this line must not report a quiet item as safe.
+ */
+export function headline(feed: Pick<Feed, 'stack' | 'days' | 'priorities' | 'results' | 'watching' | 'listed'>): string {
+  const n = feed.results.length;
+  const counts = PRIORITIES.map((p) => `${PRIORITY_LABEL[p]} ${feed.priorities[p]}`).join(', ');
+  const items = parseStack(feed.stack);
+  const listed = items.filter(isCveItem).length;
+  const cves = `${n} CVE${n === 1 ? '' : 's'}`;
+  if (listed === items.length) return `${listed} CVE ID${listed === 1 ? '' : 's'} sent: ${cves} ranked (${counts}).${listNotes(feed.listed)}`;
+  const scope = `new in the last ${feed.days} days, plus older ones from the past year that CISA reports exploited or that score high on EPSS, LEV or CVSS${listed > 0 ? ', plus the listed CVEs whatever their age' : ''}`;
+  let quiet = '';
+  if (feed.watching.length > 0) {
+    const named = feed.watching.slice(0, MAX_NAMED_QUIET).join(', ');
+    const rest = feed.watching.length > MAX_NAMED_QUIET ? ` and ${feed.watching.length - MAX_NAMED_QUIET} more` : '';
+    quiet = ` Nothing in that window for ${named}${rest} ("watching"): older CVEs can still affect them, so don't report them as safe.`;
+  }
+  return `${cves} affect${n === 1 ? 's' : ''} this stack (${counts}): ${scope}.${quiet}${listNotes(feed.listed)}`;
+}
+
+/** IDs in a list that weren't ranked as sent, named so an agent reading only the text sees them. */
+function listNotes(listed: Listed | undefined): string {
+  if (!listed) return '';
+  const named = (ids: string[]) => ids.slice(0, MAX_NAMED_IDS).join(', ') + (ids.length > MAX_NAMED_IDS ? ` and ${ids.length - MAX_NAMED_IDS} more` : '');
+  let out = '';
+  if (listed.rejected.length > 0) {
+    const ids = listed.rejected.map((r) => (r.replacedBy.length > 0 ? `${r.id} (replaced by ${r.replacedBy.join(', ')}, ranked instead)` : `${r.id} (no replacement)`));
+    out += ` Rejected: ${named(ids)}.`;
+  }
+  if (listed.notFound.length > 0) out += ` Not published CVEs (reserved or mistyped): ${named(listed.notFound)}.`;
+  return out;
 }
 
 function toolError(text: string): CallToolResult {
@@ -110,6 +149,8 @@ function toolError(text: string): CallToolResult {
 
 /** Ranks a stack through the JSON feed, under the agents' own limit buckets. */
 async function rank(c: Context<AppEnv>, s: string, windowDays: number | undefined, resultLimit: number | undefined): Promise<CallToolResult> {
+  // stackRequest's own message names the feed's `s` query parameter, which an agent never sends.
+  if (!s.trim()) return toolError(`Invalid stack: it's empty. ${STACK_HELP}`);
   const req = stackRequest(s, windowDays);
   if ('error' in req) {
     const bad = req.invalid?.length ? ` Unrecognised: ${req.invalid.slice(0, 10).join(', ')}.` : '';

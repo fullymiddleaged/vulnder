@@ -24,6 +24,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Changed
 
+- **Clearer MCP answers for agents.** The first line of a `rank_stack` answer now says it covers CVEs new in the window plus the past year's riskiest, and names items with nothing in it, so "0 CVEs" isn't read as "no known CVEs". A `rank_cves` answer says how many IDs were sent and ranked, and names rejected and unpublished IDs. An empty stack gets an error that no longer mentions the feed's `s` parameter.
 - **Reading a description no longer fails on a slow AI day.** If the first model hasn't answered within 8 seconds, or fails, Vulnder asks a second one too (Qwen3 30B on Workers AI) and takes whichever answers first. While it reads, the "Reading your stack" circle fills green over the most it can take, then shows a ✓, or a ✗ before the form comes back so you can add items by hand. For self-hosters: set `AI_FALLBACK_MODEL` (empty turns it off). The free-plan default for `PARSE_DAILY_TOTAL` is now 500, down from 600, so even if every parse needs both models it stays inside 10,000 neurons a day.
 - **Wider pages on desktop.** Every page now uses a column up to 864px wide (it was 768px), so Fix first rows, badges and tables have more room. Sentences such as summaries and notices still stop at a comfortable reading width.
 - **Fix first CVE rows stay on one line.** A long CVE title is clipped with an ellipsis instead of wrapping onto its own line, so every row's priority and ID line up. Hover for the full title; it's also shown in full in the results below.
