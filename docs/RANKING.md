@@ -150,4 +150,6 @@ The feed also carries `support`: one entry per out-of-support finding, with `sta
 
 The feed also carries `targeted`: one entry per set of stack `items` with CVEs CISA added to KEV in the last 90 days, with `kev`, those CVEs newest first (`id`, `addedAt` as YYYY-MM-DD). Close matches with the same KEV adds share one entry. An entry for a listed CVE's product, rather than an item the stack names, has `listed: true` and the product's `label`. The Atom feed has an entry for each, dated by the latest add, with a new entry when CISA adds another.
 
+The feed's `changes` lists what happened in the window, each with a `type`: `published`, `kev_added`, `exploitation_reported` (CISA's Vulnrichment assessment newly reports active exploitation of a CVE not on KEV; it brings a CVE of any age or CVSS into the window for 90 days, as a KEV add does), `epss_crossed` or `fix_released`. The Atom feed has an entry for each.
+
 The feed also has a `fixFirst` list. Atom entries carry the priority, the window and the reasons. The badge counts exploited CVEs.

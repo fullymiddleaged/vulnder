@@ -8,6 +8,8 @@ export function describeChange(c: Change): string {
   switch (c.type) {
     case 'kev_added':
       return `${name} was added to CISA KEV (known exploited).`;
+    case 'exploitation_reported':
+      return `${name}: CISA reports active exploitation.`;
     case 'epss_crossed':
       return `${name}: EPSS rose to ${pct(c.detail.to as number)} (predicted, not observed, exploitation).`;
     case 'fix_released':
@@ -162,10 +164,11 @@ export function passNotice(pass: PassStatus | null, now = Date.now()): string | 
 }
 
 /** Most important first: confirmed exploitation, then a jump in predicted risk, then fixes, then new CVEs. */
-const CHANGE_PRIORITY: Record<Change['type'], number> = { kev_added: 0, epss_crossed: 1, fix_released: 2, published: 3 };
+const CHANGE_PRIORITY: Record<Change['type'], number> = { kev_added: 0, exploitation_reported: 1, epss_crossed: 2, fix_released: 3, published: 4 };
 
 export const CHANGE_LABEL: Record<Change['type'], string> = {
   kev_added: 'Added to CISA KEV',
+  exploitation_reported: 'Active exploitation (CISA)',
   epss_crossed: 'EPSS jump',
   fix_released: 'Fix released',
   published: 'New',
@@ -216,6 +219,7 @@ export function changeCounts(groups: ChangeGroup[]): string {
   const count = (t: Change['type']) => groups.filter((g) => g.events.some((e) => e.type === t)).length;
   const parts: [number, string, string][] = [
     [count('kev_added'), 'added to KEV', 'added to KEV'],
+    [count('exploitation_reported'), 'reported actively exploited by CISA', 'reported actively exploited by CISA'],
     [count('epss_crossed'), 'EPSS jump', 'EPSS jumps'],
     [count('fix_released'), 'fix released', 'fixes released'],
     [count('published'), 'new CVE', 'new CVEs'],
@@ -232,6 +236,8 @@ export function eventDetail(e: Change): string {
       const ransomware = e.detail.ransomware === true ? ', used in ransomware' : '';
       return `${day}${due}${ransomware}`;
     }
+    case 'exploitation_reported':
+      return `${day}${e.detail.from === 'poc' ? ', up from proof of concept' : ''}`;
     case 'epss_crossed': {
       const from = typeof e.detail.from === 'number' ? `${pct(e.detail.from)} → ` : '';
       return typeof e.detail.to === 'number' ? `${from}${pct(e.detail.to)} on ${day}` : day;

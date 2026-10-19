@@ -152,6 +152,8 @@ describe('UI formatting', () => {
     const base = { vulnId: 'CVE-2026-1', occurredAt: '2026-10-05T00:00:00Z', title: 'Bug' };
     expect(describeChange({ ...base, type: 'epss_crossed', detail: { to: 0.42 } })).toBe('CVE-2026-1: Bug: EPSS rose to 42.0% (predicted, not observed, exploitation).');
     expect(describeChange({ ...base, type: 'kev_added', detail: {} })).toMatch(/added to CISA KEV \(known exploited\)/);
+    // CISA's SSVC report is attributed to CISA, and only KEV is called "exploited".
+    expect(describeChange({ ...base, type: 'exploitation_reported', detail: { from: null } })).toBe('CVE-2026-1: Bug: CISA reports active exploitation.');
     expect(describeChange({ ...base, type: 'fix_released', detail: { package: 'next', fixedVersion: '14.2.5' } })).toBe('CVE-2026-1: Bug: fix released in next 14.2.5.');
     expect(describeChange({ ...base, title: null, type: 'published', detail: {} })).toBe('CVE-2026-1 was published.');
   });
@@ -169,13 +171,15 @@ describe('what changed this week', () => {
         change('CVE-C', 'epss_crossed', '2026-10-04T00:00:00Z', { from: 0.03, to: 0.42 }),
         change('CVE-D', 'kev_added', '2026-10-04T00:00:00Z'),
         change('CVE-E', 'kev_added', '2026-10-02T00:00:00Z'),
+        change('CVE-F', 'exploitation_reported', '2026-10-05T00:00:00Z'),
       ],
-      results,
+      [...results, result('CVE-F', 'exploited')],
     );
     expect(groups.map((g) => [g.vulnId, g.events.map((e) => e.type).join('+')])).toEqual([
       ['CVE-B', 'kev_added+published'], // exploited, exact, newest KEV-exact
       ['CVE-E', 'kev_added'], // exploited, exact, older
       ['CVE-D', 'kev_added'], // exploited, but a close match
+      ['CVE-F', 'exploitation_reported'], // CISA's report, after KEV, before predictions
       ['CVE-C', 'epss_crossed'],
       ['CVE-A', 'published'],
     ]);
@@ -189,10 +193,11 @@ describe('what changed this week', () => {
         change('CVE-B', 'published', '2026-10-01T00:00:00Z'),
         change('CVE-A', 'published', '2026-10-05T00:00:00Z'),
         change('CVE-C', 'fix_released', '2026-10-05T00:00:00Z'),
+        change('CVE-D', 'exploitation_reported', '2026-10-05T00:00:00Z'),
       ],
       results,
     );
-    expect(changeCounts(groups)).toBe('1 added to KEV, 1 fix released, 2 new CVEs');
+    expect(changeCounts(groups)).toBe('1 added to KEV, 1 reported actively exploited by CISA, 1 fix released, 2 new CVEs');
     expect(changeCounts([])).toBe('');
   });
 
@@ -202,6 +207,8 @@ describe('what changed this week', () => {
     );
     expect(eventDetail(change('X', 'epss_crossed', '2026-10-04T00:00:00.000Z', { from: 0.031, to: 0.42 }))).toBe('3.1% → 42.0% on 2026-10-04');
     expect(eventDetail(change('X', 'epss_crossed', '2026-10-04T00:00:00.000Z', { from: null, to: 0.12 }))).toBe('12.0% on 2026-10-04');
+    expect(eventDetail(change('X', 'exploitation_reported', '2026-10-02T16:58:15.719Z', { from: 'poc' }))).toBe('2026-10-02, up from proof of concept');
+    expect(eventDetail(change('X', 'exploitation_reported', '2026-10-02T16:58:15.719Z', { from: null }))).toBe('2026-10-02');
     expect(eventDetail(change('X', 'fix_released', '2026-10-04T00:00:00.000Z', { package: 'next', fixedVersion: '14.2.5' }))).toBe('next 14.2.5');
     expect(eventDetail(change('X', 'published', '2026-10-04T00:00:00.000Z'))).toBe('2026-10-04');
   });

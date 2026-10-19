@@ -335,6 +335,8 @@ export function eventTitle(e: ChangeEvent, v: MatchedVuln | undefined): string {
   switch (e.type) {
     case 'kev_added':
       return `Known exploited (added to CISA KEV): ${name}`;
+    case 'exploitation_reported':
+      return `CISA reports active exploitation: ${name}`;
     case 'epss_crossed': {
       const to = typeof e.detail.to === 'number' ? `${(e.detail.to * 100).toFixed(1)}%` : 'a higher value';
       return `EPSS rose to ${to}: ${name}`;
@@ -355,6 +357,9 @@ function eventSummary(e: ChangeEvent, v: MatchedVuln | undefined): string {
   const lines: string[] = [];
   if (e.type === 'epss_crossed') {
     lines.push('EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.');
+  }
+  if (e.type === 'exploitation_reported') {
+    lines.push('CISA’s Vulnrichment assessment (SSVC) reports active exploitation. It wasn’t on CISA KEV when CISA reported it.');
   }
   if (v) {
     lines.push(`Priority: ${PRIORITY_LABEL[v.priority]}${v.respondWithinHours !== null ? `, respond within ${describeHours(v.respondWithinHours)}` : ''}. Why: ${v.reasons.join('; ') || 'nothing beyond affecting your stack'}.`);

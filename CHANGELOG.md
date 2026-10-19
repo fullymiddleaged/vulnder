@@ -6,6 +6,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- **Old CVEs CISA newly reports actively exploited now show up.** When CISA's Vulnrichment assessment turns a CVE's exploitation to active before it's on KEV, Vulnder records it as a change, as it does a KEV addition, whatever the CVE's age or CVSS. It ranks Act now, appears in What changed ("Active exploitation (CISA)") and the Atom feed, and stays in your window for 90 days. Before, a CVE published more than a year earlier was missed until KEV listed it, and a newer one showed with no change entry. The JSON feed's `changes` gains the type `exploitation_reported`. For self-hosters: apply migration 0011. It rebuilds the events table at about 3 row writes per stored event, so on Workers Free apply it on a day of its own. Until then these CVEs still show, without the change entry.
 - **Brand and logo files** (`/brand`): the logo, the icon and the logo with the name, as SVG and transparent PNG for light and dark backgrounds, with the colours and short notes on using them. Every page's footer and the sitemap link to it.
 - **Shared links show a preview card.** Every page now has a 1200 × 630 social image with the logo and tagline, so links posted to chat apps and social sites show a large card.
 - **robots.txt welcomes AI use**: a Content-Signal line says search engines, AI assistants answering questions, and AI training may all use Vulnder's pages.
