@@ -265,14 +265,14 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'red',
     brief: 'Being exploited now, or about to be.',
     window: 'Within 24 hours to 3 days',
-    note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
+    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
   },
   attend: {
     label: 'Attend',
     light: 'amber',
     brief: 'Likely to be exploited soon.',
     window: 'Within 7 days',
-    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, an edge device with a bug that is automatable or gives full control, or CVSS 8.0 or more and public for 60 days or more.',
+    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more or NIST LEV of 20% or more at any severity, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, an edge device with a bug that is automatable or gives full control, or CVSS 8.0 or more and public for 60 days or more.',
   },
   watch: {
     label: 'Watch',
@@ -286,7 +286,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'grey',
     brief: 'Affects your stack, nothing urgent.',
     window: 'In your next routine update',
-    note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation.',
+    note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation. Attackers chain small bugs into serious attacks, so a KEV listing or a rise in EPSS moves it up whatever its severity.',
   },
 };
 

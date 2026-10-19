@@ -4,12 +4,12 @@ The short version is on the site at [How it works](https://vulnder.com/how-it-wo
 
 ## Priorities
 
-Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. The SSVC assessments themselves (exploitation, automatable, technical impact) come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment), attached to CVE records. Evidence of exploitation always outranks prediction and severity.
+Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc) decisions (Act, Attend, Track), with Watch added between Attend and Track. The SSVC assessments themselves (exploitation, automatable, technical impact) come from CISA's [Vulnrichment](https://github.com/cisagov/vulnrichment), attached to CVE records. Evidence of exploitation always outranks prediction and severity, and severity never holds either back: attackers chain lower-severity bugs, such as an information leak or a login bypass, into serious attacks. A CVSS 5.4 on KEV is Act now, and one with EPSS of 0.10 or more is at least Attend.
 
 | Priority | When |
 |---|---|
-| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, or an edge device that CISA rates automatable with total technical impact. Exploited results always sort first. |
-| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, a [Metasploit](https://github.com/rapid7/metasploit-framework) exploit module, [EPSS](https://www.first.org/epss) of 0.10 or more, a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more, CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, an edge device with a bug CISA rates automatable or total technical impact, or CVSS 8.0 or more and public for 60 days or more (see [Overdue](#overdue)). |
+| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation, at any severity. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, or an edge device that CISA rates automatable with total technical impact. Exploited results always sort first. |
+| **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, a [Metasploit](https://github.com/rapid7/metasploit-framework) exploit module, [EPSS](https://www.first.org/epss) of 0.10 or more or a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more (at any severity), CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, an edge device with a bug CISA rates automatable or total technical impact, or CVSS 8.0 or more and public for 60 days or more (see [Overdue](#overdue)). |
 | **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable (or, unrated, one with a Nuclei template), any bug CISA has assessed on an edge device, or CVSS 7.0 or more and public for 60 days or more. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it high (Red Hat's "important" counts as high). |
 | **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
 
@@ -43,7 +43,7 @@ It's checked after every other rule, so it decides a priority only when nothing 
 
 ## Safety net
 
-Results come from the time window you pick (7, 30 or 90 days). Whatever the window, these CVEs from the last year show too, marked "Older":
+Results come from the time window you pick (7, 30 or 90 days), at every severity. Whatever the window, these CVEs from the last year show too, at any severity, marked "Older":
 
 - added to CISA KEV in the last year, or published in it and reported by CISA as actively exploited;
 - published in the last year with EPSS of 10% or more, a NIST LEV estimate of 20% or more, or CVSS 9.9 or more.
