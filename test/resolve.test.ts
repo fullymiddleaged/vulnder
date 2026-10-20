@@ -198,8 +198,8 @@ describe('resolveCandidates', () => {
       // Every major version, most-affected first; not the add-on for SAP.
       // A distribution also brings the kernel (not in this catalog, so unknown).
       ['RHEL', 'resolved', '?p:red_hat/red_hat_enterprise_linux_9 | ?p:red_hat/red_hat_enterprise_linux_8 | ?p:linux/linux (unknown)'],
-      ['RHEL 8', 'resolved', 'p:red_hat/red_hat_enterprise_linux_8@8 | ?p:linux/linux (unknown)'],
-      ['RHEL 9', 'resolved', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux (unknown)'],
+      ['RHEL 8', 'resolved', 'p:red_hat/red_hat_enterprise_linux_8@8 | ?p:linux/linux@4.18 (unknown)'],
+      ['RHEL 9', 'resolved', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux@5.14 (unknown)'],
       // The key Apache's own CVE records use, not NVD's apache/http_server.
       ['Apache', 'resolved', 'p:apache_software_foundation/apache_http_server'],
       // Nothing in the catalog yet: watched under its main key.
@@ -229,14 +229,25 @@ describe('resolveCandidates', () => {
       ),
     );
     const product = (name: string, version: string | null = null) => ({ kind: 'product' as const, name, vendor: null, version, direct: true });
-    const res = await resolveCandidates(store(), [product('Ubuntu'), product('Ubuntu', '24.04'), product('Debian 12'), product('RHEL 9'), product('Fedora'), product('Linux')]);
+    const res = await resolveCandidates(store(), [
+      product('Ubuntu'),
+      product('Ubuntu', '24.04'),
+      product('Ubuntu', '22.04.4'),
+      product('Debian 12'),
+      product('RHEL 9'),
+      product('Rocky Linux', '8.10'),
+      product('Fedora'),
+      product('Linux'),
+    ]);
     expect(res.chips.map((c) => [c.input, c.items.map((i) => `${i.item}${i.known ? '' : ' (unknown)'}`).join(' | ')])).toEqual([
-      // Every release, not Ubuntu Pro for WSL, and the kernel.
+      // Every release, not Ubuntu Pro for WSL, and the kernel: no release named, so no series.
       ['Ubuntu', '?p:canonical/ubuntu_22_04_lts | ?p:canonical/ubuntu_24_04_lts | ?p:canonical/ubuntu_linux | ?p:linux/linux'],
-      // The distribution's release stays exact; the kernel carries no version, since the distribution patches it.
-      ['Ubuntu 24.04', 'p:canonical/ubuntu_24_04_lts@24.04 | ?p:linux/linux'],
-      ['Debian 12', 'p:debian/debian_linux@12 | ?p:linux/linux'],
-      ['RHEL 9', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux'],
+      // A release narrows both: its own product exactly, and the kernel at the series it ships.
+      ['Ubuntu 24.04', 'p:canonical/ubuntu_24_04_lts@24.04 | ?p:linux/linux@6.8'],
+      ['Ubuntu 22.04.4', 'p:canonical/ubuntu_22_04_lts@22.04.4 | ?p:linux/linux@5.15'],
+      ['Debian 12', 'p:debian/debian_linux@12 | ?p:linux/linux@6.1'],
+      ['RHEL 9', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux@5.14'],
+      ['Rocky Linux 8.10', '?p:linux/linux@4.18'],
       // Nothing of its own in the catalog: the kernel alone.
       ['Fedora', '?p:linux/linux'],
       // The kernel itself stays exact, and brings no distribution.
@@ -267,6 +278,7 @@ describe('resolveCandidates', () => {
       // An edition word after the release still finds it.
       ['Windows 10 Pro', '?p:microsoft/windows_10_version_22h2@10_pro | ?p:microsoft/windows_10_version_1607@10_pro'],
       ['Windows 10 22H2', 'p:microsoft/windows_10_version_22h2@22h2'],
+      // A release the kernel table doesn't list: the kernel unversioned, rather than a guess.
       ['RHEL 6', 'p:redhat/enterprise_linux@6 | ?p:linux/linux'],
       // A broad name still expands, with no version.
       ['Windows', '?p:microsoft/windows_11_version_24h2 | ?p:microsoft/windows_10_version_22h2 | ?p:microsoft/windows_10_version_1607 | ?p:microsoft/windows'],

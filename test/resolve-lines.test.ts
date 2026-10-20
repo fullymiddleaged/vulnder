@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseStack } from '../src/stack/format';
-import { fallbackKey, forVersion, inLine, lineFor, lineRanges, perRelease, PRODUCT_LINES } from '../src/resolve/lines';
+import { fallbackKey, forVersion, inLine, kernelSeries, lineFor, lineRanges, perRelease, PRODUCT_LINES } from '../src/resolve/lines';
 
 const keysOf = (name: string, vendor: string | null = null) => lineFor(name, vendor)?.line.keys ?? null;
 const RHEL = keysOf('RHEL')!;
@@ -126,5 +126,20 @@ describe('PRODUCT_LINES', () => {
   it('watches the first whole key when the catalog has nothing for a line', () => {
     expect(fallbackKey(lineFor('IIS', null)!.line)).toBe('microsoft/internet_information_services');
     expect(fallbackKey(lineFor('Meraki', null)!.line)).toBeNull();
+  });
+
+  it("finds the kernel series a distribution's release ships, and none it doesn't know", () => {
+    const series = (name: string, release: string | null) => kernelSeries(lineFor(name, null)!.line, release);
+    expect(series('Ubuntu', '24.04')).toBe('6.8');
+    expect(series('Ubuntu', '24.04.3')).toBe('6.8');
+    expect(series('RHEL', '9.4')).toBe('5.14');
+    expect(series('Debian', '12')).toBe('6.1');
+    expect(series('AlmaLinux', '10')).toBe('6.12');
+    // Not listed, not given, or a line with no table: no guess.
+    expect(series('Ubuntu', '23.10')).toBeNull();
+    expect(series('Ubuntu', null)).toBeNull();
+    expect(series('Fedora', '42')).toBeNull();
+    expect(series('Ubuntu', '__proto__')).toBeNull();
+    expect(series('Ubuntu', 'constructor')).toBeNull();
   });
 });

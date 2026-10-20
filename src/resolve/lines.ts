@@ -30,6 +30,28 @@ export interface ProductLine {
    * an upstream version check would be wrong.
    */
   kernel?: true;
+  /**
+   * The kernel series each release ships (its general-availability kernel),
+   * so "Ubuntu 24.04" checks the kernel at 6.8 and drops CVEs whose records
+   * say 6.8 isn't affected. A release not listed gets the kernel unversioned.
+   */
+  kernels?: Record<string, string>;
+}
+
+/** RHEL and the distributions rebuilt from it ship the same kernel series. */
+const RHEL_KERNELS = { '7': '3.10', '8': '4.18', '9': '5.14', '10': '6.12' };
+
+/** The kernel series a release of the line ships, from "24.04", "24.04.1", "9.4" or "12". */
+export function kernelSeries(line: ProductLine, release: string | null): string | null {
+  if (!line.kernels || !release) return null;
+  let r = /^\d+(\.\d+)*/.exec(release.trim())?.[0] ?? null;
+  while (r) {
+    const series = Object.hasOwn(line.kernels, r) ? line.kernels[r]! : null;
+    if (series) return series;
+    const dot = r.lastIndexOf('.');
+    r = dot > 0 ? r.slice(0, dot) : null;
+  }
+  return null;
 }
 
 export const PRODUCT_LINES: ProductLine[] = [
@@ -64,20 +86,25 @@ export const PRODUCT_LINES: ProductLine[] = [
   { names: ['iis', 'microsoft_iis', 'internet_information_services'], keys: ['microsoft/internet_information_services', 'microsoft/windows_server_*'], keep: /^\d{4}/ },
   { names: ['adfs', 'ad_fs', 'active_directory_federation_services'], keys: ['microsoft/active_directory_federation_services', 'microsoft/windows_server_*'], keep: /^\d{4}/ },
   // Linux distributions: each also brings the upstream kernel as a close match (`kernel`).
-  { names: ['rhel', 'red_hat_enterprise_linux', 'red_hat_linux', 'redhat_linux', 'redhat_enterprise_linux'], keys: ['redhat/enterprise_linux', 'red_hat/red_hat_enterprise_linux_*'], keep: /^\d+$/, kernel: true },
+  { names: ['rhel', 'red_hat_enterprise_linux', 'red_hat_linux', 'redhat_linux', 'redhat_enterprise_linux'], keys: ['redhat/enterprise_linux', 'red_hat/red_hat_enterprise_linux_*'], keep: /^\d+$/, kernel: true, kernels: RHEL_KERNELS },
   { names: ['sles', 'suse_linux_enterprise_server', 'suse_linux_enterprise', 'suse_enterprise_linux'], keys: ['suse/linux_enterprise_server', 'suse/suse_linux_enterprise_server_*'], keep: /^\d+(_sp\d+)?$/, kernel: true },
-  { names: ['centos', 'centos_linux', 'centos_stream'], keys: ['centos/centos'], kernel: true },
+  { names: ['centos', 'centos_linux', 'centos_stream'], keys: ['centos/centos'], kernel: true, kernels: RHEL_KERNELS },
   { names: ['oracle_linux'], keys: ['oracle/linux'], kernel: true },
   // One product per release (`ubuntu_24_04_lts`), so "Ubuntu 24.04" picks its own; not Ubuntu Pro or its tools.
-  { names: ['ubuntu', 'ubuntu_linux', 'canonical_ubuntu', 'ubuntu_server', 'ubuntu_desktop'], keys: ['canonical/ubuntu_linux', 'canonical/ubuntu', 'canonical/ubuntu_*'], keep: /^\d+_\d+(_lts)?$/, kernel: true },
-  { names: ['debian', 'debian_linux', 'debian_gnu_linux'], keys: ['debian/debian_linux'], kernel: true },
+  { names: ['ubuntu', 'ubuntu_linux', 'canonical_ubuntu', 'ubuntu_server', 'ubuntu_desktop'], keys: ['canonical/ubuntu_linux', 'canonical/ubuntu', 'canonical/ubuntu_*'], keep: /^\d+_\d+(_lts)?$/,
+    kernel: true,
+    // The kernel each release ships at launch; LTS desktops later move to newer (HWE) kernels.
+    kernels: { '18.04': '4.15', '20.04': '5.4', '22.04': '5.15', '24.04': '6.8', '24.10': '6.11', '25.04': '6.14', '25.10': '6.17' },
+  },
+  { names: ['debian', 'debian_linux', 'debian_gnu_linux'], keys: ['debian/debian_linux'], kernel: true, kernels: { '10': '4.19', '11': '5.10', '12': '6.1', '13': '6.12' } },
   { names: ['opensuse', 'opensuse_leap', 'opensuse_tumbleweed', 'tumbleweed'], keys: ['suse/opensuse', 'suse/opensuse_*', 'opensuse/tumbleweed'], keep: /^(leap_\d+_\d+|tumbleweed)$/, kernel: true },
   // Nothing in the catalog for these yet, and fuzzy matching finds unrelated products (Amazon Ion for Amazon Linux): only the kernel.
   {
-    names: ['amazon_linux', 'amazon_linux_2', 'amazon_linux_2023', 'rocky_linux', 'rocky', 'almalinux', 'alma_linux', 'fedora', 'fedora_linux', 'alpine_linux', 'arch_linux', 'linux_mint', 'kali_linux', 'gentoo', 'gentoo_linux'],
+    names: ['amazon_linux', 'amazon_linux_2', 'amazon_linux_2023', 'fedora', 'fedora_linux', 'alpine_linux', 'arch_linux', 'linux_mint', 'kali_linux', 'gentoo', 'gentoo_linux'],
     keys: [],
     kernel: true,
   },
+  { names: ['rocky_linux', 'rocky', 'almalinux', 'alma_linux'], keys: [], kernel: true, kernels: RHEL_KERNELS },
   { names: ['ios', 'apple_ios', 'iphone_os', 'ipados', 'apple_ipados'], keys: ['apple/iphone_os', 'apple/ipados', 'apple/ios_and_ipados'] },
   // Nothing in the catalog yet, and fuzzy matching finds unrelated products: better unmatched.
   { names: ['intune', 'microsoft_intune'], keys: [] },
@@ -245,7 +272,13 @@ export function forVersion<T extends { product: string | null }>(rows: T[], vers
   if (whole.length > 0) return whole;
   const parts = v.split('_');
   const n = parts.findIndex((p) => !/\d/.test(p));
-  return n > 0 ? holding(parts.slice(0, n).join('_')) : [];
+  if (n > 0) return holding(parts.slice(0, n).join('_'));
+  // All digits, but a point release past the product's ("22.04.4" is `ubuntu_22_04_lts`).
+  for (let k = parts.length - 1; n < 0 && k >= 2; k--) {
+    const found = holding(parts.slice(0, k).join('_'));
+    if (found.length > 0) return found;
+  }
+  return [];
 }
 
 /** True when the line's products are one per release (`windows_10_version_22h2`, `red_hat_enterprise_linux_9`). */

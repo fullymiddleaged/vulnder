@@ -3,7 +3,7 @@ import type { Store } from '../ingest/store';
 import { formatItem, isStackVersion, MAX_ITEMS, parseComponent, parseStack, type StackItem, type Team } from '../stack/format';
 import { productLabel } from '../ingest/sources/cve-record';
 import { ALIASES, CATEGORIES, vendorFamily, vendorSpellings } from './aliases';
-import { fallbackKey, forVersion, inLine, lineFor, lineRanges, perRelease, type LineMatch } from './lines';
+import { fallbackKey, forVersion, inLine, kernelSeries, lineFor, lineRanges, perRelease, type LineMatch } from './lines';
 import type { Candidate } from './types';
 
 /**
@@ -201,7 +201,8 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
     itemCount += chip.items.length + (kernel ? 1 : 0);
     if (itemCount > MAX_RESOLVED_ITEMS) throw new TooManyProducts(`these names match more than ${MAX_RESOLVED_ITEMS} products`);
     // Added after the version is applied: the distribution's version isn't the kernel's.
-    chips.push(kernel ? withKernel(forCandidate(chip, c), knownAlias.has(KERNEL_ITEM)) : forCandidate(chip, c));
+    const series = line ? kernelSeries(line.line, c.version ?? line.version) : null;
+    chips.push(kernel ? withKernel(forCandidate(chip, c), series, knownAlias.has(KERNEL_ITEM)) : forCandidate(chip, c));
   }
 
   return { chips, droppedTransitive };
@@ -210,10 +211,15 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
 /** The upstream Linux kernel, where the kernel CNA files every kernel CVE. */
 const KERNEL_ITEM = 'p:linux/linux';
 
-/** A distribution's chip with its kernel added as a close match, with no version (lines.ts `kernel`). */
-function withKernel(chip: Chip, known: boolean): Chip {
+/**
+ * A distribution's chip with its kernel added as a close match (lines.ts
+ * `kernel`): at the series its release ships when that's known, so the
+ * release narrows the kernel's CVEs too, and otherwise with no version.
+ */
+function withKernel(chip: Chip, series: string | null, known: boolean): Chip {
   if (chip.items.some((i) => /^\??p:linux\/linux(@|;|$)/.test(i.item))) return chip;
-  return { ...chip, status: 'resolved', items: [...chip.items, { item: `?${KERNEL_ITEM}`, label: 'Linux kernel', close: true, known }] };
+  const item = `?${KERNEL_ITEM}${series ? `@${series}` : ''}`;
+  return { ...chip, status: 'resolved', items: [...chip.items, { item, label: series ? `Linux kernel ${series}` : 'Linux kernel', close: true, known }] };
 }
 
 /** Everything resolveProduct reads from a candidate, apart from its label (and its version, except for a product line). */
