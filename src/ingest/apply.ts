@@ -1,4 +1,5 @@
 import { CVE_ID } from '../lib/normalize';
+import { unaffectedBounds } from '../match/versions';
 import {
   detectFixReleased,
   mergePatch,
@@ -64,6 +65,9 @@ interface AffectedRow {
   label: string | null;
   ranges: string;
   fixed_version: string | null;
+  /** From ranges (src/match/versions.ts): what match reads instead of them. */
+  unaffected_below: string | null;
+  unaffected_from: string | null;
 }
 
 const VULN_COLUMNS = [
@@ -124,6 +128,8 @@ const AFFECTED_COLUMNS = [
   'label',
   'ranges',
   'fixed_version',
+  'unaffected_below',
+  'unaffected_from',
 ] as const;
 
 const INSERT_AFFECTED = `INSERT INTO affected (${AFFECTED_COLUMNS.join(', ')})
@@ -487,6 +493,7 @@ function onlyEpssChanged(before: ReturnType<typeof recordToRow>, after: ReturnTy
 }
 
 function toAffectedRow(vulnId: string, source: AffectedSource, a: AffectedInput): AffectedRow {
+  const bounds = unaffectedBounds(a.ranges);
   return {
     vuln_id: vulnId,
     source,
@@ -498,6 +505,8 @@ function toAffectedRow(vulnId: string, source: AffectedSource, a: AffectedInput)
     label: a.label ?? null,
     ranges: JSON.stringify(a.ranges),
     fixed_version: a.fixedVersion ?? null,
+    unaffected_below: bounds.below,
+    unaffected_from: bounds.from,
   };
 }
 

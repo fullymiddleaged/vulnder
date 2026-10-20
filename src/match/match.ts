@@ -12,6 +12,7 @@ import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 import { supportFor, type Support, type SupportState } from './support';
 import { recentKev, recentKevByProduct, type KevAdd } from './targeted';
+import { explicitlyUnaffected } from './versions';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -181,6 +182,11 @@ const inSafetyNet = (v: VulnRow, start: string) =>
     start,
   );
 
+/** True when one of a vuln's rows for this product says the version isn't affected (src/match/versions.ts). */
+function ruledOut(rows: AffectedRow[], key: string, version: string): boolean {
+  return rows.some((r) => rowKey(r) === key && explicitlyUnaffected({ below: r.unaffected_below, from: r.unaffected_from }, version));
+}
+
 export async function matchStack(store: Store, stack: StackItem[], opts: MatchOptions): Promise<MatchResult> {
   const since = addDays(opts.now, -opts.days).toISOString();
   const netStart = keepStart(opts.now);
@@ -272,6 +278,8 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
           // Checked and not affected: this row does not count as a match.
           continue;
         }
+        // A product named with a version that any of its rows rules out (the kernel's git-only row says nothing either way).
+        if (item.kind === 'product' && item.version && ruledOut(rows, rowKey(r), item.version)) continue;
         unverified = true;
         matched.add(formatItem(item));
         if (!item.close) exact = true;

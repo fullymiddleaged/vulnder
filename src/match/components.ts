@@ -48,6 +48,9 @@ export interface AffectedRow {
   vendor: string | null;
   product: string | null;
   fixed_version: string | null;
+  /** What the record rules out (src/match/versions.ts); null when it says nothing. */
+  unaffected_below: string | null;
+  unaffected_from: string | null;
 }
 
 export interface VulnRow {
@@ -85,7 +88,7 @@ export const rowKey = (r: AffectedRow) => (r.kind === 'package' ? `pkg:${r.ecosy
  * Each searches an index by the keys in the json_each list
  * (test/query-plans.test.ts checks this), so a load reads only the rows it uses.
  */
-const AFFECTED_COLS = 'vuln_id, source, kind, ecosystem, package_name, vendor, product, fixed_version';
+const AFFECTED_COLS = 'vuln_id, source, kind, ecosystem, package_name, vendor, product, fixed_version, unaffected_below, unaffected_from';
 export const AFFECTED_PACKAGES_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'package'
   AND (ecosystem, package_name) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`;
 export const AFFECTED_PRODUCTS_SQL = `SELECT ${AFFECTED_COLS} FROM affected WHERE kind = 'product'
