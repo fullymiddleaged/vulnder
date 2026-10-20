@@ -8,6 +8,8 @@ export function describeChange(c: Change): string {
   switch (c.type) {
     case 'kev_added':
       return `${name} was added to CISA KEV (known exploited).`;
+    case 'exploitation_reported':
+      return `${name}: CISA reports active exploitation.`;
     case 'epss_crossed':
       return `${name}: EPSS rose to ${pct(c.detail.to as number)} (predicted, not observed, exploitation).`;
     case 'fix_released':
@@ -162,10 +164,11 @@ export function passNotice(pass: PassStatus | null, now = Date.now()): string | 
 }
 
 /** Most important first: confirmed exploitation, then a jump in predicted risk, then fixes, then new CVEs. */
-const CHANGE_PRIORITY: Record<Change['type'], number> = { kev_added: 0, epss_crossed: 1, fix_released: 2, published: 3 };
+const CHANGE_PRIORITY: Record<Change['type'], number> = { kev_added: 0, exploitation_reported: 1, epss_crossed: 2, fix_released: 3, published: 4 };
 
 export const CHANGE_LABEL: Record<Change['type'], string> = {
   kev_added: 'Added to CISA KEV',
+  exploitation_reported: 'Active exploitation (CISA)',
   epss_crossed: 'EPSS jump',
   fix_released: 'Fix released',
   published: 'New',
@@ -216,6 +219,7 @@ export function changeCounts(groups: ChangeGroup[]): string {
   const count = (t: Change['type']) => groups.filter((g) => g.events.some((e) => e.type === t)).length;
   const parts: [number, string, string][] = [
     [count('kev_added'), 'added to KEV', 'added to KEV'],
+    [count('exploitation_reported'), 'reported actively exploited by CISA', 'reported actively exploited by CISA'],
     [count('epss_crossed'), 'EPSS jump', 'EPSS jumps'],
     [count('fix_released'), 'fix released', 'fixes released'],
     [count('published'), 'new CVE', 'new CVEs'],
@@ -232,6 +236,8 @@ export function eventDetail(e: Change): string {
       const ransomware = e.detail.ransomware === true ? ', used in ransomware' : '';
       return `${day}${due}${ransomware}`;
     }
+    case 'exploitation_reported':
+      return `${day}${e.detail.from === 'poc' ? ', up from proof of concept' : ''}`;
     case 'epss_crossed': {
       const from = typeof e.detail.from === 'number' ? `${pct(e.detail.from)} → ` : '';
       return typeof e.detail.to === 'number' ? `${from}${pct(e.detail.to)} on ${day}` : day;
@@ -265,14 +271,14 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'red',
     brief: 'Being exploited now, or about to be.',
     window: 'Within 24 hours to 3 days',
-    note: 'Being exploited: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
+    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
   },
   attend: {
     label: 'Attend',
     light: 'amber',
     brief: 'Likely to be exploited soon.',
     window: 'Within 7 days',
-    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more, NIST LEV of 20% or more, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, an edge device with a bug that is automatable or gives full control, or CVSS 8.0 or more and public for 60 days or more.',
+    note: 'Likely to be exploited, or critical: a similar bug in the same product is being exploited, EPSS of 10% or more or NIST LEV of 20% or more at any severity, CVSS 9.0 or more, a working exploit that is easy to use or gives full control, an edge device with a bug that is automatable or gives full control, or CVSS 8.0 or more and public for 60 days or more.',
   },
   watch: {
     label: 'Watch',
@@ -286,7 +292,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'grey',
     brief: 'Affects your stack, nothing urgent.',
     window: 'In your next routine update',
-    note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation.',
+    note: 'Affects your stack, but nothing above applies: lower severity, and nothing suggests exploitation. Attackers chain small bugs into serious attacks, so a KEV listing or a rise in EPSS moves it up whatever its severity.',
   },
 };
 

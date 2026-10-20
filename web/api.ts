@@ -142,7 +142,7 @@ export interface SupportNotice {
 
 export interface Change {
   vulnId: string;
-  type: 'published' | 'kev_added' | 'epss_crossed' | 'fix_released';
+  type: 'published' | 'kev_added' | 'exploitation_reported' | 'epss_crossed' | 'fix_released';
   occurredAt: string;
   detail: Record<string, unknown>;
   title: string | null;

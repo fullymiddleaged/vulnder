@@ -185,7 +185,7 @@
             </li>
             <li>
               <strong>Retain</strong>
-              <p>CVEs published or changed in the last 90 days, so an old CVE added to KEV today still shows. Exploited, likely-exploited and CVSS 7.0+ CVEs are kept for a year. A slim index of every CVE ID ranks pasted CVE lists of any age.</p>
+              <p>CVEs published or changed in the last 90 days, so an old CVE added to KEV today, or newly reported by CISA as actively exploited, still shows. A CVE CISA reports exploited, or one likely to be exploited, is kept and shown for a year at any severity. CVSS 7.0+ CVEs are kept for a year too, but show only inside the window you pick. A slim index of every CVE ID ranks pasted CVE lists of any age.</p>
             </li>
           </ol>
         </div>
@@ -241,17 +241,18 @@
         <p>
           Priorities follow CISA's SSVC decisions, from its <a href="https://github.com/cisagov/vulnrichment" rel="noreferrer">Vulnrichment</a> assessments on CVE records.
           Evidence of exploitation outranks prediction (EPSS, NIST LEV), which outranks severity (CVSS).
+          A low CVSS never holds the first two back: attackers chain lower-severity bugs into serious attacks.
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or actively exploited, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited CVEs come first.</span></li>
-          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+, NIST LEV 20%+, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code for a bug that is automatable or gives full control, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or reported by CISA as actively exploited, at any severity, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited CVEs come first.</span></li>
+          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+ or NIST LEV 20%+ at any severity, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code for a bug that is automatable or gives full control, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
           <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept or other public exploit code, rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it), any bug CISA has assessed on an edge device, or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
           <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack and nothing above applies. Next routine update.</span></li>
         </ul>
         <table class="prose-table keyed">
           <tbody>
             <tr><th scope="row">Score</th><td>A 0–100 heuristic that orders results within a priority, from threat, impact, reachability and ransomware use. Not a probability.</td></tr>
-            <tr><th scope="row">Older CVEs</th><td>Known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show whatever window you pick.</td></tr>
+            <tr><th scope="row">Older CVEs</th><td>CVEs from the last year that CISA reports exploited or that are likely to be exploited (EPSS 10%+ or NIST LEV 20%+), at any severity, and CVSS 9.9+ CVEs show whatever window you pick.</td></tr>
             <tr><th scope="row">Overdue</th><td>A high-severity CVE still unfixed 60 days after publication moves up one priority. It never changes the score or reaches Act now.</td></tr>
             <tr><th scope="row">Edge devices</th><td>Treated as internet-facing, ranked ahead of similar results, and given CISA BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked by default; change them under Edit stack.</td></tr>
             <tr><th scope="row">Out of support</th><td>Software past its vendor's end of support ranks with Act now; support ending within 90 days ranks with Attend. This is a finding on the component and doesn't change its CVEs' priorities.</td></tr>

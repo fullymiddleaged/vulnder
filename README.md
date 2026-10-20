@@ -20,12 +20,12 @@ Describe what you run, drop in a lockfile or SBOM, or paste the CVE IDs from a s
 
 ## Ranking
 
-Evidence of exploitation beats prediction (EPSS, NIST LEV), and prediction beats severity (CVSS).
+Evidence of exploitation beats prediction (EPSS, NIST LEV), and prediction beats severity (CVSS). A low CVSS never holds the first two back: attackers chain lower-severity bugs into serious attacks.
 
 | Priority | When | Respond |
 |---|---|---|
-| **Act now** | On CISA KEV, or CISA reports active exploitation. Before any exploitation is seen: a critical (CVSS 9.0+) with EPSS 10%+ or LEV 20%+, EPSS 50%+ at any severity, or an edge device bug CISA rates automatable with total technical impact | 24 hours if exploited, else 3 days |
-| **Attend** | EPSS 10%+, LEV 20%+, CVSS 9.0+, a Metasploit exploit module, a similar CVE in the same product on KEV or actively exploited, public exploit code for a bug that is automatable or gives total control, an automatable or total-impact bug on an edge device, or CVSS 8.0+ and public for 60 days | 7 days |
+| **Act now** | On CISA KEV, or CISA reports active exploitation, at any severity. Before any exploitation is seen: a critical (CVSS 9.0+) with EPSS 10%+ or LEV 20%+, EPSS 50%+ at any severity, or an edge device bug CISA rates automatable with total technical impact | 24 hours if exploited, else 3 days |
+| **Attend** | EPSS 10%+ or LEV 20%+ at any severity, CVSS 9.0+, a Metasploit exploit module, a similar CVE in the same product on KEV or actively exploited, public exploit code for a bug that is automatable or gives total control, an automatable or total-impact bug on an edge device, or CVSS 8.0+ and public for 60 days | 7 days |
 | **Watch** | CVSS 8.0+, public proof-of-concept code, a bug CISA rates automatable (or, where CISA hasn't rated it, one with a Nuclei template), any bug CISA has assessed on an edge device, or CVSS 7.0+ and public for 60 days | 30 days |
 | **Track** | Affects your stack, and nothing above applies | Next routine update |
 
@@ -80,7 +80,7 @@ Vulnder runs on Cloudflare, which sees every request, including the stack in the
 
 ## Data
 
-[CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, vendor support dates from [endoflife.date](https://endoflife.date) (MIT), and exploit availability from the [Metasploit](https://github.com/rapid7/metasploit-framework) module index (BSD-3-Clause) and [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) (MIT). CVEs published or changed in the last 90 days are kept, so an old CVE that lands on KEV today still shows up. Exploited, likely-exploited and CVSS 7.0+ CVEs are kept for a year, and a slim index of every CVE ID ranks pasted lists of any age.
+[CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, vendor support dates from [endoflife.date](https://endoflife.date) (MIT), and exploit availability from the [Metasploit](https://github.com/rapid7/metasploit-framework) module index (BSD-3-Clause) and [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) (MIT). CVEs published or changed in the last 90 days are kept, so an old CVE that lands on KEV today, or that CISA newly reports actively exploited, still shows up. CVEs CISA reports exploited or that are likely to be exploited are kept and shown for a year at any severity. CVSS 7.0+ CVEs are kept for a year too, but show only inside the window you pick. A slim index of every CVE ID ranks pasted lists of any age.
 
 ## Self-hosting
 

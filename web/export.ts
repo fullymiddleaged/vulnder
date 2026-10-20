@@ -138,7 +138,7 @@ function mdResult(r: Result): string[] {
   );
   add('Replaces', r.replaces?.length ? `${r.replaces.join(', ')}, rejected as duplicates of it` : null);
   add('Published', r.confidence === 'listed' ? (r.publishedAt?.slice(0, 10) ?? 'unknown') : null);
-  add('Older than the window', r.beforeWindow && r.confidence !== 'listed' ? `published ${r.publishedAt?.slice(0, 10) ?? 'unknown'}; shown because it is exploited, likely to be, or CVSS 9.9+ in the last year` : null);
+  add('Older than the window', r.beforeWindow && r.confidence !== 'listed' ? `published ${r.publishedAt?.slice(0, 10) ?? 'unknown'}; shown because, in the last year, CISA reported it exploited or it became likely to be exploited (at any severity), or it scores CVSS 9.9+` : null);
   add('Decided by', r.why.decisive ? `${mdText(r.why.decisive.text)} (${KIND[r.why.decisive.kind]})` : null);
   add('Other reasons', r.why.others.length > 0 ? r.why.others.map((o) => mdText(o.text)).join('; ') : null);
   add('Not available', r.why.missing.length > 0 ? r.why.missing.map(mdText).join('; ') : null);
@@ -176,7 +176,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder', sources?: Health['s
     `- **From:** ${mdText(name)}, ${mdLink(feed.links.page) ?? ''}`,
     `- **Generated:** ${feed.generatedAt}`,
     items.length > 0
-      ? `- **Window:** CVEs from the last ${feed.days} days, plus known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year${listed > 0 ? '; every listed CVE whatever its age' : ''}`
+      ? `- **Window:** CVEs from the last ${feed.days} days, plus CVEs from the last year that CISA reports exploited or that are likely to be exploited, at any severity, and CVSS 9.9+ ones${listed > 0 ? '; every listed CVE whatever its age' : ''}`
       : '- **Window:** every listed CVE, whatever its age',
     `- **Priorities:** ${counts}`,
     items.length > 0 ? `- **Stack:** ${items.map(stackLine).join(', ')}` : '',
