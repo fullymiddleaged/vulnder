@@ -6,6 +6,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- **A Linux distribution brings its kernel.** Kernel CVEs are filed under the upstream Linux kernel, not the distribution, so "Ubuntu 24.04" used to find only Canonical's own handful. Ubuntu, Debian, RHEL, SUSE, openSUSE, CentOS, Oracle Linux, Amazon Linux, Rocky, Alma, Fedora, Alpine, Arch, Mint, Kali and Gentoo now also add the kernel as a close match, without a version, since distributions patch their kernels. Ubuntu, Debian and openSUSE resolve to their own releases too ("Ubuntu 24.04" is exactly `ubuntu_24_04_lts`). "Linux" alone still means just the kernel.
 - **Brand and logo files** (`/brand`): the logo, the icon and the logo with the name, as SVG and transparent PNG for light and dark backgrounds, with the colours and short notes on using them. Every page's footer and the sitemap link to it.
 - **Shared links show a preview card.** Every page now has a 1200 × 630 social image with the logo and tagline, so links posted to chat apps and social sites show a large card.
 - **robots.txt welcomes AI use**: a Content-Signal line says search engines, AI assistants answering questions, and AI training may all use Vulnder's pages.
