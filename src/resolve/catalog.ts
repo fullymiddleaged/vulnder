@@ -110,6 +110,8 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
   const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
   const lines = products.map((p) => lineFor(p.name, p.vendor));
+  // A distribution brings its kernel: one more exact key to check.
+  if (lines.some((m) => m?.line.kernel)) aliasItems.push(KERNEL_ITEM);
   const queries = [...new Set(products.flatMap((p, i) => (lines[i] ? [] : [normalizeKey(p.name)])).filter((k): k is string => !!k && !ownValue(ALIASES, k)))];
   const ranges = [...new Map(lines.flatMap((m) => (m ? lineRanges(m.line) : [])).map((r) => [r.join('\n'), r])).values()];
   // Each vendor named (or implied by the first word). Most names only need to
@@ -194,13 +196,24 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
     let chip = lookups.get(lookupKey);
     const line = lines[i] ?? null;
     if (!chip) lookups.set(lookupKey, (chip = resolveProduct(line ? { ...c, version: c.version ?? line.version } : { ...c, version: null }, line, lookup)));
+    const kernel = !!line?.line.kernel;
     // Counted before forCandidate copies the items, so an oversized request stops early.
-    itemCount += chip.items.length;
+    itemCount += chip.items.length + (kernel ? 1 : 0);
     if (itemCount > MAX_RESOLVED_ITEMS) throw new TooManyProducts(`these names match more than ${MAX_RESOLVED_ITEMS} products`);
-    chips.push(forCandidate(chip, c));
+    // Added after the version is applied: the distribution's version isn't the kernel's.
+    chips.push(kernel ? withKernel(forCandidate(chip, c), knownAlias.has(KERNEL_ITEM)) : forCandidate(chip, c));
   }
 
   return { chips, droppedTransitive };
+}
+
+/** The upstream Linux kernel, where the kernel CNA files every kernel CVE. */
+const KERNEL_ITEM = 'p:linux/linux';
+
+/** A distribution's chip with its kernel added as a close match, with no version (lines.ts `kernel`). */
+function withKernel(chip: Chip, known: boolean): Chip {
+  if (chip.items.some((i) => /^\??p:linux\/linux(@|;|$)/.test(i.item))) return chip;
+  return { ...chip, status: 'resolved', items: [...chip.items, { item: `?${KERNEL_ITEM}`, label: 'Linux kernel', close: true, known }] };
 }
 
 /** Everything resolveProduct reads from a candidate, apart from its label (and its version, except for a product line). */

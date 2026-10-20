@@ -196,9 +196,10 @@ describe('resolveCandidates', () => {
     ]);
     expect(res.chips.map((c) => [c.input, c.status, c.items.map((i) => `${i.item}${i.known ? '' : ' (unknown)'}`).join(' | ')])).toEqual([
       // Every major version, most-affected first; not the add-on for SAP.
-      ['RHEL', 'resolved', '?p:red_hat/red_hat_enterprise_linux_9 | ?p:red_hat/red_hat_enterprise_linux_8'],
-      ['RHEL 8', 'resolved', 'p:red_hat/red_hat_enterprise_linux_8@8'],
-      ['RHEL 9', 'resolved', 'p:red_hat/red_hat_enterprise_linux_9@9'],
+      // A distribution also brings the kernel (not in this catalog, so unknown).
+      ['RHEL', 'resolved', '?p:red_hat/red_hat_enterprise_linux_9 | ?p:red_hat/red_hat_enterprise_linux_8 | ?p:linux/linux (unknown)'],
+      ['RHEL 8', 'resolved', 'p:red_hat/red_hat_enterprise_linux_8@8 | ?p:linux/linux (unknown)'],
+      ['RHEL 9', 'resolved', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux (unknown)'],
       // The key Apache's own CVE records use, not NVD's apache/http_server.
       ['Apache', 'resolved', 'p:apache_software_foundation/apache_http_server'],
       // Nothing in the catalog yet: watched under its main key.
@@ -207,8 +208,39 @@ describe('resolveCandidates', () => {
       ['MikroTik', 'resolved', '?p:mikrotik/routeros'],
       // Sophos makes no firewall in the catalog, so nothing, rather than Sophos Home.
       ['Sophos firewall', 'unrecognised', ''],
-      // Known to have nothing, rather than Amazon Ion.
-      ['Amazon Linux', 'unrecognised', ''],
+      // Nothing of its own, rather than Amazon Ion: only the kernel it runs.
+      ['Amazon Linux', 'resolved', '?p:linux/linux (unknown)'],
+    ]);
+  });
+
+  it('adds the upstream kernel to a Linux distribution as a close match, without its version', async () => {
+    const rows: [string, string, string, string, number][] = [
+      ['linux/linux', 'linux', 'linux', 'Linux', 6426],
+      ['canonical/ubuntu_linux', 'canonical', 'ubuntu_linux', 'Canonical Ubuntu Linux', 3],
+      ['canonical/ubuntu_22_04_lts', 'canonical', 'ubuntu_22_04_lts', 'Canonical Ubuntu 22.04 LTS', 5],
+      ['canonical/ubuntu_24_04_lts', 'canonical', 'ubuntu_24_04_lts', 'Canonical Ubuntu 24.04 LTS', 5],
+      ['canonical/ubuntu_pro_for_wsl', 'canonical', 'ubuntu_pro_for_wsl', 'Canonical Ubuntu Pro for WSL', 1],
+      ['debian/debian_linux', 'debian', 'debian_linux', 'Debian Linux', 1],
+      ['red_hat/red_hat_enterprise_linux_9', 'red_hat', 'red_hat_enterprise_linux_9', 'Red Hat Enterprise Linux 9', 352],
+    ];
+    await env.DB.batch(
+      rows.map(([key, vendor, product, label, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, label, count),
+      ),
+    );
+    const product = (name: string, version: string | null = null) => ({ kind: 'product' as const, name, vendor: null, version, direct: true });
+    const res = await resolveCandidates(store(), [product('Ubuntu'), product('Ubuntu', '24.04'), product('Debian 12'), product('RHEL 9'), product('Fedora'), product('Linux')]);
+    expect(res.chips.map((c) => [c.input, c.items.map((i) => `${i.item}${i.known ? '' : ' (unknown)'}`).join(' | ')])).toEqual([
+      // Every release, not Ubuntu Pro for WSL, and the kernel.
+      ['Ubuntu', '?p:canonical/ubuntu_22_04_lts | ?p:canonical/ubuntu_24_04_lts | ?p:canonical/ubuntu_linux | ?p:linux/linux'],
+      // The distribution's release stays exact; the kernel carries no version, since the distribution patches it.
+      ['Ubuntu 24.04', 'p:canonical/ubuntu_24_04_lts@24.04 | ?p:linux/linux'],
+      ['Debian 12', 'p:debian/debian_linux@12 | ?p:linux/linux'],
+      ['RHEL 9', 'p:red_hat/red_hat_enterprise_linux_9@9 | ?p:linux/linux'],
+      // Nothing of its own in the catalog: the kernel alone.
+      ['Fedora', '?p:linux/linux'],
+      // The kernel itself stays exact, and brings no distribution.
+      ['Linux', 'p:linux/linux'],
     ]);
   });
 
@@ -235,7 +267,7 @@ describe('resolveCandidates', () => {
       // An edition word after the release still finds it.
       ['Windows 10 Pro', '?p:microsoft/windows_10_version_22h2@10_pro | ?p:microsoft/windows_10_version_1607@10_pro'],
       ['Windows 10 22H2', 'p:microsoft/windows_10_version_22h2@22h2'],
-      ['RHEL 6', 'p:redhat/enterprise_linux@6'],
+      ['RHEL 6', 'p:redhat/enterprise_linux@6 | ?p:linux/linux'],
       // A broad name still expands, with no version.
       ['Windows', '?p:microsoft/windows_11_version_24h2 | ?p:microsoft/windows_10_version_22h2 | ?p:microsoft/windows_10_version_1607 | ?p:microsoft/windows'],
     ]);

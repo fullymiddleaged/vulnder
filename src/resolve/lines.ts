@@ -23,6 +23,13 @@ export interface ProductLine {
   keep?: RegExp;
   /** The release its names already say ("Windows 10" is release 10), used when no other version is given. */
   version?: string;
+  /**
+   * A Linux distribution. Its kernel's CVEs are filed under the upstream
+   * kernel (`linux/linux`), not the distribution, so resolving it adds that as
+   * a close match, without a version: distributions patch their kernels, so
+   * an upstream version check would be wrong.
+   */
+  kernel?: true;
 }
 
 export const PRODUCT_LINES: ProductLine[] = [
@@ -56,13 +63,24 @@ export const PRODUCT_LINES: ProductLine[] = [
   },
   { names: ['iis', 'microsoft_iis', 'internet_information_services'], keys: ['microsoft/internet_information_services', 'microsoft/windows_server_*'], keep: /^\d{4}/ },
   { names: ['adfs', 'ad_fs', 'active_directory_federation_services'], keys: ['microsoft/active_directory_federation_services', 'microsoft/windows_server_*'], keep: /^\d{4}/ },
-  { names: ['rhel', 'red_hat_enterprise_linux', 'red_hat_linux', 'redhat_linux', 'redhat_enterprise_linux'], keys: ['redhat/enterprise_linux', 'red_hat/red_hat_enterprise_linux_*'], keep: /^\d+$/ },
-  { names: ['sles', 'suse_linux_enterprise_server', 'suse_linux_enterprise', 'suse_enterprise_linux'], keys: ['suse/linux_enterprise_server', 'suse/suse_linux_enterprise_server_*'], keep: /^\d+(_sp\d+)?$/ },
-  { names: ['centos', 'centos_linux', 'centos_stream'], keys: ['centos/centos'] },
-  { names: ['oracle_linux'], keys: ['oracle/linux'] },
+  // Linux distributions: each also brings the upstream kernel as a close match (`kernel`).
+  { names: ['rhel', 'red_hat_enterprise_linux', 'red_hat_linux', 'redhat_linux', 'redhat_enterprise_linux'], keys: ['redhat/enterprise_linux', 'red_hat/red_hat_enterprise_linux_*'], keep: /^\d+$/, kernel: true },
+  { names: ['sles', 'suse_linux_enterprise_server', 'suse_linux_enterprise', 'suse_enterprise_linux'], keys: ['suse/linux_enterprise_server', 'suse/suse_linux_enterprise_server_*'], keep: /^\d+(_sp\d+)?$/, kernel: true },
+  { names: ['centos', 'centos_linux', 'centos_stream'], keys: ['centos/centos'], kernel: true },
+  { names: ['oracle_linux'], keys: ['oracle/linux'], kernel: true },
+  // One product per release (`ubuntu_24_04_lts`), so "Ubuntu 24.04" picks its own; not Ubuntu Pro or its tools.
+  { names: ['ubuntu', 'ubuntu_linux', 'canonical_ubuntu', 'ubuntu_server', 'ubuntu_desktop'], keys: ['canonical/ubuntu_linux', 'canonical/ubuntu', 'canonical/ubuntu_*'], keep: /^\d+_\d+(_lts)?$/, kernel: true },
+  { names: ['debian', 'debian_linux', 'debian_gnu_linux'], keys: ['debian/debian_linux'], kernel: true },
+  { names: ['opensuse', 'opensuse_leap', 'opensuse_tumbleweed', 'tumbleweed'], keys: ['suse/opensuse', 'suse/opensuse_*', 'opensuse/tumbleweed'], keep: /^(leap_\d+_\d+|tumbleweed)$/, kernel: true },
+  // Nothing in the catalog for these yet, and fuzzy matching finds unrelated products (Amazon Ion for Amazon Linux): only the kernel.
+  {
+    names: ['amazon_linux', 'amazon_linux_2', 'amazon_linux_2023', 'rocky_linux', 'rocky', 'almalinux', 'alma_linux', 'fedora', 'fedora_linux', 'alpine_linux', 'arch_linux', 'linux_mint', 'kali_linux', 'gentoo', 'gentoo_linux'],
+    keys: [],
+    kernel: true,
+  },
   { names: ['ios', 'apple_ios', 'iphone_os', 'ipados', 'apple_ipados'], keys: ['apple/iphone_os', 'apple/ipados', 'apple/ios_and_ipados'] },
-  // Nothing in the catalog yet, and fuzzy matching finds unrelated products (Amazon Ion for Amazon Linux): better unmatched.
-  { names: ['amazon_linux', 'amazon_linux_2', 'amazon_linux_2023', 'rocky_linux', 'rocky', 'almalinux', 'alma_linux', 'intune', 'microsoft_intune'], keys: [] },
+  // Nothing in the catalog yet, and fuzzy matching finds unrelated products: better unmatched.
+  { names: ['intune', 'microsoft_intune'], keys: [] },
   { names: ['openshift', 'ocp', 'openshift_container_platform', 'red_hat_openshift'], keys: ['redhat/openshift_container_platform', 'red_hat/red_hat_openshift_container_platform_*'], keep: /^\d+(_\d+)?$/ },
 
   // Microsoft servers and apps
