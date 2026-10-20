@@ -31,6 +31,8 @@ npm run dev                           # http://localhost:8787
 
 **Deployed before migration 0009?** It adds `cve_index`, one slim row for every CVE ever assigned. Apply it with `npm run db:migrate:remote`, then fill the index once with `npm run backfill -- --index-only --remote`. That writes about 800,000 rows: every record in the clone, every KEV entry and the day's EPSS scores. On Workers Free, add `--max-rows 80000` and run it once a day until it says the index is complete; each run resumes where the last stopped. Before the migration, ingest runs exactly as before and skips the index. After it, ingest adds the records that change, and waits for the backfill's EPSS scores before keeping those current.
 
+**Deployed before migration 0011?** It rebuilds the `events` table so it can hold a new event type, `exploitation_reported`. Apply it with `npm run db:migrate:remote`. It writes about 3 rows per stored event, around 115,000 on a full deployment, so on Workers Free apply it on a day of its own. Until then, CVEs CISA newly reports actively exploited still show, without a "What changed" entry.
+
 ## Bindings and secrets
 
 | Name | Kind | Purpose |

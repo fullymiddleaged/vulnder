@@ -1,10 +1,13 @@
+import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyPatches, UPDATE_EPSS, type ApplyOptions } from '../src/ingest/apply';
 import { maintenanceStatements } from '../src/ingest/maintenance';
 import { parseCveRecord } from '../src/ingest/sources/cve-record';
 import { parseAdvisory } from '../src/ingest/sources/ghsa';
 import type { AffectedInput, VulnPatch } from '../src/ingest/types';
-import { cveRecords, ghsaPage } from './helpers/fixtures';
+import { matchStack } from '../src/match/match';
+import { parseStack } from '../src/stack/format';
+import { cveRecords, ghsaPage, withSsvc } from './helpers/fixtures';
 import { resetDb, rows, store } from './helpers/db';
 
 const NOW = new Date('2026-10-04T18:00:00Z');
@@ -260,6 +263,40 @@ describe('maintenance', () => {
     expect((await rows<{ id: string }>('SELECT id FROM vulns ORDER BY id')).map((r) => r.id)).toEqual(['CVE-2020-29583', 'CVE-2026-0002']);
     expect(await rows("SELECT * FROM affected WHERE vuln_id = 'CVE-2026-0001'")).toEqual([]);
     expect(await rows("SELECT * FROM events WHERE vuln_id = 'CVE-2026-0001'")).toEqual([]);
+  });
+
+  it("shows an old CVE CISA newly reports actively exploited for 90 days after the report, whatever its CVSS", async () => {
+    // Published in 2022, CVSS 7.8, CISA's assessment turned active on Oct 2.
+    const record = withSsvc(cveRecords['CVE-2022-48816']!, 'active', '2026-10-02T16:58:15.719556Z');
+    await applyPatches(store(), [parseCveRecord(record)!], opts);
+    expect(await rows("SELECT type, dedupe_key FROM events WHERE vuln_id = 'CVE-2022-48816'")).toEqual([{ type: 'exploitation_reported', dedupe_key: '2026-10-02' }]);
+
+    const shown = await matchStack(store(), parseStack('p:linux/linux'), { now: NOW, days: 7, osv: { affecting: async () => new Map() } });
+    expect(shown.results.find((r) => r.id === 'CVE-2022-48816')).toMatchObject({ priority: 'act' });
+
+    await run(new Date('2026-12-31T00:00:00Z'));
+    expect(await rows("SELECT id FROM vulns WHERE id = 'CVE-2022-48816'")).toHaveLength(1);
+    await run(new Date('2027-01-01T00:00:00Z'));
+    expect(await rows("SELECT id FROM vulns WHERE id = 'CVE-2022-48816'")).toEqual([]);
+  });
+
+  it("still stores and shows it on a database without migration 0011, minus the event row", async () => {
+    await env.DB.exec('DROP TABLE events');
+    await env.DB.exec(
+      "CREATE TABLE events (id INTEGER PRIMARY KEY, vuln_id TEXT NOT NULL, type TEXT NOT NULL CHECK (type IN ('published', 'kev_added', 'epss_crossed', 'fix_released')), occurred_at TEXT NOT NULL, dedupe_key TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}', UNIQUE (vuln_id, type, dedupe_key))",
+    );
+    try {
+      const record = withSsvc(cveRecords['CVE-2022-48816']!, 'active', '2026-10-02T16:58:15.719556Z');
+      await applyPatches(store(), [parseCveRecord(record)!], opts);
+      expect(await rows("SELECT last_event_at FROM vulns WHERE id = 'CVE-2022-48816'")).toEqual([{ last_event_at: '2026-10-02T16:58:15.719Z' }]);
+      expect(await rows('SELECT * FROM events')).toEqual([]);
+    } finally {
+      await env.DB.exec('DROP TABLE events');
+      await env.DB.exec(
+        "CREATE TABLE events (id INTEGER PRIMARY KEY, vuln_id TEXT NOT NULL, type TEXT NOT NULL, occurred_at TEXT NOT NULL, dedupe_key TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}', UNIQUE (vuln_id, type, dedupe_key))",
+      );
+      await env.DB.exec('CREATE INDEX events_occurred_at ON events (occurred_at)');
+    }
   });
 
   it('keeps a record published exactly at the window start', async () => {

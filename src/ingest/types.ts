@@ -59,6 +59,13 @@ export interface VulnFields {
   cwe: string[];
   refs: Ref[];
   ssvc: Ssvc | null;
+  /**
+   * CVE records only: when CISA's own SSVC assessment (CISA-ADP) says
+   * exploitation is active and the same container lists no KEV entry, the
+   * assessment's date. Merge turns it into an exploitation_reported event; it
+   * isn't stored.
+   */
+  activeReportedAt: string | null;
   epss: number;
   epssPercentile: number;
   epssDate: string;

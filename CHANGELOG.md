@@ -6,6 +6,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Added
 
+- **Old CVEs CISA newly reports actively exploited now show up.** When CISA's Vulnrichment assessment turns a CVE's exploitation to active before it's on KEV, Vulnder records it as a change, as it does a KEV addition, whatever the CVE's age or CVSS. It ranks Act now, appears in What changed ("Active exploitation (CISA)") and the Atom feed, and stays in your window for 90 days. Before, a CVE published more than a year earlier was missed until KEV listed it, and a newer one showed with no change entry. The JSON feed's `changes` gains the type `exploitation_reported`. For self-hosters: apply migration 0011. It rebuilds the events table at about 3 row writes per stored event, so on Workers Free apply it on a day of its own. Until then these CVEs still show, without the change entry.
 - **Brand and logo files** (`/brand`): the logo, the icon and the logo with the name, as SVG and transparent PNG for light and dark backgrounds, with the colours and short notes on using them. Every page's footer and the sitemap link to it.
 - **Shared links show a preview card.** Every page now has a 1200 × 630 social image with the logo and tagline, so links posted to chat apps and social sites show a large card.
 - **robots.txt welcomes AI use**: a Content-Signal line says search engines, AI assistants answering questions, and AI training may all use Vulnder's pages.
@@ -27,6 +28,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Changed
 
+- **Clearer that exploitation counts at any severity.** The results page, How it works, the README, the ranking guide, Export for AI and the MCP tool description now say that a CVE on CISA KEV, reported by CISA as actively exploited, or likely to be exploited (EPSS 10%+ or NIST LEV 20%+) is ranked and kept in view whatever its CVSS, because attackers chain lower-severity bugs into serious attacks. They no longer call a prediction "likely-exploited", and How it works no longer reads as if every CVSS 7.0+ CVE shows for a year: those are stored for a year but show only inside the window you pick. Ranking hasn't changed.
 - **A new logo**: the magnifying glass now finds a broken shield instead of a heart, because a vulnerability matters when someone can get through it. The crack still nods to the dating-app joke. The favicon is the broken shield on its own, which stays readable at 16 pixels, and the loader's shield cracks open while the lens sweeps.
 - **The NIS2 and CRA page is now Compliance**, at `/compliance` (`/nis2` redirects there), ready for other regulations. Every page's top navigation links to it, and About has a short "In the EU?" section pointing to it.
 - **Clearer MCP answers for agents.** The first line of a `rank_stack` answer now says it covers CVEs new in the window plus the past year's riskiest, and names items with nothing in it, so "0 CVEs" isn't read as "no known CVEs". A `rank_cves` answer says how many IDs were sent and ranked, and names rejected and unpublished IDs. An empty stack gets an error that no longer mentions the feed's `s` parameter.

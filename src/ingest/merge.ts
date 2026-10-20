@@ -1,7 +1,7 @@
 import { EPSS_HIGH, EPSS_RISE } from '../config';
 import { daysBetween, levTerm } from '../lib/lev';
 import { retained } from './retention';
-import type { Ref, SeverityLabel, SourceName, Ssvc, VulnPatch } from './types';
+import type { Ref, SeverityLabel, SourceName, Ssvc, VulnFields, VulnPatch } from './types';
 
 /** A stored vulnerability, with JSON columns parsed. */
 export interface VulnRecord {
@@ -32,7 +32,8 @@ export interface VulnRecord {
   lastEventAt: string | null;
 }
 
-export type EventType = 'published' | 'kev_added' | 'epss_crossed' | 'fix_released';
+/** Migration 0011 dropped the table's CHECK on type, so this union is the list. */
+export type EventType = 'published' | 'kev_added' | 'exploitation_reported' | 'epss_crossed' | 'fix_released';
 
 export interface EventInput {
   vulnId: string;
@@ -114,6 +115,8 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
     const inWindow =
       (f.publishedAt != null && f.publishedAt >= opts.windowStart) ||
       (f.kevAddedAt != null && f.kevAddedAt >= opts.windowStart) ||
+      // CISA newly reports it exploited, at any age: stored like a KEV add.
+      reportedActive(f, opts.windowStart) !== null ||
       (opts.keepStart !== undefined &&
         retained(
           {
@@ -196,6 +199,17 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
       detail: { dateAdded: rec.kevAddedAt.slice(0, 10), ransomware: rec.kevRansomware, dueDate: rec.kevDueDate },
     });
   }
+  // CISA's assessment turned to active exploitation. Once on KEV, the KEV event says it.
+  const reported = reportedActive(f, opts.windowStart);
+  if (reported && before.ssvc?.exploitation !== 'active' && rec.ssvc?.exploitation === 'active' && !rec.kevAddedAt) {
+    events.push({
+      vulnId: rec.id,
+      type: 'exploitation_reported',
+      occurredAt: reported,
+      dedupeKey: reported.slice(0, 10),
+      detail: { from: before.ssvc?.exploitation ?? null, assessedAt: reported.slice(0, 10) },
+    });
+  }
 
   for (const e of events) {
     if (!rec.lastEventAt || e.occurredAt > rec.lastEventAt) rec.lastEventAt = e.occurredAt;
@@ -203,6 +217,17 @@ export function mergePatch(existing: VulnRecord | null, patch: VulnPatch, opts: 
 
   const changed = existing === null || !sameRecord(before, rec);
   return { record: rec, events, changed };
+}
+
+/**
+ * When a CVE record carries CISA's report of active exploitation dated inside
+ * the window, that date (never later than the record's own update), else null.
+ */
+export function reportedActive(f: Partial<VulnFields>, windowStart: string): string | null {
+  const at = f.activeReportedAt;
+  if (!at || f.ssvc?.exploitation !== 'active') return null;
+  const capped = f.modifiedAt && f.modifiedAt < at ? f.modifiedAt : at;
+  return capped >= windowStart ? capped : null;
 }
 
 /** Sets a ranked field when this source ranks at least as high as the one that set it. */

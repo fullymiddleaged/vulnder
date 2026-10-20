@@ -57,6 +57,23 @@ export function deltaZip(records: CveRecordJson[]): Uint8Array {
   return zipSync(files);
 }
 
+/**
+ * A deep copy whose CISA-ADP SSVC assessment says `exploitation`, dated
+ * `timestamp`, optionally with a KEV entry in the same container. The record
+ * must have a CISA-ADP SSVC metric already (CVE-2022-48816 does).
+ */
+export function withSsvc(record: CveRecordJson, exploitation: string, timestamp: string, kev = false): CveRecordJson {
+  type Metric = { other?: { type?: string; content?: { options?: Record<string, string>[]; timestamp?: string } } };
+  type Adp = { providerMetadata?: { shortName?: string }; metrics?: Metric[] };
+  const copy = structuredClone(record) as CveRecordJson & { containers: { adp: Adp[] } };
+  const cisa = copy.containers.adp.find((a) => a.providerMetadata?.shortName === 'CISA-ADP')!;
+  const ssvc = cisa.metrics!.find((m) => m.other?.type === 'ssvc')!.other!.content!;
+  ssvc.options = ssvc.options!.map((o) => ('Exploitation' in o ? { Exploitation: exploitation } : o));
+  ssvc.timestamp = timestamp;
+  if (kev) cisa.metrics!.push({ other: { type: 'kev', content: { timestamp } } });
+  return copy;
+}
+
 /** A deep copy with cveMetadata overrides, for shaping test scenarios. */
 export function withMeta(record: CveRecordJson, meta: Partial<CveRecordJson['cveMetadata']>): CveRecordJson {
   const copy = structuredClone(record);

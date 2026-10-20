@@ -619,6 +619,18 @@ describe('GET /feed.xml', () => {
     expect(xml).not.toMatch(/Known exploited/);
   });
 
+  it("attributes CISA's report of active exploitation to CISA, without calling it KEV", async () => {
+    stubOsvFetch();
+    const at = daysAgo(1);
+    const ssvc = { exploitation: 'active', automatable: 'no', technicalImpact: 'partial' };
+    await applyPatches(store(), [{ source: 'cve', id: 'CVE-2026-1003', aliases: [], fields: { ssvc, activeReportedAt: at, modifiedAt: at } }], { now: NOW, windowStart: daysAgo(90), epssEvents: true });
+    await store().batch([bumpDataVersionStatement(NOW)]);
+    const xml = await (await app.request(`/feed.xml?s=${encodeURIComponent('p:postgresql/postgresql')}`, {}, env)).text();
+    expect(xml).toContain('CISA reports active exploitation: CVE-2026-1003');
+    expect(xml).toContain('It wasn’t on CISA KEV when CISA reported it.');
+    expect(xml).not.toMatch(/Known exploited \(added to CISA KEV\): CVE-2026-1003/);
+  });
+
   it('escapes XML in titles', async () => {
     stubOsvFetch();
     await applyPatches(store(), [{ source: 'cve', id: 'CVE-2026-1003', aliases: [], fields: { title: '<script>&"x"' } }], { now: NOW, windowStart: daysAgo(90), epssEvents: true });

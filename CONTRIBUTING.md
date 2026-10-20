@@ -57,7 +57,7 @@ Rules that keep ingest resumable and inside free-plan limits:
 - **Return one page per call.** The runner stores each page's writes and the new cursor in one batch, then calls you again until you return `done: true` or the budget runs out. Make pages small enough that one fits comfortably in a run.
 - **Cursors must be JSON-serialisable** and must let a later run continue exactly where this one stopped. Re-reading a little is fine, because merging is idempotent. Skipping is not.
 - **Use only Web APIs** (no Node built-ins). The same code runs in the Worker and in Node.
-- **Return `VulnPatch`es, not rows.** A patch is one source's view of one vulnerability. The merge in [`src/ingest/merge.ts`](src/ingest/merge.ts) decides precedence between sources, detects events (`published`, `kev_added`, `epss_crossed`, `fix_released`) and skips writes that change nothing. A new source needs an entry in `SOURCE_FLAGS` and `RANK`, and a migration if it adds `affected.source` values.
+- **Return `VulnPatch`es, not rows.** A patch is one source's view of one vulnerability. The merge in [`src/ingest/merge.ts`](src/ingest/merge.ts) decides precedence between sources, detects events (`published`, `kev_added`, `exploitation_reported`, `epss_crossed`, `fix_released`) and skips writes that change nothing. A new source needs an entry in `SOURCE_FLAGS` and `RANK`, and a migration if it adds `affected.source` values.
 - **Throw `RateLimited`** when the upstream says to back off. The run then stops that source cleanly.
 
 Register the source in `SOURCES` and `SOURCE_ORDER` in [`src/ingest/run.ts`](src/ingest/run.ts), and add a staleness threshold in [`src/config.ts`](src/config.ts).

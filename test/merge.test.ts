@@ -26,6 +26,55 @@ function epss(value: number, date = '2026-10-04', percentile = 0.5): VulnPatch {
   return { source: 'epss', id: 'CVE-2026-0001', aliases: [], fields: { epss: value, epssPercentile: percentile, epssDate: date } };
 }
 
+describe('exploitation_reported', () => {
+  const ACTIVE = { exploitation: 'active', automatable: 'no', technicalImpact: 'partial' };
+  const reported = (over: Partial<VulnPatch['fields']> = {}): VulnPatch => ({
+    ...cvePatch({ publishedAt: '2022-03-01T00:00:00.000Z', cvssScore: 5.4, ssvc: ACTIVE, activeReportedAt: '2026-10-02T16:58:15.719Z', modifiedAt: '2026-10-02T17:00:00.000Z', ...over }),
+    id: 'CVE-2022-0001',
+  });
+
+  it('stores an old, low-severity CVE that CISA newly reports actively exploited, with an event', () => {
+    const r = mergePatch(null, reported(), opts);
+    expect(r.record?.ssvc?.exploitation).toBe('active');
+    expect(r.events).toEqual([
+      { vulnId: 'CVE-2022-0001', type: 'exploitation_reported', occurredAt: '2026-10-02T16:58:15.719Z', dedupeKey: '2026-10-02', detail: { from: null, assessedAt: '2026-10-02' } },
+    ]);
+    // The event is what keeps it in the window (and the prune) for 90 days.
+    expect(r.record?.lastEventAt).toBe('2026-10-02T16:58:15.719Z');
+  });
+
+  it('fires when a stored assessment turns active, and not again while it stays active', () => {
+    const before = { ...stored({ id: 'CVE-2022-0001', publishedAt: '2022-03-01T00:00:00.000Z' }), ssvc: { ...ACTIVE, exploitation: 'poc' } };
+    const r = mergePatch(before, reported(), opts);
+    expect(r.events.map((e) => [e.type, e.detail.from])).toEqual([['exploitation_reported', 'poc']]);
+    expect(mergePatch(r.record, reported(), opts).events).toEqual([]);
+  });
+
+  it('gives a later flap back to active its own event', () => {
+    const before = { ...stored({ id: 'CVE-2022-0001' }), ssvc: { ...ACTIVE, exploitation: 'none' } };
+    const later = mergePatch(before, reported({ activeReportedAt: '2026-10-09T00:00:00.000Z', modifiedAt: '2026-10-09T00:00:00.000Z' }), opts);
+    expect(later.events[0]).toMatchObject({ type: 'exploitation_reported', dedupeKey: '2026-10-09' });
+  });
+
+  it('stays quiet on KEV, before the window, and without a CISA date', () => {
+    const onKev = { ...stored({ id: 'CVE-2022-0001', kevAddedAt: '2026-10-01T00:00:00.000Z' }), ssvc: null };
+    expect(mergePatch(onKev, reported(), opts).events).toEqual([]);
+    expect(mergePatch(null, reported({ activeReportedAt: '2026-07-05T00:00:00.000Z' }), opts).record).toBeNull();
+    // A CNA's own SSVC saying active carries no CISA date.
+    expect(mergePatch(null, reported({ activeReportedAt: null }), opts).record).toBeNull();
+  });
+
+  it("never dates the report after the record's own update", () => {
+    const r = mergePatch(null, reported({ activeReportedAt: '2026-10-05T00:00:00.000Z', modifiedAt: '2026-10-03T00:00:00.000Z' }), opts);
+    expect(r.events[0]!.occurredAt).toBe('2026-10-03T00:00:00.000Z');
+  });
+
+  it('gives a new CVE that arrives already active both events', () => {
+    const r = mergePatch(null, reported({ publishedAt: '2026-10-01T00:00:00.000Z' }), opts);
+    expect(r.events.map((e) => e.type)).toEqual(['published', 'exploitation_reported']);
+  });
+});
+
 describe('retention on insert', () => {
   it('creates records published inside the window, with a published event', () => {
     const r = mergePatch(null, cvePatch(), opts);

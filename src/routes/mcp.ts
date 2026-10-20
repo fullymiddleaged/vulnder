@@ -35,7 +35,7 @@ const RANKING_NOTE =
 
 const STACK_HELP = `Comma-separated stack items in Vulnder's stack format, or an array of them. Packages: npm:next@14.2.3, pypi:fastapi, maven:org.apache.logging.log4j:log4j-core@2.14.1, go:github.com/gin-gonic/gin@1.9.0, cargo:, nuget:, composer:, gem:, hex:, pub:, swift:, actions:. Products from CVE records: p:vendor/product[@version], e.g. p:postgresql/postgresql@16, p:fortinet/fortios@7.0.12, p:microsoft/windows_server_2019. Listed CVEs: cve:2021-44228. Optional tags after an item: ;edge (internet-facing), ;internal, ;esu (paid extended support), a team (;network, ;database, ;frontend, ;backend, ;platform, ;endpoints, ;business). A leading ? marks a close match. Up to 200 components plus ${MAX_CVE_ITEMS} CVEs. Send the whole stack in one call rather than one call per item. Full format: https://github.com/fullymiddleaged/vulnder/blob/main/docs/STACK_FORMAT.md`;
 
-const days = z.number().int().min(1).max(MAX_DAYS).optional().describe(`Window in days for new CVEs (1-${MAX_DAYS}, default ${DEFAULT_DAYS}). Known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show whatever the window.`);
+const days = z.number().int().min(1).max(MAX_DAYS).optional().describe(`Window in days for new CVEs (1-${MAX_DAYS}, default ${DEFAULT_DAYS}). CVEs from the last year that CISA reports exploited or that are likely to be exploited (EPSS 10%+ or NIST LEV 20%+), at any severity, and CVSS 9.9+ CVEs show whatever the window.`);
 const limit = z.number().int().min(1).max(MAX_RESULT_LIMIT).optional().describe(`How many results to return in full, most urgent first (1-${MAX_RESULT_LIMIT}, default ${DEFAULT_RESULT_LIMIT}). Counts and Fix first always cover every result.`);
 
 interface Feed {

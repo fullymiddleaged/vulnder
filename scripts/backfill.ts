@@ -1,6 +1,7 @@
 /**
  * Populates D1 with the last 90 days, and the safety net's year
- * (src/ingest/retention.ts: known-exploited, likely-exploited and CVSS 9.9+),
+ * (src/ingest/retention.ts: known-exploited, likely to be exploited and CVSS
+ * 9.9+), and older CVEs CISA reported actively exploited in the window,
  * then leaves every source's cursor where regular ingest picks up. Safe to
  * re-run on a live database: unchanged records aren't rewritten.
  *
@@ -11,7 +12,8 @@
  * Steps:
  *   1. KEV: entries added inside the year, filled in from their CVE records.
  *   2. CVE: a shallow clone of cvelistV5 (in .cache/ by default); every record
- *      published inside the window, and those inside the year that qualify.
+ *      published inside the window, those inside the year that qualify, and
+ *      any CISA reported actively exploited inside the window.
  *      The CVE cursor is set to the clone's newest dateUpdated, so the release
  *      zips continue from there.
  *   3. GitHub advisories modified inside the year, EPSS for everything stored,
@@ -57,6 +59,7 @@ import type { CveCursor } from '../src/ingest/sources/cve';
 import type { GhsaCursor } from '../src/ingest/sources/ghsa';
 import { kevSource } from '../src/ingest/sources/kev';
 import { firstExploitRef, type SourceContext, type VulnPatch } from '../src/ingest/types';
+import { reportedActive } from '../src/ingest/merge';
 import { keepStart } from '../src/ingest/retention';
 import { utcDay, windowStart } from '../src/lib/time';
 import { parseArgs, parseTarget } from './lib/args';
@@ -193,7 +196,8 @@ async function backfillCve(opts: {
     for (const { patch, inYear } of await Promise.all(slice.map(scanOne))) {
       if (!patch) continue;
       if (!opts.only || opts.only(patch)) toIndex.push(patch);
-      if (inYear) batch.push(patch);
+      // An older CVE goes to merge too when CISA reported it actively exploited inside the window.
+      if (inYear || reportedActive(patch.fields, cutoff)) batch.push(patch);
     }
     scanned += slice.length;
     if (scanned % 25_600 < SCAN_CONCURRENCY) log(`  ${scanned} records scanned, ${stored} stored, ${indexed + toIndex.length} indexed`);

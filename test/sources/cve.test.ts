@@ -3,7 +3,7 @@ import { cveRecordUrl, cveSource, indexZip, MAX_RELEASE_PAGES, RELEASES_URL, typ
 import { parseCveRecord, productLabel } from '../../src/ingest/sources/cve-record';
 import { firstExploitRef, parseSeverityLabel } from '../../src/ingest/types';
 import { FakeFetch, jsonResponse } from '../helpers/fake-fetch';
-import { cveRecords, deltaZip, releases, withMeta, type CveRecordJson } from '../helpers/fixtures';
+import { cveRecords, deltaZip, releases, withMeta, withSsvc, type CveRecordJson } from '../helpers/fixtures';
 import { sourceContext } from '../helpers/db';
 
 const NOW = new Date('2026-10-04T18:00:00Z');
@@ -93,8 +93,20 @@ describe('parseCveRecord', () => {
     const p = parseCveRecord(cveRecords['CVE-2022-48816'])!;
     expect(p.fields.cvssScore).toBe(7.8);
     expect(p.fields.ssvc?.exploitation).toBe('none');
+    expect(p.fields.activeReportedAt).toBeNull();
     expect(p.affected!.every((a) => a.fixedVersion === null)).toBe(true);
     expect(p.affected![0]).toMatchObject({ vendor: 'linux', product: 'linux', label: 'Linux' });
+  });
+
+  it("dates CISA's report of active exploitation, unless the same container lists it on KEV", () => {
+    const active = withSsvc(cveRecords['CVE-2022-48816']!, 'active', '2026-10-02T16:58:15.719556Z');
+    const p = parseCveRecord(active)!;
+    expect(p.fields.ssvc?.exploitation).toBe('active');
+    // CISA's timestamps carry microseconds.
+    expect(p.fields.activeReportedAt).toBe('2026-10-02T16:58:15.719Z');
+    // CISA re-dates its assessments of KEV CVEs; KEV's own event covers those.
+    expect(parseCveRecord(withSsvc(cveRecords['CVE-2022-48816']!, 'active', '2026-10-02T16:58:15.719556Z', true))!.fields.activeReportedAt).toBeNull();
+    expect(parseCveRecord(withSsvc(cveRecords['CVE-2022-48816']!, 'poc', '2026-10-02T16:58:15.719556Z'))!.fields.activeReportedAt).toBeNull();
   });
 
   it("reads a CNA's textual severity, which some give instead of a CVSS score", () => {

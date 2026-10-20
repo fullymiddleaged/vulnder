@@ -1138,7 +1138,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
     h(
       'p',
       { class: 'muted small' },
-      'Whatever the window, known-exploited, likely-exploited and CVSS 9.9+ CVEs from the last year show too, as a safety net.',
+      'Whatever the window, CVEs from the last year show too if CISA reports them exploited or they’re likely to be exploited, at any severity, or if they score CVSS 9.9+.',
       cves.length > 0 ? ' The window doesn’t apply to the CVEs you listed: they all show, whatever their age.' : '',
     ),
     editNotice,
