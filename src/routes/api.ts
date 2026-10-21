@@ -7,7 +7,8 @@ import { takeDailyQuota } from '../lib/quota';
 import type { Listed } from '../match/listed';
 import type { ChangeEvent, MatchedVuln } from '../match/match';
 import type { FixItem, Priority } from '../match/priority';
-import { resolveCandidates, TooManyProducts, type Chip, type ResolveResult } from '../resolve/catalog';
+import { MAX_PRODUCT_LOOKUPS, resolveCandidates, TooManyProducts, type Chip, type ResolveResult } from '../resolve/catalog';
+import { fromInventory } from '../resolve/inventory';
 import type { Candidate } from '../resolve/types';
 import { MAX_CVE_ITEMS, MAX_ITEMS, MAX_PARAM_CHARS, PREFIXES, parseStack, serializeStack, StackFormatError, type StackItem } from '../stack/format';
 import type { AppEnv } from '../types';
@@ -37,6 +38,8 @@ const MAX_BODY_BYTES = 1_000_000;
 export const STACK_DAILY_PER_CLIENT = 200;
 const STACK_DAILY_TOTAL = 50_000;
 const MAX_INPUTS = 5000;
+/** About what fits the body once a runner keeps only the four fields read (around 100 bytes an entry). */
+const MAX_INVENTORY = 10_000;
 
 const Product = z.object({
   name: z.string().trim().min(1).max(100),
@@ -50,16 +53,31 @@ const Package = z.object({
   version: z.string().trim().max(64).nullable().optional(),
 });
 
+/**
+ * One of Microsoft Graph's `detectedApps`, as Graph returns it: other fields
+ * (id, sizeInByte, platform) are allowed and ignored, and names are cleaned
+ * rather than refused, so a runner can pass Graph's `value` straight on.
+ */
+const InventoryEntry = z.object({
+  displayName: z.string().max(1000),
+  version: z.string().max(200).nullable().optional(),
+  publisher: z.string().max(1000).nullable().optional(),
+  deviceCount: z.number().nullable().optional(),
+});
+
 const Cves = z.array(z.string().max(40)).max(MAX_CVE_ITEMS);
 
 const StackBody = z
   .object({
     products: z.array(Product).max(MAX_INPUTS).optional(),
     packages: z.array(Package).max(MAX_INPUTS).optional(),
+    inventory: z.array(InventoryEntry).max(MAX_INVENTORY).optional(),
     cves: Cves.optional(),
   })
   .strict()
-  .refine((b) => (b.products?.length ?? 0) + (b.packages?.length ?? 0) + (b.cves?.length ?? 0) > 0, { message: 'send products, packages or cves' });
+  .refine((b) => (b.products?.length ?? 0) + (b.packages?.length ?? 0) + (b.inventory?.length ?? 0) + (b.cves?.length ?? 0) > 0, {
+    message: 'send products, packages, inventory or cves',
+  });
 
 const RankBody = z
   .object({
@@ -103,6 +121,27 @@ export function toCandidates(body: { products?: z.infer<typeof Product>[]; packa
     ...(body.packages ?? []).map((p): Candidate => ({ kind: 'package', ecosystem: PREFIXES[p.ecosystem]!, name: p.name, version: p.version || null, direct: true })),
     ...(body.products ?? []).map((p): Candidate => ({ kind: 'product', name: p.name, vendor: p.vendor || null, version: p.version || null, direct: true })),
   ];
+}
+
+/**
+ * Chips in order until their items would pass the stack's limit; the rest are
+ * returned as over it. A close match can expand to several items, so this
+ * counts items, and an item two chips share counts once.
+ */
+export function fitItems(chips: Chip[], limit: number): { kept: Chip[]; over: Chip[] } {
+  const seen = new Set<string>();
+  const kept: Chip[] = [];
+  const over: Chip[] = [];
+  for (const chip of chips) {
+    const fresh = new Set(chip.items.map((i) => i.item.replace(/^\?/, '')).filter((i) => !seen.has(i)));
+    if (seen.size + fresh.size > limit) {
+      over.push(chip);
+      continue;
+    }
+    for (const i of fresh) seen.add(i);
+    kept.push(chip);
+  }
+  return { kept, over };
 }
 
 /** What a chip resolved to, without the page's display fields. */
@@ -200,7 +239,11 @@ export const api = new Hono<AppEnv>()
     const cves = cveItems(c, body.cves);
     if (cves instanceof Response) return cves;
 
-    const candidates = toCandidates(body);
+    const named = toCandidates(body);
+    const productsNamed = named.filter((n) => n.kind === 'product').length;
+    // An inventory fills whatever product lookups the named products leave.
+    const inventory = body.inventory ? fromInventory(body.inventory, Math.max(0, MAX_PRODUCT_LOOKUPS - productsNamed)) : null;
+    const candidates = [...named, ...(inventory?.candidates ?? [])];
     let result: ResolveResult = { chips: [], droppedTransitive: 0 };
     if (candidates.length > 0) {
       const store = new D1BindingStore(c.env.DB);
@@ -213,25 +256,29 @@ export const api = new Hono<AppEnv>()
         throw err;
       }
     }
-    const resolved = result.chips.filter((ch) => ch.status === 'resolved');
     const unrecognised = result.chips.filter((ch) => ch.status === 'unrecognised').map((ch) => ch.input);
-    const items = resolved.flatMap((ch) => ch.items.map((i) => i.item));
+    const { kept, over } = fitItems(result.chips.filter((ch) => ch.status === 'resolved'), MAX_ITEMS);
+    const notChecked = [...over.map((ch) => ch.input), ...(inventory?.notChecked ?? [])];
+    const items = kept.flatMap((ch) => ch.items.map((i) => i.item));
     let components: StackItem[] = [];
     try {
       if (items.length > 0) components = parseStack(items.join(','));
     } catch (err) {
-      if (err instanceof StackFormatError) return c.json({ error: `${err.message}; send fewer or more specific products`, unrecognised }, 413, noStore);
+      // fitItems keeps to the limit, so only a resolver bug lands here.
+      if (err instanceof StackFormatError) return c.json({ error: err.message, unrecognised }, 413, noStore);
       throw err;
     }
-    if (components.length + cves.length === 0) return c.json({ error: 'nothing recognised', unrecognised }, 422, noStore);
+    if (components.length + cves.length === 0) return c.json({ error: 'nothing recognised', unrecognised, notChecked }, 422, noStore);
     const stack = serializeStack([...components, ...cves]);
     if (stack.length > MAX_PARAM_CHARS) return c.json({ error: 'that stack is too long to rank; send fewer products or CVEs', unrecognised }, 413, noStore);
     return c.json(
       {
         schema: API_SCHEMA,
         stack,
-        resolved: resolved.map(resolution),
+        resolved: kept.map(resolution),
         unrecognised,
+        notChecked,
+        ...(inventory && { inventory: { entries: body.inventory!.length, products: inventory.candidates.length + inventory.notChecked.length, ignored: inventory.ignored } }),
       },
       200,
       noStore,

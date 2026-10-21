@@ -117,6 +117,45 @@ describe('POST /api/v1/stack', () => {
     expect(body.unrecognised).toEqual(['qqzzv flurbo']);
   });
 
+  it('takes Graph’s detectedApps as they come, collapsing versions and ignoring Windows updates', async () => {
+    const graph = (displayName: string, version: string, publisher: string, deviceCount: number) => ({
+      '@odata.type': '#microsoft.graph.detectedApp',
+      id: crypto.randomUUID(),
+      displayName,
+      version,
+      sizeInByte: 1000,
+      deviceCount,
+      publisher,
+      platform: 'windows',
+    });
+    const res = await post('/api/v1/stack', {
+      inventory: [
+        graph('PostgreSQL 16 (x64)', '16.4', 'PostgreSQL Global Development Group', 3),
+        graph('PostgreSQL 16 (x64)', '16.2', 'PostgreSQL Global Development Group', 1),
+        graph('Update for Windows 10 for x64-based Systems (KB5001716)', '8.94.0.0', 'Microsoft Corporation', 400),
+        graph('Contoso Line of Business', '1.0', 'Contoso Ltd', 20),
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as StackReply & { notChecked: string[]; inventory: Record<string, number> };
+    expect(body.inventory).toEqual({ entries: 4, products: 2, ignored: 1 });
+    expect(body.unrecognised).toEqual(['Contoso Line of Business 1.0']);
+    // Two versions in the fleet: unversioned, so neither version's CVEs are missed.
+    expect(parseStack(body.stack).map((i) => (i.kind === 'product' ? `${i.vendor}/${i.product}@${i.version}` : ''))).toEqual(['postgresql/postgresql@null']);
+    expect(body.notChecked).toEqual([]);
+  });
+
+  it('checks the products on most devices when an inventory holds more than a stack can, and names the rest', async () => {
+    const inventory = Array.from({ length: MAX_PRODUCT_LOOKUPS + 2 }, (_, i) => ({ displayName: `Widget ${i}x`, publisher: 'Acme', deviceCount: i === 0 ? 1 : 1000 - i }));
+    inventory.push({ displayName: 'postgres', publisher: '', deviceCount: 5000 });
+    const res = await post('/api/v1/stack', { inventory });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as StackReply & { notChecked: string[] };
+    // Postgres (5,000 devices) and Widgets 1-199 fill the 200 places; the rest go by device count.
+    expect(body.notChecked).toEqual(['Widget 200x (Acme)', 'Widget 201x (Acme)', 'Widget 0x (Acme)']);
+    expect(body.resolved.map((r) => r.input)).toContain('postgres');
+  });
+
   it('takes CVE IDs alone, without spending the daily lookups', async () => {
     const ip = freshIp();
     for (let i = 0; i < 3; i++) expect((await post('/api/v1/stack', { cves: ['CVE-2026-1001'] }, ip)).status).toBe(200);
@@ -136,7 +175,7 @@ describe('POST /api/v1/stack', () => {
       return ((await res.json()) as { error: string; details?: string[] });
     };
     expect((await bad('not json')).error).toBe('invalid JSON');
-    expect((await bad({})).details).toEqual(['body: send products, packages or cves']);
+    expect((await bad({})).details).toEqual(['body: send products, packages, inventory or cves']);
     expect((await bad({ packages: [{ ecosystem: 'PyPI', name: 'x' }] })).details?.[0]).toMatch(/^packages\.0\.ecosystem:/);
     expect((await bad({ text: 'nginx and postgres' })).details?.[0]).toMatch(/Unrecognized key/);
     expect((await bad({ cves: ['log4shell'] })).error).toMatch(/^not CVE IDs: log4shell/);

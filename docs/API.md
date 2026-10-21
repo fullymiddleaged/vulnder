@@ -21,20 +21,30 @@ Usually you call `stack` when the inventory changes (daily, say) and keep the `s
 
 - `products`: `name` is required, and `vendor` and `version` are optional. They're matched against the catalog of products in CVE records. A model is never called, so send names, not descriptions.
 - `packages`: `ecosystem` is a stack-format prefix (`npm`, `pypi`, `maven`, `go`, `cargo`, `nuget`, `composer`, `gem`, `hex`, `pub`, `swift`, `actions`).
+- `inventory`: a device inventory as Microsoft Graph returns Intune's discovered apps (`GET /deviceManagement/detectedApps`): `displayName`, `version`, `publisher` and `deviceCount`, with Graph's other fields allowed and ignored. Pass Graph's `value` arrays straight on. Up to 10,000 entries; keep only those four fields so the body fits in 1 MB.
 - `cves`: up to 2,000 IDs, carried into the stack as `cve:` items.
 
-Up to 5,000 products and 5,000 packages per request, but no more than 200 distinct products. A stack holds 200 components, so collapse an inventory to one entry per product first.
+Up to 5,000 products and 5,000 packages per request, but no more than 200 distinct products. A stack holds 200 components.
+
+An inventory is collapsed before it's matched:
+
+- Names lose their version, architecture, locale and install scope, so `Mozilla Firefox (x64 en-US)` and `Mozilla Firefox (x64 en-GB)` are one product. Publishers lose company suffixes (`Google LLC` is Google).
+- Windows updates and hotfixes (`KB…`), language packs and the frameworks Store apps bring with them (`Microsoft.VCLibs`, `Microsoft.UI.Xaml`) aren't products, and are counted in `inventory.ignored`.
+- A product the fleet runs at one version keeps that version and is matched exactly. One seen at several versions goes unversioned, so every version's CVEs show; picking one could hide a CVE that affects another.
+- If there are more products than places, the ones on most devices are checked. The rest are listed in `notChecked`, most devices first. Nothing is dropped without being named.
 
 ```json
 {
   "schema": 1,
   "stack": "~y0vNL0rM0zM...",
   "resolved": [{ "input": "FortiOS 7.4.3", "items": [{ "item": "p:fortinet/fortios@7.4.3", "label": "FortiOS", "close": false, "known": true }] }],
-  "unrecognised": ["Contoso Line-of-Business App"]
+  "unrecognised": ["Contoso Line-of-Business App"],
+  "notChecked": [],
+  "inventory": { "entries": 4210, "products": 312, "ignored": 1890 }
 }
 ```
 
-`close: true` marks a close match: a broad name expanded to the products it may mean (see [STACK_FORMAT.md](STACK_FORMAT.md#close-matches)). `known: false` means the catalog holds no CVEs for that item yet. Names in `unrecognised` weren't checked. If nothing at all is recognised, the answer is 422 and still includes `unrecognised`.
+`close: true` marks a close match: a broad name expanded to the products it may mean (see [STACK_FORMAT.md](STACK_FORMAT.md#close-matches)). `known: false` means the catalog holds no CVEs for that item yet. Names in `unrecognised` matched nothing in the catalog. Names in `notChecked` didn't fit in the stack's 200 places. Neither kind was checked. If nothing at all is recognised, the answer is 422 and still includes both lists. `inventory` appears only when you sent one.
 
 ## POST /api/v1/rank
 
