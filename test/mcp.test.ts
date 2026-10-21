@@ -216,6 +216,15 @@ describe('MCP limits', () => {
     const logged = spies.flatMap((s) => s.mock.calls.flat().map(String)).join('\n');
     expect(logged).not.toMatch(/next@14\.2\.3|ios_xe|secret-host/);
   });
+
+  it('serves a call without a warning in the logs', async () => {
+    stubOsvFetch();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const client = await connect('modern');
+    await client.callTool({ name: 'rank_stack', arguments: { stack: STACK } });
+    await client.close();
+    expect(warn).not.toHaveBeenCalled();
+  });
 });
 
 describe('headline', () => {

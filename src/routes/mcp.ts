@@ -221,7 +221,6 @@ export function mcpServer(c: Context<AppEnv>): McpServer {
 
 export const mcp = new Hono<AppEnv>().all('/', (c) =>
   createMcpHandler(() => mcpServer(c), {
-    responseMode: 'json',
     maxRequestBodySize: MAX_BODY_BYTES,
     // Errors can quote a request; report only their kind.
     onerror: (err) => console.error(`mcp: ${err.name}`),
