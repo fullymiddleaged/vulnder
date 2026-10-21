@@ -39,6 +39,8 @@ Full guide: [AI_AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/
 - `https://vulnder.com/feed.xml?s=…`: Atom feed, one entry per change
 - `https://vulnder.com/badge.svg?s=…`: README badge counting known-exploited CVEs
 - `days` (1–90, default 30) sets the window. Stack links describe someone's infrastructure: don't publish one without its owner's say-so.
+- `POST https://vulnder.com/api/v1/stack`: JSON `{"products": [{"name", "vendor", "version"}], "packages": [{"ecosystem", "name", "version"}], "cves": [...]}` in, `{"stack", "resolved", "unrecognised"}` out. Catalog matching only, no model, so send product names, not descriptions
+- `POST https://vulnder.com/api/v1/rank`: JSON `{"stack", "cves", "days"}` in, one flat row per CVE out (`rows`), plus `changes` with stable IDs. For scheduled runners and SIEMs: [API.md](https://github.com/fullymiddleaged/vulnder/blob/main/docs/API.md)
 
 ## NIS2 and the CRA (EU)
 
