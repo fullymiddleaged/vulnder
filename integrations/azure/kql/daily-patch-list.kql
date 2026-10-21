@@ -1,0 +1,18 @@
+// For patching teams, once a day: CVEs now at Act now or Attend that are new
+// or rose in priority in the last 24 hours, compared with the week before,
+// most urgent first, with what to upgrade to.
+let level = (p: string) { case(p == "act", 4, p == "attend", 3, p == "watch", 2, 1) };
+let name = (n: long) { case(n == 4, "act", n == 3, "attend", n == 2, "watch", n == 1, "track", "new") };
+let before = Vulnder_CL
+    | where TimeGenerated between (ago(8d) .. ago(1d))
+    | summarize Was = max(level(Priority)) by Cve;
+Vulnder_CL
+| where TimeGenerated > ago(1d)
+| summarize arg_max(TimeGenerated, *) by Cve
+| extend Now = level(Priority)
+| where Now >= 3
+| join kind=leftouter before on Cve
+| extend Was = coalesce(Was, 0)
+| where Now > Was
+| order by Now desc, Score desc
+| project Cve, CveTitle, Priority, Previously = name(Was), Score, RespondWithinHours, Reasons, Matched, FixedVersions, Mitigation, Advisory

@@ -7,6 +7,8 @@ Two POST endpoints for scripts and scheduled runners, such as an Azure Function,
 | `POST /api/v1/stack` | Product and package names with versions, and/or CVE IDs | A stack in the [stack format](STACK_FORMAT.md), and what each name matched |
 | `POST /api/v1/rank` | A stack and/or CVE IDs | One flat row per CVE, ranked exactly as the [JSON feed](RANKING.md#in-the-feeds) ranks them, plus recent changes |
 
+For Microsoft Sentinel and Defender, [AZURE.md](AZURE.md) has a ready-made Logic App that does all of this.
+
 Usually you call `stack` when the inventory changes (daily, say) and keep the `stack` it returns. Then you call `rank` on a schedule (hourly) with that stack. A tenant that already has CVE findings, from Defender Vulnerability Management or a scanner, can skip `stack` and send the IDs to `rank`.
 
 ## POST /api/v1/stack

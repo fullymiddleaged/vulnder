@@ -49,7 +49,7 @@ https://vulnder.com/api/v1/rank       POST: a stack or CVE IDs in, flat rows out
 
 The results page doesn't link the JSON feed, but it's the API the page loads, with the same priorities, scores, reasons and Fix first list ([fields](docs/RANKING.md#in-the-feeds)). `days` sets the window (1–90, default 30). A stack holds up to 200 components and 2,000 CVE IDs. The `s` format is a versioned public contract: [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md).
 
-For scheduled runners and SIEMs, the `/api/v1/` endpoints take the stack in a POST body, with no URL to build. `stack` turns an inventory's product names into a stack, and `rank` returns one flat row per CVE, ready for a log table: [docs/API.md](docs/API.md).
+For scheduled runners and SIEMs, the `/api/v1/` endpoints take the stack in a POST body, with no URL to build. `stack` turns an inventory's product names into a stack, and `rank` returns one flat row per CVE, ready for a log table: [docs/API.md](docs/API.md). For Microsoft Sentinel and Defender, [docs/AZURE.md](docs/AZURE.md) has a template that ranks a tenant's CVEs hourly and opens incidents for new Act now CVEs, whether or not the tenant has Defender Vulnerability Management.
 
 ## Use it with AI agents
 
