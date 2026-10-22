@@ -92,6 +92,35 @@ describe('reading a feed', () => {
     expect(isUrgent('Q3 threat update', '<p>Two <b>critical</b> PHP RCEs leaked before the patch.</p>')).toBe(true);
     expect(isUrgent('Q3 threat update', `${'quiet words '.repeat(60)} a critical bug`)).toBe(false);
     expect(isUrgent('Hypercritical thinking', '')).toBe(false);
+    // How the sources write exploitation and "act now" alerts that don't say critical (October 2026 feeds).
+    for (const title of [
+      'Active Exploitation of SolarWinds Web Help Desk (CVE-2025-26399)',
+      'Wing FTP Server RCE (CVE-2025-47812) Exploited in the Wild | Huntress',
+      'Cleo Software Actively Being Exploited in the Wild | Huntress',
+      'Ivanti Connect Secure zero-day exploited in the wild (CVE-2026-104935)',
+      'Threat Advisory: Hackers Are Exploiting CVE-2021-40444 | Huntress',
+    ]) {
+      expect(isUrgent(title, '')).toBe(true);
+    }
+    for (const summary of [
+      'The NCSC is urging UK organisations to promptly mitigate vulnerabilities affecting Citrix NetScaler ADC and Gateway.',
+      'On 9 September 2026, Check Point released emergency security updates addressing two vulnerabilities.',
+      'The NCSC is encouraging UK organisations to take immediate action to mitigate a security issue.',
+      'Huntress has observed in-the-wild exploitation of CVE-2025-31161.',
+      'Huntress has observed threat actors exploiting a Microsoft Windows Server Update Services (WSUS) vulnerability.',
+      'Huntress is seeing threat actors exploit React2Shell (CVE-2025-55182) to deploy a Linux backdoor.',
+      'Huntress has observed a series of strikingly similar intrusions beginning with CitrixBleed 2 exploitation, employing novel local privilege escalation.',
+    ]) {
+      expect(isUrgent('Exploitation of vulnerabilities affecting X', summary)).toBe(true);
+    }
+    // Research write-ups and fixed disclosures aren't alerts.
+    for (const title of ['Authentication Bypass, Remote Code Execution, and Database Read in Eptura Archibus (FIXED)', 'Unauthenticated SQL Injection In Channel Software WebAlliance eCommerce', 'Rapid7 Analysis: GitLab CI/CD Regex Integer Overflow (CVE-2026-97229)']) {
+      expect(isUrgent(title, 'Overview While performing continuous red teaming exercises, Rapid7 discovered a vulnerability.')).toBe(false);
+    }
+    // "Urging" or "observed" with no action or exploitation within the sentence doesn't count.
+    expect(isUrgent('News', 'The minister urges calm. Later, a patch shipped.')).toBe(false);
+    expect(isUrgent('News', 'We observed the release. It has an exploit mitigation feature.')).toBe(false);
+    expect(isUrgent('A proof-of-concept exploit for CVE-2026-0001', '')).toBe(false);
   });
 
   it('reads CERT-EU’s JSON for its text, and a page as it is', () => {
@@ -229,6 +258,18 @@ ${i.text}`) }));
     const report = await refreshReports(sourceContext(f.fetch, NOW, { store: noColumn }));
     expect(f.calls).toHaveLength(0);
     expect(report).toMatchObject({ status: 'error', errors: ['no exploits.published_at column; apply migration 0014'] });
+  });
+
+  it('probes for the column only until a run has stored a cursor', async () => {
+    const real = store();
+    const sql: string[] = [];
+    const counting: Store = { all: async (q, p) => (sql.push(q), real.all(q, p)), batch: (s) => real.batch(s) };
+    await refreshReports(sourceContext(upstream().fetch, NOW, { store: counting }));
+    expect(sql.filter((q) => q === REPORTS_PROBE_SQL)).toHaveLength(1);
+    sql.length = 0;
+    await refreshReports(sourceContext(upstream().fetch, new Date(NOW.getTime() + 3_600_000), { store: counting }));
+    // The status and every cursor in one query, and nothing else.
+    expect(sql).toHaveLength(1);
   });
 });
 

@@ -23,13 +23,36 @@ import type { SourceContext } from './types';
 export const REPORT_KIND = 'report';
 export const URGENT_KIND = 'urgent';
 /**
- * Wording that calls a bug critical or asks for an update now. Read from a
- * post's title and the opening of its summary only, where a source states its
- * verdict; a full article mentions "critical" in passing. No nested
- * quantifiers, so it's linear in the text.
+ * Wording that calls a bug critical, asks for an update now, or reports it
+ * under attack, taken from how the five sources write their alerts (October
+ * 2026: "Critical Vulnerabilities in PHP", "Rapid Response", "Active
+ * Exploitation of SolarWinds…", "Exploited in the Wild", "urging UK
+ * organisations to promptly mitigate", "emergency security updates"). Read from
+ * a post's title and the opening of its summary only, where a source states its
+ * verdict; a full article mentions "critical" in passing. Attack wording makes
+ * a post urgent, never evidence: only KEV and CISA count as exploited. Bounded
+ * gaps and no nested quantifiers, so it's linear in the text.
  */
-const URGENT =
-  /\bcritical\b|\b(?:patch|update|upgrade)(?:ing)?\s+(?:now|immediately|urgently|as soon as possible)\b|\b(?:emergency|urgent)\s+(?:patch|update|fix|action)|\brapid\s+response\b|\bzero[-\s]?day\b|\b0-day\b/i;
+const URGENT = new RegExp(
+  [
+    String.raw`\bcritical\b`,
+    String.raw`\b(?:patch|update|upgrade|mitigate)(?:ing)?\s+(?:now|immediately|urgently|as soon as possible)\b`,
+    String.raw`\b(?:emergency|urgent|out-of-band)\s+(?:security\s+)?(?:patch|update|release|fix|action)`,
+    String.raw`\bimmediate\s+action\b`,
+    String.raw`\b(?:urg(?:e|es|ing)|encourag(?:e|es|ing))\b[^.]{0,80}?\b(?:promptly\s+)?(?:patch|update|upgrade|mitigate)`,
+    String.raw`\bpromptly\s+(?:patch|update|upgrade|mitigate)`,
+    String.raw`\b(?:actively|being)\s+exploited\b`,
+    String.raw`\bactive\s+exploitation\b`,
+    String.raw`\bexploited\s+in\s+the\s+wild\b`,
+    String.raw`\bin[-\s]the[-\s]wild\s+exploitation\b`,
+    String.raw`\b(?:threat\s+actors?|attackers?|hackers?|adversaries)\s+(?:are\s+|is\s+)?(?:actively\s+)?exploit(?:s|ing|ed)?\b`,
+    String.raw`\b(?:observed|seeing|seen|detected)\b[^.]{0,100}?\bexploit(?:s|ing|ed|ation)?\b`,
+    String.raw`\brapid\s+response\b`,
+    String.raw`\bzero[-\s]?day\b`,
+    String.raw`\b0-day\b`,
+  ].join('|'),
+  'i',
+);
 /** How much of a summary is read for that wording. */
 const URGENT_SUMMARY_CHARS = 400;
 
@@ -346,8 +369,10 @@ export async function refreshReports(ctx: SourceContext, sources: readonly Repor
   status.partial = false;
   const report: ReportsReport = { status: 'unchanged', written: 0, pages: 0, errors: [] };
   const writes: Statement[] = [setMetaStatement(REPORTS_LAST_KEY, at, now())];
+  // A stored cursor means an earlier run found migration 0014's column, so only the first runs probe for it.
+  const probed = sources.some((s) => meta.has(reportsCursorKey(s.id)));
   try {
-    await store.all(REPORTS_PROBE_SQL);
+    if (!probed) await store.all(REPORTS_PROBE_SQL);
   } catch {
     report.errors.push('no exploits.published_at column; apply migration 0014');
   }
