@@ -62,6 +62,10 @@ Rules that keep ingest resumable and inside free-plan limits:
 
 Register the source in `SOURCES` and `SOURCE_ORDER` in [`src/ingest/run.ts`](src/ingest/run.ts), and add a staleness threshold in [`src/config.ts`](src/config.ts).
 
+### Adding a trusted write-up source
+
+Security teams whose write-ups count toward [Written up](docs/RANKING.md#written-up) are a list in [`src/ingest/reporters.ts`](src/ingest/reporters.ts), not a `Source`: an id, a name, the RSS feed, the host its post links must be on, and how many CVEs a post may name before it counts only for those in its title. A feed that names products rather than CVE IDs (CERT-EU's) can give `page` to have each new item's page read once. Keep the list short and to teams that write up only what matters, since two of them (or one calling a bug critical) put a critical in Act now. Record the feed with `npm run record-fixtures -- --reports` and add a case to `test/reports.test.ts`.
+
 ### Fixtures
 
 Add a recorder for your source to [`scripts/record-fixtures.ts`](scripts/record-fixtures.ts). Record a few real, trimmed responses into `test/fixtures/<source>/`, and serve them in tests with `FakeFetch` ([`test/helpers/fake-fetch.ts`](test/helpers/fake-fetch.ts)). Any request without a route fails the test. Then test:

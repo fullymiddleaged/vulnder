@@ -173,7 +173,7 @@
           <ol class="pipeline">
             <li>
               <strong>Fetch</strong>
-              <p>Hourly: CVE records with CISA's Vulnrichment assessments, GitHub advisories (packages and fixed versions) and CISA KEV. Daily: FIRST's EPSS scores, end-of-life dates, and the Metasploit and Nuclei indexes.</p>
+              <p>Hourly: CVE records with CISA's Vulnrichment assessments, GitHub advisories (packages and fixed versions) and CISA KEV. Daily: FIRST's EPSS scores, end-of-life dates, and the Metasploit and Nuclei indexes. Also hourly: write-ups from Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK, read from their RSS feeds.</p>
             </li>
             <li>
               <strong>Merge and record changes</strong>
@@ -244,7 +244,7 @@
           A low CVSS never holds the first two back: attackers chain lower-severity bugs into serious attacks.
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or reported by CISA as actively exploited, at any severity, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, or an edge device (VPN, firewall, gateway) an attacker can take over automatically, within 3 days. Exploited CVEs come first.</span></li>
+          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or reported by CISA as actively exploited, at any severity, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, an edge device (VPN, firewall, gateway) an attacker can take over automatically, or a critical bug trusted security teams are warning about (see Written up, below), within 3 days. Exploited CVEs come first.</span></li>
           <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+ or NIST LEV 20%+ at any severity, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code for a bug that is automatable or gives full control, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
           <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept or other public exploit code, rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it), any bug CISA has assessed on an edge device, or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
           <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack and nothing above applies. Next routine update.</span></li>
@@ -257,6 +257,7 @@
             <tr><th scope="row">Edge devices</th><td>Treated as internet-facing, ranked ahead of similar results, and given CISA BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked by default; change them under Edit stack.</td></tr>
             <tr><th scope="row">Out of support</th><td>Software past its vendor's end of support ranks with Act now; support ending within 90 days ranks with Attend. This is a finding on the component and doesn't change its CVEs' priorities.</td></tr>
             <tr><th scope="row">Targeted by attackers</th><td>An item with any CVE CISA added to KEV in the last 90 days gets a notice, whatever version those CVEs affect. In 2025–26, about a third of products with a KEV add got another within 90 days, so patch its next advisory within days. Like out of support, it doesn't change any CVE's priority.</td></tr>
+            <tr id="reported"><th scope="row">Written up</th><td>Every hour Vulnder reads the RSS feeds of Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK for the CVEs they name. A critical CVE (CVSS 9.0+) that two of them write up, or that one calls critical or urgent, goes to Act now for 30 days, whatever its EPSS: EPSS and CISA's assessment take days to catch up with a new CVE. Any write-up ranks a result ahead of similar ones, and the result links to it. A write-up isn't evidence of exploitation, even when it says so: only CISA KEV and CISA's own reports are.</td></tr>
             <tr><th scope="row">Reasons</th><td>Each result names what decided it and what data is missing. A result with little data reads as unknown, not safe.</td></tr>
           </tbody>
         </table>
@@ -378,6 +379,7 @@
         <a href="https://www.first.org/epss" rel="noreferrer">EPSS scores courtesy of FIRST</a>,
         <a href="https://osv.dev" rel="noreferrer">OSV</a> for version checks,
         end-of-life dates from <a href="https://endoflife.date" rel="noreferrer">endoflife.date</a>,
+        write-ups from <a href="https://www.huntress.com/blog" rel="noreferrer">Huntress</a>, <a href="https://www.rapid7.com/blog/" rel="noreferrer">Rapid7</a>, <a href="https://labs.watchtowr.com/" rel="noreferrer">watchTowr</a>, <a href="https://cert.europa.eu/publications/security-advisories" rel="noreferrer">CERT-EU</a> and <a href="https://www.ncsc.gov.uk/" rel="noreferrer">NCSC UK</a>,
         and the <a href="https://github.com/rapid7/metasploit-framework" rel="noreferrer">Metasploit</a> and <a href="https://github.com/projectdiscovery/nuclei-templates" rel="noreferrer">Nuclei</a> template indexes.
         EPSS is a predicted probability of exploitation in the next 30 days, not evidence of exploitation.
         Open source under the Apache License 2.0.

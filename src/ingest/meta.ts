@@ -39,6 +39,19 @@ export async function getMeta<T>(store: Store, key: string): Promise<T | null> {
   }
 }
 
+/** Several meta values in one query, by key; missing and malformed ones are left out. */
+export async function getMetas(store: Store, keys: string[]): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
+  for (const r of await store.all<{ key: string; value: string }>('SELECT key, value FROM meta WHERE key IN (SELECT value FROM json_each(?))', [JSON.stringify(keys)])) {
+    try {
+      out.set(r.key, JSON.parse(r.value));
+    } catch {
+      // ignore malformed values
+    }
+  }
+  return out;
+}
+
 export async function getAllMeta(store: Store): Promise<Map<string, unknown>> {
   const rows = await store.all<{ key: string; value: string }>('SELECT key, value FROM meta');
   const out = new Map<string, unknown>();

@@ -271,7 +271,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'red',
     brief: 'Being exploited now, or about to be.',
     window: 'Within 24 hours to 3 days',
-    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
+    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, an edge device an attacker can take over automatically, or a critical bug trusted security teams (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK) are warning about. Exploited ones come first.',
   },
   attend: {
     label: 'Attend',

@@ -8,7 +8,7 @@ Each result gets a priority, named after CISA's [SSVC](https://www.cisa.gov/stak
 
 | Priority | When |
 |---|---|
-| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation, at any severity. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, or an edge device that CISA rates automatable with total technical impact. Exploited results always sort first. |
+| **Act now** (red) | On CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog, or CISA reports active exploitation, at any severity. Also, before any exploitation is seen: a critical (CVSS 9.0 or more) with EPSS of 0.10 or more or LEV of 0.20 or more, EPSS of 0.50 or more at any severity, an edge device that CISA rates automatable with total technical impact, or a critical that trusted security teams are warning about (see [Written up](#written-up)). Exploited results always sort first. |
 | **Attend** (amber) | A similar CVE in the same product is on KEV or actively exploited, a [Metasploit](https://github.com/rapid7/metasploit-framework) exploit module, [EPSS](https://www.first.org/epss) of 0.10 or more or a [NIST LEV](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.41.pdf) estimate of 0.20 or more (at any severity), CVSS 9.0 or more (or, with no CVSS score at all, a CNA or GitHub advisory rating it critical), a proof-of-concept exploit that is automatable or gives total control, an edge device with a bug CISA rates automatable or total technical impact, or CVSS 8.0 or more and public for 60 days or more (see [Overdue](#overdue)). |
 | **Watch** (yellow) | CVSS 8.0 or more, a proof-of-concept exploit, a bug CISA rates automatable (or, unrated, one with a Nuclei template), any bug CISA has assessed on an edge device, or CVSS 7.0 or more and public for 60 days or more. With no CVSS score at all, also a CVE whose CNA or GitHub advisory rates it high (Red Hat's "important" counts as high). |
 | **Track** (grey) | Everything else: it affects your stack, but nothing above applies. |
@@ -24,6 +24,17 @@ Most CVEs have no CISA assessment, so CISA's "proof of concept" isn't the only s
 - **A [Nuclei](https://github.com/projectdiscovery/nuclei-templates) template** means the bug can be found across the internet with a scanner. Where CISA hasn't rated the CVE automatable or not, it counts as automatable: at least Watch, × 1.25 on the score, and with public exploit code, Attend. CISA's own rating always wins, and it never counts toward the edge-device rules or reachability, which stay CISA's.
 
 None of this is evidence of exploitation, and it never reaches Act now on its own: only CISA KEV and CISA reporting active exploitation are evidence. EPSS already uses exploit code and scanner templates as inputs, so these mostly add explicit reasons, and cover CVEs EPSS hasn't caught up with. Metasploit's and Nuclei's indexes are fetched once a day.
+
+## Written up
+
+A critical CVE reaches the news, and the security teams' blogs, days before EPSS scores it or CISA revisits its first assessment. PHP2Shell (CVE-2026-109618 and CVE-2026-109619) was written up by Huntress, Rapid7, CERT-EU and NCSC UK on the day it was published, while Vulnder had it in Attend: CVSS 9.2, no EPSS yet, and CISA saying not exploited and not automatable.
+
+So every hour Vulnder reads the RSS feeds of five trusted sources: Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK. A post counts for the CVEs it names, all of them when it names five or fewer (ten for CERT-EU's and NCSC UK's advisories), otherwise only those in its title, so a Patch Tuesday roundup counts for none. CERT-EU's feed names products only, so each new advisory's page is read once for its CVE IDs, and so is NCSC UK news about a vulnerability.
+
+- **Act now within 3 days**: a critical (CVSS 9.0 or more, or rated critical with no score) that two of them have written up, or that one has called critical or urgent, in the last 30 days, whatever its EPSS. A critical with EPSS of 10% or more is Act now already, so this lifts the ones EPSS hasn't scored or scores low. "Critical or urgent" is fixed wording in a post's title or the opening of its summary: critical, patch or update now (or immediately), emergency patch, rapid response, zero-day. The reason says who: "Critical bug reported by Huntress, Rapid7, CERT-EU and NCSC UK: Act now while EPSS and CISA catch up".
+- **Any other write-up** adds a reason ("Reported by watchTowr") and × 1.25 on the score, so it orders ahead of similar results within its priority. It never changes the priority of a CVE below critical.
+
+A write-up is never evidence of exploitation, even when the post says attacks have started: only CISA KEV and CISA's own reports are. So a CVE on KEV still sorts above it, with a day to respond, and nothing a feed says is called "exploited". No model reads the posts: fixed code finds the CVE IDs and the wording. Only the CVE ID, the post's link (https, on the source's own site) and its date are kept, for a year. The JSON feed lists the posts in `links.reports`. A failed or broken feed changes nothing; ranking carries on without it.
 
 ## Reachability
 
@@ -138,7 +149,7 @@ The JSON feed carries on each result:
 | `why` | `decisive`, `others` (each with a `kind`: evidence, prediction, severity or context) and `missing` |
 | `respondWithinHours` | The suggested window (null for Track) |
 | `mitigation` | Set for urgent results with no fixed version known |
-| `links` | `advisory`, `patch`, and `exploit`: public attack code (a Metasploit module or the record's exploit reference), or null |
+| `links` | `advisory`, `patch`, `exploit`: public attack code (a Metasploit module or the record's exploit reference), or null, and `reports`: trusted sources' write-ups of it (see [Written up](#written-up)) |
 | `family`, `related` | Similar CVEs; `related` lists the other results in the feed from the same family |
 | `tier` | The older exploited / likely / backlog field, from KEV and EPSS only; unchanged |
 | `confidence` | `version_confirmed`, `product_match`, or `listed` for a CVE from your list |

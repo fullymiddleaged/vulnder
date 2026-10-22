@@ -6,6 +6,7 @@ import { openIndex, refreshEpssIndex, type EpssIndexReport, type IndexWriter } f
 import { catchUpHighEpss } from './epss-net';
 import { EOL_CURSOR_KEY, EOL_LAST_KEY, EOL_STATUS_KEY, EOL_STORED_SQL, eolStatements, fetchEol, type EolCursor, type EolRow } from './eol';
 import { exploitLastKey, refreshExploits, type ExploitReport, type ExploitSource } from './exploits';
+import { refreshReports, REPORTS_EVERY_MINUTES, REPORTS_LAST_KEY, type ReportsReport } from './reports';
 import { metasploitSpec } from './metasploit';
 import { nucleiSpec } from './nuclei';
 import { assignFamilies, type Embedder, type FamilyReport } from './families';
@@ -16,6 +17,7 @@ import {
   cursorKey,
   EMPTY_STATUS,
   getMeta,
+  getMetas,
   LAST_MAINTENANCE_KEY,
   SEEDING_KEY,
   setMetaStatement,
@@ -60,6 +62,8 @@ export interface RunOptions {
   metasploit?: boolean | 'force';
   /** Daily Nuclei template index (src/ingest/nuclei.ts). 'force' fetches even if it ran today. */
   nuclei?: boolean | 'force';
+  /** Trusted sources' write-ups (src/ingest/reports.ts), at most every 45 minutes. 'force' fetches whenever it runs. */
+  reports?: boolean | 'force';
   /** Workers AI embeddings for variant families; without it, families wait. */
   embed?: Embedder;
   /** Most vulns to assign families in a UTC day (FREE_PLAN_FAMILY_DAILY on Free); no cap when left out. */
@@ -97,6 +101,8 @@ export interface RunReport {
   /** The daily exploit-availability fetches, when this run made them. */
   metasploit?: ExploitReport;
   nuclei?: ExploitReport;
+  /** The trusted sources' feeds, when this run read them. */
+  reports?: ReportsReport;
   /** Rows sent to cve_index beside the sources (src/ingest/cve-index.ts); undefined when the table is missing. */
   cveIndex?: { rows: number; epss?: EpssIndexReport };
 }
@@ -119,7 +125,9 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   const { store, budget } = opts;
   // A seed replaces cursors at the end; anything ingested before then would be
   // overwritten or fetched twice, so wait for it.
-  if ((await getMeta(store, SEEDING_KEY)) !== null) {
+  // Whether a seed is running, and when each daily or hourly step last ran, in one query.
+  const lastRun = await getMetas(store, [SEEDING_KEY, LAST_MAINTENANCE_KEY, EOL_LAST_KEY, exploitLastKey('metasploit'), exploitLastKey('nuclei'), REPORTS_LAST_KEY]);
+  if (lastRun.has(SEEDING_KEY)) {
     log('a seed is in progress (scripts/seed-remote.ts); skipping this run');
     return { sources: [], maintenance: false, subrequests: budget.spent, d1Queries: budget.d1Spent, waitingForSeed: true };
   }
@@ -145,7 +153,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   let eol: EolReport | undefined;
   if (opts.eol !== false && budget.has(4)) {
     const today = utcDay(now());
-    if (opts.eol === 'force' || (await getMeta<string>(store, EOL_LAST_KEY)) !== today) {
+    if (opts.eol === 'force' || lastRun.get(EOL_LAST_KEY) !== today) {
       eol = await refreshEol(ctx, today);
       if (eol.written > 0) anyWrites = true;
       log(`eol: ${eol.status}, ${eol.written} release row(s) written${eol.error ? ` (${eol.error})` : ''}`);
@@ -158,11 +166,24 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     const opt = opts[spec.source];
     if (opt === false || !budget.has(4)) continue;
     const today = utcDay(now());
-    if (opt !== 'force' && (await getMeta<string>(store, exploitLastKey(spec.source))) === today) continue;
+    if (opt !== 'force' && lastRun.get(exploitLastKey(spec.source)) === today) continue;
     const r = await refreshExploits(ctx, spec, today);
     exploits[spec.source] = r;
     if (r.written > 0) anyWrites = true;
     log(`${spec.source}: ${r.status}, ${r.written} row(s) written${r.error ? ` (${r.error})` : ''}`);
+  }
+
+  // About hourly: trusted sources' write-ups. One subrequest per source when unchanged.
+  let writeUps: ReportsReport | undefined;
+  if (opts.reports !== false && budget.has(8)) {
+    const last = lastRun.get(REPORTS_LAST_KEY);
+    const at = typeof last === 'string' ? Date.parse(last) : NaN;
+    const due = Number.isNaN(at) || now().getTime() - at >= REPORTS_EVERY_MINUTES * 60_000;
+    if (opts.reports === 'force' || due) {
+      writeUps = await refreshReports(ctx);
+      if (writeUps.written > 0) anyWrites = true;
+      log(`reports: ${writeUps.status}, ${writeUps.written} row(s) sent, ${writeUps.pages} page(s) read${writeUps.errors.length > 0 ? ` (${writeUps.errors.join('; ')})` : ''}`);
+    }
   }
 
   const order = opts.sources ?? SOURCE_ORDER;
@@ -270,7 +291,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
   let maintained = false;
   if (opts.maintenance !== false) {
     const today = utcDay(now());
-    const last = await getMeta<string>(store, LAST_MAINTENANCE_KEY);
+    const last = lastRun.get(LAST_MAINTENANCE_KEY);
     if (opts.maintenance === 'force' || last !== today) {
       await store.batch([...maintenanceStatements(now()), setMetaStatement(LAST_MAINTENANCE_KEY, today, now())]);
       maintained = true;
@@ -288,6 +309,7 @@ export async function runIngest(opts: RunOptions): Promise<RunReport> {
     ...(families ? { families } : {}),
     ...(eol ? { eol } : {}),
     ...exploits,
+    ...(writeUps ? { reports: writeUps } : {}),
     ...(cveIndex ? { cveIndex: { rows: indexRows, ...(epssIndex ? { epss: epssIndex } : {}) } } : {}),
   };
 }

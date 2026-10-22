@@ -268,6 +268,7 @@ export const RECORD_SOURCES: [key: string, label: string][] = [
   ['eol', 'End-of-life dates (endoflife.date)'],
   ['metasploit', 'Metasploit modules'],
   ['nuclei', 'Nuclei templates'],
+  ['reports', 'Write-ups (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK)'],
 ];
 
 /** "2026-10-18 09:12 UTC" */
