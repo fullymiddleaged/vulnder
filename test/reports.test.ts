@@ -6,6 +6,8 @@ import {
   countedCves,
   cveIdsIn,
   isUrgent,
+  MAX_TITLE_CHARS,
+  plainTitle,
   MAX_FEED_CHARS,
   pageText,
   parseFeed,
@@ -117,6 +119,13 @@ describe('reading a feed', () => {
     expect(isUrgent('A proof-of-concept exploit for CVE-2026-0001', '')).toBe(false);
   });
 
+  it('keeps a title as short plain text: no tags, entities decoded, hidden characters dropped', () => {
+    expect(plainTitle('<b>Rapid Response:</b> php2shell &amp; friends')).toBe('Rapid Response: php2shell & friends');
+    expect(plainTitle('a'+String.fromCharCode(0x202e)+'b'+String.fromCharCode(0)+'c   d')).toBe('abc d');
+    expect(plainTitle('x'.repeat(500))).toHaveLength(MAX_TITLE_CHARS);
+    expect(plainTitle('<i></i>  ')).toBeNull();
+  });
+
   it('reads CERT-EU’s JSON for its text, and a page as it is', () => {
     const json = pages['https://cert.europa.eu/publications/security-advisories/2026-018/json']!;
     expect(cveIdsIn(pageText(json))).toEqual(PHP);
@@ -128,7 +137,7 @@ describe('reading a feed', () => {
 describe('refreshReports', () => {
   const upstream = (overrides: Record<string, string | Response> = {}) => serveReports(new FakeFetch(), overrides);
   const stored = () =>
-    rows<{ cve_id: string; source: string; kind: string; url: string; published_at: string }>("SELECT cve_id, source, kind, url, published_at FROM exploits WHERE kind IN ('report', 'urgent') ORDER BY cve_id, source");
+    rows<{ cve_id: string; source: string; kind: string; url: string; published_at: string; title: string | null }>("SELECT cve_id, source, kind, url, published_at, title FROM exploits WHERE kind IN ('report', 'urgent') ORDER BY cve_id, source");
 
   it('records which sources wrote up PHP2Shell, with each post and its day', async () => {
     const report = await refreshReports(sourceContext(upstream().fetch, NOW));
@@ -140,6 +149,7 @@ describe('refreshReports', () => {
     }
     expect(php.find((r) => r.source === 'cert_eu')).toMatchObject({ url: 'https://cert.europa.eu/publications/security-advisories/2026-018/', published_at: '2026-10-21' });
     expect(php.every((r) => r.published_at === '2026-10-21' && r.url.startsWith('https://'))).toBe(true);
+    expect(php.find((r) => r.source === 'cert_eu')).toMatchObject({ title: '2026-018: Critical Vulnerabilities in PHP' });
     // Every one of them called it critical or urgent.
     expect(php.every((r) => r.kind === 'urgent')).toBe(true);
     // A watchTowr post naming more than five CVEs counts only for those in its title.
@@ -283,6 +293,8 @@ describe('PHP2Shell, end to end', () => {
     expect(after.why.decisive!.text).toMatch(/^Critical bug reported by .+: Act now while EPSS and CISA catch up$/);
     expect(after.links.reports).toHaveLength(4);
     expect(after.links.reports.every((u) => u.startsWith('https://'))).toBe(true);
+    expect(after.reports.map((r) => r.source).sort()).toEqual(['CERT-EU', 'Huntress', 'NCSC UK', 'Rapid7']);
+    expect(after.reports.find((r) => r.source === 'NCSC UK')).toMatchObject({ title: 'Critical security issue affecting PHP', publishedAt: '2026-10-21', urgent: true });
   });
 });
 

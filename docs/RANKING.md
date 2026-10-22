@@ -34,7 +34,7 @@ So every hour Vulnder reads the RSS feeds of five trusted sources: Huntress, Rap
 - **Act now within 3 days**: a critical (CVSS 9.0 or more, or rated critical with no score) that two of them have written up, or that one has called critical or urgent, in the last 30 days, whatever its EPSS. A critical with EPSS of 10% or more is Act now already, so this lifts the ones EPSS hasn't scored or scores low. "Critical or urgent" means a keyword in a post's title or the opening of its summary: critical, urgent, emergency, immediate or immediately, zero-day, or exploitation as it happens (exploiting, exploitation, actively or being exploited, exploited in the wild). Bare "exploit" doesn't count, since disclosures use it for what could happen. On the five feeds in October 2026 that marked 39 of 63 counted posts urgent, every one of them an alert or a write-up of attacks, and none of the research write-ups or fixed disclosures. The reason says who: "Critical bug reported by Huntress, Rapid7, CERT-EU and NCSC UK: Act now while EPSS and CISA catch up".
 - **Any other write-up** adds a reason ("Reported by watchTowr") and × 1.25 on the score, so it orders ahead of similar results within its priority. It never changes the priority of a CVE below critical.
 
-A write-up is never evidence of exploitation, even when the post says attacks have started: only CISA KEV and CISA's own reports are. So a CVE on KEV still sorts above it, with a day to respond, and nothing a feed says is called "exploited". No model reads the posts: fixed code finds the CVE IDs and the wording. Only the CVE ID, the post's link (https, on the source's own site) and its date are kept, for a year. The JSON feed lists the posts in `links.reports`. A failed or broken feed changes nothing; ranking carries on without it.
+A write-up is never evidence of exploitation, even when the post says attacks have started: only CISA KEV and CISA's own reports are. So a CVE on KEV still sorts above it, with a day to respond, and nothing a feed says is called "exploited". No model reads the posts: fixed code finds the CVE IDs and the wording. Only the CVE ID, the post's link (https, on the source's own site), its date and its title (plain text, at most 200 characters) are kept, for a year. The results page lists these CVEs under Open-source reports above the priorities, and each card says who is warning about it ("Warned about by"), with each post's title and link. The JSON feed carries them as `reports` (and the links as `links.reports`). A failed or broken feed changes nothing; ranking carries on without it.
 
 ## Reachability
 
@@ -149,7 +149,8 @@ The JSON feed carries on each result:
 | `why` | `decisive`, `others` (each with a `kind`: evidence, prediction, severity or context) and `missing` |
 | `respondWithinHours` | The suggested window (null for Track) |
 | `mitigation` | Set for urgent results with no fixed version known |
-| `links` | `advisory`, `patch`, `exploit`: public attack code (a Metasploit module or the record's exploit reference), or null, and `reports`: trusted sources' write-ups of it (see [Written up](#written-up)) |
+| `links` | `advisory`, `patch`, `exploit`: public attack code (a Metasploit module or the record's exploit reference), or null, and `reports`: the URLs of trusted sources' write-ups of it |
+| `reports` | Trusted sources' write-ups (see [Written up](#written-up)), earliest first: `source`, `title`, `url`, `publishedAt`, `urgent` |
 | `family`, `related` | Similar CVEs; `related` lists the other results in the feed from the same family |
 | `tier` | The older exploited / likely / backlog field, from KEV and EPSS only; unchanged |
 | `confidence` | `version_confirmed`, `product_match`, or `listed` for a CVE from your list |

@@ -35,6 +35,8 @@ export interface ExploitRef {
   url: string | null;
   /** A write-up's date, YYYY-MM-DD (migration 0014); null or absent for the rest. */
   published_at?: string | null;
+  /** A write-up's title, plain text (migration 0014); null or absent for the rest. */
+  title?: string | null;
 }
 
 /** Where loaded components are kept between requests (the Cache API in the Worker). */
@@ -111,7 +113,7 @@ export const EOL_RELEASES_SQL = `SELECT slug, release, label, eol_from, is_eol, 
   WHERE slug IN (SELECT value FROM json_each(?))`;
 export const EOL_CVE_SQL = `SELECT key, last_cve, last_published, tagged FROM eol_cve WHERE key IN (SELECT value FROM json_each(?))`;
 /** Exploit availability and write-ups for these CVE IDs: reads only the rows that exist, a few percent of them. */
-export const EXPLOITS_BY_CVE_SQL = `SELECT cve_id, source, kind, url, published_at FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
+export const EXPLOITS_BY_CVE_SQL = `SELECT cve_id, source, kind, url, published_at, title FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
 /** The same before migration 0014 added published_at. */
 const EXPLOITS_BY_CVE_V0_SQL = `SELECT cve_id, source, kind, url FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
 /**

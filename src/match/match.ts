@@ -72,6 +72,12 @@ export interface MatchedVuln {
    * (src/ingest/reporters.ts), earliest first.
    */
   links: { advisory: string | null; patch: string | null; exploit: string | null; reports: string[] };
+  /**
+   * Trusted security teams' write-ups of it (src/ingest/reporters.ts),
+   * earliest first: who, their post's title and link, its day, and whether it
+   * calls the bug critical or urgent. Warnings, never evidence of exploitation.
+   */
+  reports: { source: string; title: string | null; url: string; publishedAt: string; urgent: boolean }[];
   /** What to do about it: act, attend, watch or track. */
   priority: Priority;
   /** 0–100, for ordering within a priority and ranking components. */
@@ -493,6 +499,7 @@ export function toResult(
     cwe: parseJson<string[]>(v.cwe, []),
     ssvc,
     links,
+    reports: reports.map((r) => ({ source: r.name, title: r.title, url: r.url, publishedAt: r.day, urgent: r.urgent })),
     priority,
     score,
     reasons,
@@ -531,7 +538,7 @@ export function reportsOf(exploits: readonly ExploitRef[]): Report[] {
     const prev = out.get(src.id);
     const urgent = e.kind === URGENT_KIND || !!prev?.urgent;
     const day = e.published_at.slice(0, 10);
-    out.set(src.id, !prev || day < prev.day ? { name: src.name, url: e.url, day, urgent } : { ...prev, urgent });
+    out.set(src.id, !prev || day < prev.day ? { name: src.name, url: e.url, title: e.title ?? null, day, urgent } : { ...prev, urgent });
   }
   return [...out.values()].sort((a, b) => a.day.localeCompare(b.day) || a.name.localeCompare(b.name));
 }
@@ -539,6 +546,8 @@ export function reportsOf(exploits: readonly ExploitRef[]): Report[] {
 export interface Report {
   name: string;
   url: string;
+  /** The post's title as plain text, or null; shown as text, never HTML. */
+  title: string | null;
   /** YYYY-MM-DD of the source's earliest post on it. */
   day: string;
   /** The source called it critical or asked for an update now (src/ingest/reports.ts isUrgent). */

@@ -72,6 +72,7 @@ function slimResult(r: MatchedVuln) {
     fixedVersions: r.fixedVersions,
     mitigation: r.mitigation,
     links: r.links,
+    reports: r.reports,
     beforeWindow: r.beforeWindow,
     related: r.related,
     ...(r.replaces && { replaces: r.replaces }),

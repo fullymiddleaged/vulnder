@@ -77,6 +77,8 @@ export interface ReportRow {
   published_at: string;
   /** URGENT_KIND when any of the source's posts on it calls for urgent action. */
   kind: typeof REPORT_KIND | typeof URGENT_KIND;
+  /** The post's title as plain text (plainTitle), shown as the source's own words; null when it has none. */
+  title: string | null;
 }
 
 export interface FeedItem {
@@ -163,6 +165,24 @@ export function parseFeed(xml: string): FeedItem[] {
   }
 }
 
+/** Longest title kept: enough for any headline, short enough that a hostile feed can't fill the card. */
+export const MAX_TITLE_CHARS = 200;
+
+/**
+ * A title as plain text to show: tags dropped, the XML entities and ASCII
+ * numeric ones decoded, control characters and runs of space collapsed, cut at
+ * MAX_TITLE_CHARS. It is shown as text, never as HTML.
+ */
+export function plainTitle(title: string): string | null {
+  const text = unescapeXml(title.replace(/<[^<>]{0,500}>/g, ' '))
+    // eslint-disable-next-line no-control-regex -- strip control and bidi characters a hostile title could carry
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+  return text.length <= MAX_TITLE_CHARS ? text : `${text.slice(0, MAX_TITLE_CHARS - 1).trimEnd()}\u2026`;
+}
+
 /** The link, when it's https on the source's host or a subdomain of it; otherwise null. */
 export function sourceLink(link: string | null, host: string): string | null {
   if (!link) return null;
@@ -233,11 +253,12 @@ export function pageText(body: string): string {
  * Keeps each source's earliest post on a CVE, and marks the row urgent once any
  * of its posts is. A row that would change neither isn't written.
  */
-const UPSERT_REPORTS = `INSERT INTO exploits (cve_id, source, kind, url, published_at, updated_at)
-SELECT json_extract(value, '$.cve_id'), ?, json_extract(value, '$.kind'), json_extract(value, '$.url'), json_extract(value, '$.published_at'), ?
+const UPSERT_REPORTS = `INSERT INTO exploits (cve_id, source, kind, url, published_at, title, updated_at)
+SELECT json_extract(value, '$.cve_id'), ?, json_extract(value, '$.kind'), json_extract(value, '$.url'), json_extract(value, '$.published_at'), json_extract(value, '$.title'), ?
 FROM json_each(?) WHERE true
 ON CONFLICT (cve_id, source) DO UPDATE SET
   url = CASE WHEN exploits.published_at IS NULL OR excluded.published_at < exploits.published_at THEN excluded.url ELSE exploits.url END,
+  title = CASE WHEN exploits.published_at IS NULL OR excluded.published_at < exploits.published_at THEN excluded.title ELSE exploits.title END,
   published_at = CASE WHEN exploits.published_at IS NULL OR excluded.published_at < exploits.published_at THEN excluded.published_at ELSE exploits.published_at END,
   kind = CASE WHEN excluded.kind = '${URGENT_KIND}' THEN '${URGENT_KIND}' ELSE exploits.kind END,
   updated_at = excluded.updated_at
@@ -317,7 +338,8 @@ async function readSource(ctx: SourceContext, src: ReportSource, cursor: ReportC
       read.add(link);
     }
     const kind = isUrgent(item.title, summary) ? URGENT_KIND : REPORT_KIND;
-    for (const id of countedCves(item.title, ids, src.maxCves)) rows.push({ cve_id: id, url: link, published_at: day, kind });
+    const title = plainTitle(item.title);
+    for (const id of countedCves(item.title, ids, src.maxCves)) rows.push({ cve_id: id, url: link, published_at: day, kind, title });
   }
   // One row per CVE: the earliest post, urgent if any of them was.
   const earliest = new Map<string, ReportRow>();
