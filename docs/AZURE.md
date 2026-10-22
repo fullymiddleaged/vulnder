@@ -73,4 +73,4 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 
 ## Not tested here
 
-The template follows the current Microsoft documentation for each resource, but it hasn't been deployed from this repository's CI. Before relying on it, deploy it to a test resource group and check that a run succeeds and rows arrive. Report problems as issues.
+The template compiles and passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed). `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. It hasn't been deployed from this repository's CI. Before relying on it, deploy it to a test resource group and check that a run succeeds and rows arrive. Report problems as issues.

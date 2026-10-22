@@ -137,7 +137,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
 }
 
 // The DCR's own ingestion endpoint (kind Direct), so no DCE is needed.
-var dcrProps = reference(dcr.id, '2024-03-11')
+var dcrProps = dcr.properties
 var ingestUrl = '${dcrProps.endpoints.logsIngestion}/dataCollectionRules/${dcrProps.immutableId}/streams/${streamName}?api-version=2023-01-01'
 
 resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
@@ -155,7 +155,6 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
       ingestUrl: { value: ingestUrl }
     }
   }
-  dependsOn: [dcr]
 }
 
 resource canPublish 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
