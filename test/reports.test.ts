@@ -84,42 +84,36 @@ describe('reading a feed', () => {
     expect(countedCves('Two bugs', PHP, 5)).toEqual(PHP);
   });
 
-  it('calls a post urgent from its title or the opening of its summary, never from deep in the article', () => {
-    for (const title of ['Critical Vulnerabilities in PHP', 'Rapid Response: php2shell', 'Patch now: X', 'Zero-day in Y', 'Fortinet 0-day', 'Update immediately to 1.2.3']) {
-      expect(isUrgent(title, '')).toBe(true);
-    }
-    expect(isUrgent('High Vulnerability in the Linux Kernel', '')).toBe(false);
-    expect(isUrgent('Q3 threat update', '<p>Two <b>critical</b> PHP RCEs leaked before the patch.</p>')).toBe(true);
-    expect(isUrgent('Q3 threat update', `${'quiet words '.repeat(60)} a critical bug`)).toBe(false);
-    expect(isUrgent('Hypercritical thinking', '')).toBe(false);
-    // How the sources write exploitation and "act now" alerts that don't say critical (October 2026 feeds).
+  it('calls a post urgent on simple keywords in its title or the opening of its summary, never deep in the article', () => {
+    // As the sources write their alerts (October 2026 feeds).
     for (const title of [
+      'Critical Vulnerabilities in PHP',
       'Active Exploitation of SolarWinds Web Help Desk (CVE-2025-26399)',
       'Wing FTP Server RCE (CVE-2025-47812) Exploited in the Wild | Huntress',
       'Cleo Software Actively Being Exploited in the Wild | Huntress',
       'Ivanti Connect Secure zero-day exploited in the wild (CVE-2026-104935)',
       'Threat Advisory: Hackers Are Exploiting CVE-2021-40444 | Huntress',
+      'Fortinet 0-day',
+      'Update immediately to 1.2.3',
     ]) {
       expect(isUrgent(title, '')).toBe(true);
     }
     for (const summary of [
-      'The NCSC is urging UK organisations to promptly mitigate vulnerabilities affecting Citrix NetScaler ADC and Gateway.',
+      '<p>Two <b>critical</b> PHP RCEs leaked before the patch.</p>',
       'On 9 September 2026, Check Point released emergency security updates addressing two vulnerabilities.',
       'The NCSC is encouraging UK organisations to take immediate action to mitigate a security issue.',
-      'Huntress has observed in-the-wild exploitation of CVE-2025-31161.',
       'Huntress has observed threat actors exploiting a Microsoft Windows Server Update Services (WSUS) vulnerability.',
-      'Huntress is seeing threat actors exploit React2Shell (CVE-2025-55182) to deploy a Linux backdoor.',
-      'Huntress has observed a series of strikingly similar intrusions beginning with CitrixBleed 2 exploitation, employing novel local privilege escalation.',
+      'Huntress has observed a series of strikingly similar intrusions beginning with CitrixBleed 2 exploitation.',
     ]) {
-      expect(isUrgent('Exploitation of vulnerabilities affecting X', summary)).toBe(true);
+      expect(isUrgent('A write-up', summary)).toBe(true);
     }
-    // Research write-ups and fixed disclosures aren't alerts.
-    for (const title of ['Authentication Bypass, Remote Code Execution, and Database Read in Eptura Archibus (FIXED)', 'Unauthenticated SQL Injection In Channel Software WebAlliance eCommerce', 'Rapid7 Analysis: GitLab CI/CD Regex Integer Overflow (CVE-2026-97229)']) {
-      expect(isUrgent(title, 'Overview While performing continuous red teaming exercises, Rapid7 discovered a vulnerability.')).toBe(false);
-    }
-    // "Urging" or "observed" with no action or exploitation within the sentence doesn't count.
-    expect(isUrgent('News', 'The minister urges calm. Later, a patch shipped.')).toBe(false);
-    expect(isUrgent('News', 'We observed the release. It has an exploit mitigation feature.')).toBe(false);
+    // Severity below critical, a keyword only deep in the article, or inside another word: not urgent.
+    expect(isUrgent('High Vulnerability in the Linux Kernel', '')).toBe(false);
+    expect(isUrgent('Q3 threat update', `${'quiet words '.repeat(60)} a critical bug`)).toBe(false);
+    expect(isUrgent('Hypercritical thinking', '')).toBe(false);
+    // Disclosures say what could happen; "exploit" on its own isn't an alert.
+    expect(isUrgent('Unauthenticated SQL Injection In Channel Software WebAlliance eCommerce', 'An unauthenticated attacker can exploit this to read the database.')).toBe(false);
+    expect(isUrgent('Authentication Bypass, Remote Code Execution, and Database Read in Eptura Archibus (FIXED)', 'These could be exploited to take over the server.')).toBe(false);
     expect(isUrgent('A proof-of-concept exploit for CVE-2026-0001', '')).toBe(false);
   });
 

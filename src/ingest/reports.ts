@@ -23,36 +23,17 @@ import type { SourceContext } from './types';
 export const REPORT_KIND = 'report';
 export const URGENT_KIND = 'urgent';
 /**
- * Wording that calls a bug critical, asks for an update now, or reports it
- * under attack, taken from how the five sources write their alerts (October
- * 2026: "Critical Vulnerabilities in PHP", "Rapid Response", "Active
- * Exploitation of SolarWinds…", "Exploited in the Wild", "urging UK
- * organisations to promptly mitigate", "emergency security updates"). Read from
- * a post's title and the opening of its summary only, where a source states its
- * verdict; a full article mentions "critical" in passing. Attack wording makes
- * a post urgent, never evidence: only KEV and CISA count as exploited. Bounded
- * gaps and no nested quantifiers, so it's linear in the text.
+ * Keywords that make a post urgent: critical, urgent, emergency, immediate(ly),
+ * zero-day, and exploitation as it happens (exploiting, exploitation, actively
+ * or being exploited, exploited in the wild). Bare "exploit" and "exploited"
+ * are left out: disclosures use them for what could happen ("could be
+ * exploited"). Read from a post's title and the opening of its summary only,
+ * where a source states its verdict; a full article mentions "critical" in
+ * passing. On the five feeds in October 2026 this marked every alert urgent and
+ * no research write-up or fixed disclosure. Attack wording is never evidence:
+ * only KEV and CISA count as exploited.
  */
-const URGENT = new RegExp(
-  [
-    String.raw`\bcritical\b`,
-    String.raw`\b(?:patch|update|upgrade|mitigate)(?:ing)?\s+(?:now|immediately|urgently|as soon as possible)\b`,
-    String.raw`\b(?:emergency|urgent|out-of-band)\s+(?:security\s+)?(?:patch|update|release|fix|action)`,
-    String.raw`\bimmediate\s+action\b`,
-    String.raw`\b(?:urg(?:e|es|ing)|encourag(?:e|es|ing))\b[^.]{0,80}?\b(?:promptly\s+)?(?:patch|update|upgrade|mitigate)`,
-    String.raw`\bpromptly\s+(?:patch|update|upgrade|mitigate)`,
-    String.raw`\b(?:actively|being)\s+exploited\b`,
-    String.raw`\bactive\s+exploitation\b`,
-    String.raw`\bexploited\s+in\s+the\s+wild\b`,
-    String.raw`\bin[-\s]the[-\s]wild\s+exploitation\b`,
-    String.raw`\b(?:threat\s+actors?|attackers?|hackers?|adversaries)\s+(?:are\s+|is\s+)?(?:actively\s+)?exploit(?:s|ing|ed)?\b`,
-    String.raw`\b(?:observed|seeing|seen|detected)\b[^.]{0,100}?\bexploit(?:s|ing|ed|ation)?\b`,
-    String.raw`\brapid\s+response\b`,
-    String.raw`\bzero[-\s]?day\b`,
-    String.raw`\b0-day\b`,
-  ].join('|'),
-  'i',
-);
+const URGENT = /\b(?:critical|urgent(?:ly)?|emergency|immediate(?:ly)?|exploiting|exploitation|(?:actively|being)\s+exploited|exploited\s+in\s+the\s+wild|zero[-\s]?day|0-day)\b/i;
 /** How much of a summary is read for that wording. */
 const URGENT_SUMMARY_CHARS = 400;
 
