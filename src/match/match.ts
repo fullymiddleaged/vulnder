@@ -12,7 +12,7 @@ import { queryKey, type OsvClient, type OsvQuery } from './osv';
 import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
 import { supportFor, type Support, type SupportState } from './support';
 import { recentKev, recentKevByProduct, type KevAdd } from './targeted';
-import { explicitlyUnaffected } from './versions';
+import { compareDotted, explicitlyUnaffected, fixesFor, splitFixes } from './versions';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -273,7 +273,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
             confirmed = true;
             matched.add(formatItem(item));
             if (!item.close) exact = true;
-            if (r.fixed_version) fixes.add(r.fixed_version);
+            for (const f of fixesFor(item.version, splitFixes(r.fixed_version))) fixes.add(f);
           }
           // Checked and not affected: this row does not count as a match.
           continue;
@@ -284,7 +284,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
         matched.add(formatItem(item));
         if (!item.close) exact = true;
         if (isEdge(item)) edge = true;
-        if (r.fixed_version) fixes.add(r.fixed_version);
+        for (const f of fixesFor(item.version, splitFixes(r.fixed_version))) fixes.add(f);
       }
     }
     if (!confirmed && !unverified) continue;
@@ -295,7 +295,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
         confirmed ? 'version_confirmed' : 'product_match',
         exact ? 'exact' : 'close',
         [...matched].sort(),
-        [...fixes].sort(),
+        [...fixes].sort((a, b) => compareDotted(a, b) ?? a.localeCompare(b)),
         edge,
         opts.now,
         exploitedSibling(v),

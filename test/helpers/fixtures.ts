@@ -12,6 +12,7 @@ import cve2026_100107 from '../fixtures/cve/records/CVE-2026-100107.json';
 import cve2026_100148 from '../fixtures/cve/records/CVE-2026-100148.json';
 import cve2026_104886 from '../fixtures/cve/records/CVE-2026-104886.json';
 import cve2026_104910 from '../fixtures/cve/records/CVE-2026-104910.json';
+import cve2026_109618 from '../fixtures/cve/records/CVE-2026-109618.json';
 import releases from '../fixtures/cve/releases.json';
 import epssLatest from '../fixtures/epss/latest.json';
 import epssScores from '../fixtures/epss/scores.json';
@@ -41,6 +42,8 @@ export const cveRecords: Record<string, CveRecordJson> = {
   'CVE-2026-100148': cve2026_100148 as CveRecordJson,
   'CVE-2026-104886': cve2026_104886 as CveRecordJson,
   'CVE-2026-104910': cve2026_104910 as CveRecordJson,
+  // PHP: fixed on four release branches.
+  'CVE-2026-109618': cve2026_109618 as CveRecordJson,
 };
 
 export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, metasploitIndex, nucleiIndex, releases };

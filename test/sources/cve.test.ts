@@ -98,6 +98,14 @@ describe('parseCveRecord', () => {
     expect(p.affected![0]).toMatchObject({ vendor: 'linux', product: 'linux', label: 'Linux' });
   });
 
+  it('keeps one fix per release branch when each range ends on its own branch', () => {
+    const p = parseCveRecord(cveRecords['CVE-2026-109618'])!;
+    expect(p.fields).toMatchObject({ cvssScore: 9.2, cvssVector: 'CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N' });
+    expect(p.affected).toEqual([
+      expect.objectContaining({ kind: 'product', vendor: 'php_group', product: 'php', fixedVersion: '8.2.35, 8.3.36, 8.4.27, 8.5.12' }),
+    ]);
+  });
+
   it("dates CISA's report of active exploitation, unless the same container lists it on KEV", () => {
     const active = withSsvc(cveRecords['CVE-2022-48816']!, 'active', '2026-10-02T16:58:15.719556Z');
     const p = parseCveRecord(active)!;

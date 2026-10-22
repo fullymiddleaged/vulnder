@@ -42,6 +42,7 @@ const NAMED_CVES = [
   'CVE-2024-34393', // npm package via collectionURL, CVSS 3.1
   'CVE-2026-104910', // CPE, CVSS 4.0, CNA SSVC
   'CVE-2022-48816', // Linux kernel: git ranges, many branches, CISA ADP SSVC
+  'CVE-2026-109618', // PHP: one fix per release branch, CVSS 4.0, CISA ADP SSVC
   // Rejected, for where a rejection points (cve_index.replaced_by):
   'CVE-2024-0228', // duplicate of one CVE
   'CVE-2023-0884', // reservation duplicate, ConsultIDs form
