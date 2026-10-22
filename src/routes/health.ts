@@ -4,6 +4,7 @@ import { D1BindingStore } from '../ingest/d1-store';
 import { CHECKS_SERVED_KEY, DATA_VERSION_KEY, EMPTY_STATUS, statusKey, type SourceStatus } from '../ingest/meta';
 import { EOL_STATUS_KEY } from '../ingest/eol';
 import { exploitStatusKey } from '../ingest/exploits';
+import { REPORTS_STATUS_KEY } from '../ingest/reports';
 import { SOURCE_ORDER } from '../ingest/run';
 import type { AppEnv } from '../types';
 import { openCache, putInBackground } from './cache';
@@ -30,12 +31,13 @@ export const HEALTH_CACHE = 'vulnder-health';
 
 /** The per-source status rows and the data version: one query, a primary-key lookup per row. */
 export const HEALTH_META_SQL = 'SELECT key, value FROM meta WHERE key IN (SELECT value FROM json_each(?))';
-/** Each source's status row, plus the daily support dates (src/ingest/eol.ts) and exploit indexes (src/ingest/exploits.ts), shown like ones. */
+/** Each source's status row, plus the daily support dates (src/ingest/eol.ts), exploit indexes (src/ingest/exploits.ts) and trusted write-ups (src/ingest/reports.ts), shown like ones. */
 const STATUS_KEYS: [string, string][] = [
   ...SOURCE_ORDER.map((s) => [s, statusKey(s)] as [string, string]),
   ['eol', EOL_STATUS_KEY],
   ['metasploit', exploitStatusKey('metasploit')],
   ['nuclei', exploitStatusKey('nuclei')],
+  ['reports', REPORTS_STATUS_KEY],
 ];
 const HEALTH_KEYS = [...STATUS_KEYS.map(([, k]) => k), DATA_VERSION_KEY, CHECKS_SERVED_KEY];
 export const healthCacheKey = (env: Env) => new Request(`${baseUrl(env)}/__cache/health`);

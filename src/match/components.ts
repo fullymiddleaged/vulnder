@@ -20,16 +20,23 @@ export interface ComponentData {
   eol?: EolRelease[];
   /** Its latest CVE's "unsupported-when-assigned" tag, when a tagged CVE has named it. */
   cveSupport?: CveSupport | null;
-  /** Metasploit modules and Nuclei templates naming its CVEs; absent in entries cached before exploit data. */
+  /** Metasploit modules, Nuclei templates and trusted write-ups naming its CVEs; absent in entries cached before exploit data. */
   exploits?: ExploitRef[];
 }
 
-/** One row of exploits (migrations/0010_exploits.sql). */
+/**
+ * One row of exploits (migrations/0010_exploits.sql): source 'metasploit' or
+ * 'nuclei', or a trusted reporter's id with kind 'report' (src/ingest/reports.ts).
+ */
 export interface ExploitRef {
   cve_id: string;
-  source: 'metasploit' | 'nuclei';
+  source: string;
   kind: string;
   url: string | null;
+  /** A write-up's date, YYYY-MM-DD (migration 0014); null or absent for the rest. */
+  published_at?: string | null;
+  /** A write-up's title, plain text (migration 0014); null or absent for the rest. */
+  title?: string | null;
 }
 
 /** Where loaded components are kept between requests (the Cache API in the Worker). */
@@ -105,8 +112,10 @@ export const EXPLOITED_IN_FAMILIES_SQL = `SELECT id, family_id FROM vulns
 export const EOL_RELEASES_SQL = `SELECT slug, release, label, eol_from, is_eol, eoes_from FROM eol_releases
   WHERE slug IN (SELECT value FROM json_each(?))`;
 export const EOL_CVE_SQL = `SELECT key, last_cve, last_published, tagged FROM eol_cve WHERE key IN (SELECT value FROM json_each(?))`;
-/** Exploit availability for these CVE IDs: reads only the rows that exist, a few percent of them. */
-export const EXPLOITS_BY_CVE_SQL = `SELECT cve_id, source, kind, url FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
+/** Exploit availability and write-ups for these CVE IDs: reads only the rows that exist, a few percent of them. */
+export const EXPLOITS_BY_CVE_SQL = `SELECT cve_id, source, kind, url, published_at, title FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
+/** The same before migration 0014 added published_at. */
+const EXPLOITS_BY_CVE_V0_SQL = `SELECT cve_id, source, kind, url FROM exploits WHERE cve_id IN (SELECT value FROM json_each(?))`;
 /**
  * Keys per query: 2,000 IDs is about 45 KB of JSON, so the biggest stack stays
  * around 15 D1 queries, well inside Workers Free's 50 per request. Rows read
@@ -209,14 +218,18 @@ export function cveIdsOf(v: Pick<VulnRow, 'id' | 'aliases'>): string[] {
  * Exploit rows for these CVE IDs. Bare IDs are small, so the keys are chunked
  * by size (about 4,700 to a query) rather than by FEED_CHUNK: one query for
  * all but the largest stacks. Before migration 0010 the table is missing, and
- * ranking goes on without it, as it did before.
+ * ranking goes on without it, as it did before; before 0014, without write-up dates.
  */
 export async function loadExploits(store: Store, cveIds: string[]): Promise<ExploitRef[]> {
-  const out: ExploitRef[] = [];
-  try {
-    for (const chunk of chunkByJsonSize([...new Set(cveIds)])) out.push(...(await store.all<ExploitRef>(EXPLOITS_BY_CVE_SQL, [JSON.stringify(chunk)])));
-  } catch {
-    return [];
+  const chunks = chunkByJsonSize([...new Set(cveIds)]);
+  for (const sql of [EXPLOITS_BY_CVE_SQL, EXPLOITS_BY_CVE_V0_SQL]) {
+    try {
+      const out: ExploitRef[] = [];
+      for (const chunk of chunks) out.push(...(await store.all<ExploitRef>(sql, [JSON.stringify(chunk)])));
+      return out;
+    } catch {
+      // Without migration 0014 the first query fails and the second reads as before; without 0010 both do.
+    }
   }
-  return out;
+  return [];
 }

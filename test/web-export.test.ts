@@ -182,6 +182,23 @@ describe('exportMarkdown', () => {
     expect(exportMarkdown(feed)).not.toContain('Targeted by attackers');
   });
 
+  it('lists the CVEs security teams warn about before Fix first, and each one’s warnings with it', () => {
+    const warned = {
+      ...exploited,
+      reports: [
+        { source: 'Huntress', title: 'Rapid Response: *express* RCE', url: 'https://www.huntress.com/blog/x', publishedAt: '2026-10-02', urgent: true },
+        { source: 'CERT-EU', title: null, url: 'javascript:alert(1)', publishedAt: '2026-10-03', urgent: false },
+      ],
+    };
+    const md = exportMarkdown({ ...feed, results: [warned, closeMatch] });
+    expect(md.indexOf('## Open-source reports')).toBeLessThan(md.indexOf('## Fix first'));
+    expect(md).toContain('- CVE-2026-0001 (Act now): Remote code execution in \\*express\\*. Huntress and CERT-EU, from 2026-10-02.');
+    // The source's own words, escaped, and only http(s) links.
+    expect(md).toContain('- **Open-source reports:** Huntress <https://www.huntress.com/blog/x> (“Rapid Response: \\*express\\* RCE”), 2026-10-02; CERT-EU, 2026-10-03. Warnings, not evidence of exploitation');
+    expect(md).not.toContain('javascript:');
+    expect(exportMarkdown(feed)).not.toContain('Open-source reports');
+  });
+
   it('names a listed CVE’s targeted product by its label', () => {
     const md = exportMarkdown({
       ...feed,

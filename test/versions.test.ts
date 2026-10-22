@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { applyPatches } from '../src/ingest/apply';
 import type { VulnPatch } from '../src/ingest/types';
 import { matchStack } from '../src/match/match';
-import { compareDotted, explicitlyUnaffected, unaffectedBounds } from '../src/match/versions';
+import { compareDotted, explicitlyUnaffected, fixedVersionOf, fixesFor, MAX_FIXES, splitFixes, unaffectedBounds } from '../src/match/versions';
 import { parseStack } from '../src/stack/format';
 import { resetDb, rows, store } from './helpers/db';
 
@@ -42,6 +42,56 @@ describe('unaffected bounds', () => {
     expect(explicitlyUnaffected({ below: null, from: null }, '6.8')).toBe(false);
     expect(explicitlyUnaffected({ below: '0:4.18.0-553.el8', from: null }, '4.18')).toBe(false);
     expect(explicitlyUnaffected(b, '24h2')).toBe(false);
+  });
+});
+
+/** PHP's shape (CVE-2026-109618): one range per release branch. */
+const PHP_RANGES = [
+  { status: 'affected', version: '8.2.*', lessThan: '8.2.35', versionType: 'semver' },
+  { status: 'affected', version: '8.3.*', lessThan: '8.3.36', versionType: 'semver' },
+  { status: 'affected', version: '8.4.*', lessThan: '8.4.27', versionType: 'semver' },
+  { status: 'affected', version: '8.5.*', lessThan: '8.5.12', versionType: 'semver' },
+];
+/** Cases for fixedVersionOf, each with what it should give. */
+const FIX_CASES: [unknown[], string | null][] = [
+  [PHP_RANGES, '8.2.35, 8.3.36, 8.4.27, 8.5.12'],
+  // One bound is kept as written, from any start.
+  [[{ status: 'affected', version: '0', lessThan: '2.5.48' }], '2.5.48'],
+  [[{ status: 'affected', version: '1.0', lessThan: '2.0' }, { status: 'affected', version: '1.5', lessThan: '2.0' }], '2.0'],
+  // A start written as the series itself, or as its first release.
+  [[{ status: 'affected', version: '8.2', lessThan: '8.2.35' }, { status: 'affected', version: '8.3.0', lessThan: '8.3.36' }], '8.2.35, 8.3.36'],
+  // The kernel's: 5.13.19 < 5.14 ends where the next series starts, which isn't a fix.
+  [[{ status: 'affected', version: '5.10.67', lessThan: '5.10.271', versionType: 'semver' }, { status: 'affected', version: '5.13.19', lessThan: '5.14', versionType: 'semver' }], null],
+  // No start to tell the branch by, a jump of more than one number, a comma.
+  [[{ status: 'affected', lessThan: '8.2.35' }, { status: 'affected', version: '8.3.*', lessThan: '8.3.36' }], null],
+  [[{ status: 'affected', version: '8.2.*', lessThan: '8.2.35.1' }, { status: 'affected', version: '8.3.*', lessThan: '8.3.36' }], null],
+  [[{ status: 'affected', version: '8.2.*', lessThan: '8.2.35' }, { status: 'affected', version: '8.3.*', lessThan: '8.3.3,6' }], null],
+  // Git ranges, wildcards and unaffected entries never count.
+  [[...GIT_RANGES, { status: 'affected', version: '1.0', lessThan: '1.*' }, { status: 'unaffected', version: '0', lessThan: '1.0' }], null],
+  // More branches than MAX_FIXES: none, rather than some.
+  [Array.from({ length: 9 }, (_, i) => ({ status: 'affected', version: `1.${i}.*`, lessThan: `1.${i}.9` })), null],
+  [[null, 'x', { status: 'affected', version: 1, lessThan: 2 }], null],
+];
+
+describe('fixed versions', () => {
+  it('keeps one fix per release branch only when each is that branch plus one number', () => {
+    for (const [ranges, want] of FIX_CASES) expect(fixedVersionOf(ranges)).toBe(want);
+    expect(fixedVersionOf(Array.from({ length: MAX_FIXES }, (_, i) => ({ status: 'affected', version: `1.${i}.*`, lessThan: `1.${i}.9` })))).not.toBeNull();
+  });
+
+  it('gives a version the fix on its own branch, and every fix when none is', () => {
+    const fixes = splitFixes('8.2.35, 8.3.36, 8.4.27, 8.5.12');
+    expect(fixes).toEqual(['8.2.35', '8.3.36', '8.4.27', '8.5.12']);
+    expect(fixesFor('8.3.10', fixes)).toEqual(['8.3.36']);
+    expect(fixesFor('8.3', fixes)).toEqual(['8.3.36']);
+    // Past its branch's fix: still that fix, never hidden.
+    expect(fixesFor('8.3.40', fixes)).toEqual(['8.3.36']);
+    expect(fixesFor('8.1.2', fixes)).toEqual(fixes);
+    expect(fixesFor('8', fixes)).toEqual(fixes);
+    expect(fixesFor(null, fixes)).toEqual(fixes);
+    expect(fixesFor('1.2.3', ['2.5.48'])).toEqual(['2.5.48']);
+    expect(splitFixes(null)).toEqual([]);
+    expect(splitFixes('2.5.48')).toEqual(['2.5.48']);
   });
 });
 
@@ -97,5 +147,51 @@ describe('a product named with a version', () => {
     await env.DB.prepare(backfill).run();
     const got = await rows<{ unaffected_below: string | null; unaffected_from: string | null }>('SELECT unaffected_below, unaffected_from FROM affected ORDER BY vuln_id');
     expect(got.map((r) => ({ below: r.unaffected_below, from: r.unaffected_from }))).toEqual(cases.map(unaffectedBounds));
+  });
+});
+
+describe('a product fixed on several branches', () => {
+  const NOW = new Date('2026-10-22T00:00:00Z');
+  const phpCve: VulnPatch = {
+    source: 'cve',
+    id: 'CVE-2026-109618',
+    aliases: [],
+    fields: { title: 'RCE via OOM corruption', publishedAt: '2026-10-21T13:48:34.845Z', cvssScore: 9.2, cvssVector: 'CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N' },
+    affected: [{ kind: 'product', vendor: 'php_group', product: 'php', label: 'PHP Group PHP', ranges: PHP_RANGES, fixedVersion: fixedVersionOf(PHP_RANGES) }],
+  };
+
+  beforeEach(async () => {
+    await resetDb();
+    await applyPatches(store(), [phpCve], { now: NOW, windowStart: '2026-07-24T00:00:00.000Z', epssEvents: true });
+  });
+
+  const feed = (stack: string) => matchStack(store(), parseStack(stack), { now: NOW, days: 30, osv: { affecting: async () => new Map() } });
+
+  it('names the fix on the version’s branch, so the item counts as fixable', async () => {
+    const r = await feed('p:php_group/php@8.3.10');
+    expect(r.results[0]).toMatchObject({ id: 'CVE-2026-109618', fixedVersions: ['8.3.36'], mitigation: null });
+    expect(r.fixFirst[0]).toMatchObject({ item: 'p:php_group/php@8.3.10', fixable: 1 });
+  });
+
+  it('names every branch’s fix when no version is given', async () => {
+    expect((await feed('p:php_group/php')).results[0]!.fixedVersions).toEqual(['8.2.35', '8.3.36', '8.4.27', '8.5.12']);
+  });
+
+  it('backfills existing rows exactly as ingest derives them (migration 0013)', async () => {
+    const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith('0013'))!;
+    const backfill = migration.queries.find((q) => q.includes('UPDATE affected SET fixed_version'))!;
+    await env.DB.exec('DELETE FROM affected');
+    await env.DB.batch(
+      FIX_CASES.map(([r], i) =>
+        env.DB.prepare("INSERT INTO affected (vuln_id, source, kind, vendor, product, label, ranges) VALUES (?, 'cve', 'product', 'v', 'p', 'P', ?)").bind(`CVE-2026-1${String(i).padStart(4, '0')}`, JSON.stringify(r)),
+      ),
+    );
+    // A row that already has a fix keeps it.
+    await env.DB.prepare("INSERT INTO affected (vuln_id, source, kind, vendor, product, label, ranges, fixed_version) VALUES ('CVE-2026-19999', 'cve', 'product', 'v', 'p', 'P', ?, '9.9')").bind(JSON.stringify(PHP_RANGES)).run();
+    await env.DB.prepare(backfill).run();
+    const got = await rows<{ fixed_version: string | null }>('SELECT fixed_version FROM affected ORDER BY vuln_id');
+    // A single bound was already stored by ingest, so the backfill leaves it alone.
+    const want = FIX_CASES.map(([r]) => fixedVersionOf(r)).map((f) => (f && f.includes(', ') ? f : null));
+    expect(got.map((r) => r.fixed_version)).toEqual([...want, '9.9']);
   });
 });

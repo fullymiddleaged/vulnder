@@ -271,7 +271,7 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
     light: 'red',
     brief: 'Being exploited now, or about to be.',
     window: 'Within 24 hours to 3 days',
-    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, or an edge device an attacker can take over automatically. Exploited ones come first.',
+    note: 'Being exploited, at any severity: on CISA KEV (the US government’s list of bugs attacked in the wild), or CISA reports active exploitation. Or not yet, but close: a critical bug with EPSS of 10% or more (or NIST LEV of 20% or more), EPSS of 50% or more, an edge device an attacker can take over automatically, or a critical bug trusted security teams (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK) are warning about. Exploited ones come first.',
   },
   attend: {
     label: 'Attend',
@@ -496,6 +496,23 @@ export function supportByItem(notices: readonly SupportNotice[]): Map<string, Su
 /** Why the Targeted section is there, said once above its list. The backtest is in docs/plans/product-pressure.md. */
 export const TARGETED_INTRO =
   'CISA added CVEs in these items to its Known Exploited Vulnerabilities catalog in the last 90 days. 1 in 3 products with a KEV add get another within 90 days: patch their next advisory within days, and check whether they face the internet. Priorities don’t change.';
+
+/** Why the open-source reports section is there, said once above its list. */
+export const REPORTED_INTRO =
+  'Trusted security teams (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK) are warning about these CVEs. A critical one that two of them write up, or one calls critical or urgent, is Act now. Their warnings aren’t evidence of exploitation: CISA KEV is.';
+
+/** Results that trusted security teams have written up, in results order. */
+export function reportedResults(results: readonly Result[]): Result[] {
+  return results.filter((r) => (r.reports?.length ?? 0) > 0);
+}
+
+/** "Huntress, Rapid7 and CERT-EU, 21 Oct 2026" from a result's write-ups. */
+export function reportSummary(r: Result): string {
+  const names = (r.reports ?? []).map((x) => x.source);
+  const list = names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  const first = r.reports?.[0]?.publishedAt;
+  return first ? `${list}, from ${first}` : list;
+}
 
 /** Each stack item's targeted notice, by item name without marks. */
 export function targetedByItem(notices: readonly TargetedNotice[]): Map<string, TargetedNotice> {

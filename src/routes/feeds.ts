@@ -365,6 +365,7 @@ function eventSummary(e: ChangeEvent, v: MatchedVuln | undefined): string {
     lines.push(`Priority: ${PRIORITY_LABEL[v.priority]}${v.respondWithinHours !== null ? `, respond within ${describeHours(v.respondWithinHours)}` : ''}. Why: ${v.reasons.join('; ') || 'nothing beyond affecting your stack'}.`);
     lines.push(`Tier: ${v.tier}. Confidence: ${CONFIDENCE_LABEL[v.confidence]}.`);
     if (v.replaces?.length) lines.push(`Replaces ${v.replaces.join(', ')}, rejected as duplicates of it.`);
+    if (v.reports.length > 0) lines.push(`Open-source reports: ${v.reports.map((r) => (r.title ? `${r.source}, “${r.title}” (${r.url})` : `${r.source} (${r.url})`)).join('; ')}.`);
     lines.push(`Matched: ${v.matched.join(', ')}.`);
     if (v.fixedVersions.length > 0) lines.push(`Fixed in: ${v.fixedVersions.join(', ')}.`);
     else if (v.mitigation) lines.push(`No fixed version known yet: mitigate meanwhile.${v.mitigation.action ? ` CISA: ${v.mitigation.action}` : ''}`);

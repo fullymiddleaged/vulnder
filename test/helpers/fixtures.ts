@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from 'fflate';
+import { REPORT_SOURCES } from '../../src/ingest/reporters';
 import cve2002_0192 from '../fixtures/cve/records/CVE-2002-0192.json';
 import cve2022_48816 from '../fixtures/cve/records/CVE-2022-48816.json';
 import cve2023_0884 from '../fixtures/cve/records/CVE-2023-0884.json';
@@ -12,6 +13,7 @@ import cve2026_100107 from '../fixtures/cve/records/CVE-2026-100107.json';
 import cve2026_100148 from '../fixtures/cve/records/CVE-2026-100148.json';
 import cve2026_104886 from '../fixtures/cve/records/CVE-2026-104886.json';
 import cve2026_104910 from '../fixtures/cve/records/CVE-2026-104910.json';
+import cve2026_109618 from '../fixtures/cve/records/CVE-2026-109618.json';
 import releases from '../fixtures/cve/releases.json';
 import epssLatest from '../fixtures/epss/latest.json';
 import epssScores from '../fixtures/epss/scores.json';
@@ -22,6 +24,9 @@ import eolFull from '../fixtures/eol/full.json';
 // Metasploit's module index and Nuclei's cves.json, cut to a few real entries (scripts/record-fixtures.ts --exploits).
 import metasploitIndex from '../fixtures/exploits/metasploit.json';
 import nucleiIndex from '../fixtures/exploits/nuclei.json';
+// Each trusted source's RSS feed cut to its newest items, and the pages read for CVE IDs (scripts/record-fixtures.ts --reports).
+import reportFeeds from '../fixtures/reports/feeds.json';
+import reportPages from '../fixtures/reports/pages.json';
 
 export type CveRecordJson = { cveMetadata: { cveId: string; dateUpdated: string; datePublished?: string; state: string } };
 
@@ -41,9 +46,11 @@ export const cveRecords: Record<string, CveRecordJson> = {
   'CVE-2026-100148': cve2026_100148 as CveRecordJson,
   'CVE-2026-104886': cve2026_104886 as CveRecordJson,
   'CVE-2026-104910': cve2026_104910 as CveRecordJson,
+  // PHP: fixed on four release branches.
+  'CVE-2026-109618': cve2026_109618 as CveRecordJson,
 };
 
-export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, metasploitIndex, nucleiIndex, releases };
+export { eolFull, epssLatest, epssScores, ghsaPage, kevFeed, metasploitIndex, nucleiIndex, releases, reportFeeds, reportPages };
 
 /** The recorded Metasploit index as its file's text. */
 export const metasploitBody = () => JSON.stringify(metasploitIndex.body);
@@ -79,4 +86,23 @@ export function withMeta(record: CveRecordJson, meta: Partial<CveRecordJson['cve
   const copy = structuredClone(record);
   Object.assign(copy.cveMetadata, meta);
   return copy;
+}
+
+/**
+ * Serves the recorded trusted-source feeds (answering 304 to a matching
+ * If-None-Match) and their recorded pages; any other page is a 404.
+ */
+export function serveReports<F extends { on(match: string | RegExp, handler: (req: Request) => Response): F }>(f: F, overrides: Record<string, string | Response> = {}): F {
+  const feeds = reportFeeds as Record<string, { etag: string | null; body: string }>;
+  const pages = reportPages as Record<string, string>;
+  for (const src of REPORT_SOURCES) {
+    const etag = feeds[src.id]!.etag ?? `"${src.id}-1"`;
+    f.on(src.feed, (req) => {
+      const o = overrides[src.id];
+      if (o instanceof Response) return o.clone();
+      if (o === undefined && req.headers.get('if-none-match') === etag) return new Response(null, { status: 304 });
+      return new Response(o ?? feeds[src.id]!.body, { headers: { etag } });
+    });
+  }
+  return f.on(/^https:\/\/(cert\.europa\.eu|www\.ncsc\.gov\.uk)\//, (req) => (req.url in pages ? new Response(pages[req.url]) : new Response('gone', { status: 404 })));
 }

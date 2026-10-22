@@ -18,6 +18,7 @@
     "deploy:paid": "tsx scripts/production-config.ts && wrangler deploy --env paid --config wrangler.production.jsonc",
     "backfill": "tsx scripts/backfill.ts",
     "backtest": "tsx scripts/backtest.ts",
+    "reports:dry-run": "tsx scripts/reports-dry-run.ts",
     "check:names": "tsx scripts/check-names.ts",
     "ingest": "tsx scripts/ingest.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",

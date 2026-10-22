@@ -167,6 +167,15 @@ describe('resolveCandidates', () => {
     ]);
   });
 
+  it('finds PHP under php_group, the key the PHP Group files its CVEs under', async () => {
+    await env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', 'php_group/php', 'php_group', 'php', 'php', 'PHP Group PHP', 18)").run();
+    const res = await resolveCandidates(store(), [
+      { kind: 'product', name: 'PHP', vendor: null, version: '8.3', direct: true },
+      { kind: 'product', name: 'PHP', vendor: 'PHP', version: '8.3.10', direct: true },
+    ]);
+    expect(res.chips.map((c) => c.items.map((i) => i.item))).toEqual([['p:php_group/php@8.3'], ['p:php_group/php@8.3.10']]);
+  });
+
   it('resolves product lines to every key their CVEs are filed under, and lets a version pick one', async () => {
     const rows: [string, string, string, string, number][] = [
       ['red_hat/red_hat_enterprise_linux_8', 'red_hat', 'red_hat_enterprise_linux_8', 'Red Hat Enterprise Linux 8', 337],

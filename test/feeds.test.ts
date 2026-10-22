@@ -151,6 +151,7 @@ describe('matchStack', () => {
       advisory: `https://github.com/advisories/${GHSA_NEXT_1}`,
       patch: 'https://github.com/vercel/next.js/commit/abcdef1234567',
       exploit: null,
+      reports: [],
     });
     expect(res.results[1]!.evidence).toMatchObject({ knownRansomware: true });
   });

@@ -11,7 +11,7 @@ import { ADVISORIES_URL } from '../src/ingest/sources/ghsa';
 import { KEV_URL } from '../src/ingest/sources/kev';
 import { HEALTH_CACHE, HEALTH_CACHE_SECONDS, healthCacheKey, sourceHealth } from '../src/routes/health';
 import { FakeFetch, gzipResponse, jsonResponse } from './helpers/fake-fetch';
-import { cveRecords, deltaZip, eolFull, epssLatest, ghsaPage, kevFeed, metasploitBody, nucleiBody, releases, withMeta } from './helpers/fixtures';
+import { cveRecords, deltaZip, eolFull, epssLatest, ghsaPage, kevFeed, metasploitBody, nucleiBody, releases, serveReports, withMeta } from './helpers/fixtures';
 import { EOL_URL } from '../src/ingest/eol';
 import { METASPLOIT_URL } from '../src/ingest/metasploit';
 import { NUCLEI_URL } from '../src/ingest/nuclei';
@@ -26,7 +26,7 @@ function upstreams(): FakeFetch {
     withMeta(cveRecords['CVE-2026-100107']!, { dateUpdated: '2026-10-04T11:00:00.000Z' }),
     withMeta(cveRecords['CVE-2026-104886']!, { dateUpdated: '2026-10-04T12:00:00.000Z' }),
   ]);
-  return new FakeFetch()
+  const f = new FakeFetch()
     .on(RELEASES_URL, () => jsonResponse(releases))
     .on(/\/releases\/download\/.*2026-10-04_delta_CVEs_at_1700Z\.zip$/, () => new Response(todayZip))
     .on(ADVISORIES_URL, () => jsonResponse(ghsaPage.advisories))
@@ -50,6 +50,7 @@ function upstreams(): FakeFetch {
     .on(EOL_URL, (req) => (req.headers.get('if-none-match') === '"eol-1"' ? new Response(null, { status: 304 }) : jsonResponse(eolFull, { headers: { etag: '"eol-1"' } })))
     .on(METASPLOIT_URL, (req) => (req.headers.get('if-none-match') === '"msf-1"' ? new Response(null, { status: 304 }) : new Response(metasploitBody(), { headers: { etag: '"msf-1"' } })))
     .on(NUCLEI_URL, (req) => (req.headers.get('if-none-match') === '"nuclei-1"' ? new Response(null, { status: 304 }) : new Response(nucleiBody(), { headers: { etag: '"nuclei-1"' } })));
+  return serveReports(f);
 }
 
 async function ingest(f: FakeFetch, budget = unlimitedBudget(), opts: Partial<RunOptions> = {}) {
@@ -65,7 +66,7 @@ async function ingest(f: FakeFetch, budget = unlimitedBudget(), opts: Partial<Ru
 }
 
 /** For tests of how the sources share a small budget: the daily exploit fetches, which go first, left out. */
-const SOURCES_ONLY: Partial<RunOptions> = { metasploit: false, nuclei: false };
+const SOURCES_ONLY: Partial<RunOptions> = { metasploit: false, nuclei: false, reports: false };
 
 async function snapshot() {
   return {
@@ -107,8 +108,8 @@ describe('runIngest', () => {
 
     expect(await rows("SELECT value FROM meta WHERE key = 'data_version'")).toEqual([{ value: '1' }]);
     const status = await rows<{ key: string; value: string }>("SELECT key, value FROM meta WHERE key LIKE 'status:%' ORDER BY key");
-    // The four sources, the daily support dates and the two exploit indexes.
-    expect(status.map((s) => s.key)).toEqual(['status:cve', 'status:eol', 'status:epss', 'status:ghsa', 'status:kev', 'status:metasploit', 'status:nuclei']);
+    // The four sources, the daily support dates, the two exploit indexes and the trusted write-ups.
+    expect(status.map((s) => s.key)).toEqual(['status:cve', 'status:eol', 'status:epss', 'status:ghsa', 'status:kev', 'status:metasploit', 'status:nuclei', 'status:reports']);
     for (const s of status) expect(JSON.parse(s.value)).toMatchObject({ lastSuccessAt: NOW.toISOString(), lastError: null, partial: false });
     expect(report.eol).toMatchObject({ status: 'ok' });
     expect(report.eol!.written).toBeGreaterThan(100);
@@ -208,8 +209,8 @@ describe('runIngest', () => {
       if (report.sources.some((s) => s.status === 'partial')) partialSeen = true;
       expect(report.sources.every((s) => s.status !== 'error')).toBe(true);
       const statuses = await rows<{ value: string }>("SELECT value FROM meta WHERE key LIKE 'status:%'");
-      // The four sources, and the support dates and exploit indexes, which go first.
-      if (statuses.length === 7 && statuses.every((s) => JSON.parse(s.value).partial === false && JSON.parse(s.value).lastSuccessAt)) break;
+      // The four sources, and the support dates, exploit indexes and write-ups, which go first.
+      if (statuses.length === 8 && statuses.every((s) => JSON.parse(s.value).partial === false && JSON.parse(s.value).lastSuccessAt)) break;
     }
     expect(partialSeen).toBe(true);
     expect(runs).toBeLessThan(40);
@@ -304,7 +305,7 @@ describe('health', () => {
       dataVersion: number;
     };
     // NOW is in the past relative to the real clock, so these read as stale.
-    expect(Object.keys(body.sources)).toEqual(['cve', 'ghsa', 'kev', 'epss', 'eol', 'metasploit', 'nuclei']);
+    expect(Object.keys(body.sources)).toEqual(['cve', 'ghsa', 'kev', 'epss', 'eol', 'metasploit', 'nuclei', 'reports']);
     expect(body.sources.cve!.lastSuccessAt).toBe(NOW.toISOString());
     expect(body).not.toHaveProperty('counts');
     expect(body.dataVersion).toBe(1);
@@ -331,7 +332,7 @@ describe('health', () => {
     const res = await app.request('/api/health', {}, env);
     const body = (await res.json()) as { status: string; sources: Record<string, { health: string }> };
     expect(body.status).toBe('degraded');
-    expect(Object.values(body.sources).map((s) => s.health)).toEqual(['never', 'never', 'never', 'never', 'never', 'never', 'never']);
+    expect(Object.values(body.sources).map((s) => s.health)).toEqual(['never', 'never', 'never', 'never', 'never', 'never', 'never', 'never']);
   });
 
   it('returns JSON 404s under /api', async () => {
