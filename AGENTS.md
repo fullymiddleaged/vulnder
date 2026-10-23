@@ -43,6 +43,7 @@ Before calling work done, run `npm run lint && npm run typecheck && npm test` (v
 - `src/resolve/`: turns input into stack items (model extraction, catalog matching, manifest parsers in `manifests/`, injection screening).
 - `src/match/`: matches a stack to CVEs and ranks them (`priority.ts`: Act/Attend/Watch/Track, scores, reasons, "Fix first").
 - `src/routes/`: `POST /api/resolve`, `GET /api/feed`, `/feed.xml`, `/badge.svg`, and the MCP server at `/mcp` (`mcp.ts`), whose tools answer through the JSON feed (docs/AI_AGENTS.md).
+- `src/routes/api.ts`: the machine API (`/api/v1/stack`, `/api/v1/rank`, docs/API.md); `integrations/azure/` deploys it into Sentinel (docs/AZURE.md), and `test/azure-template.test.ts` keeps the template's schema in step with the rows.
 - `web/`: the front end. UI design lives in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
 - `test/`: vitest in workerd, with recorded fixtures.
 

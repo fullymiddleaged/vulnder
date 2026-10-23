@@ -1,0 +1,507 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "mode": {
+      "type": "String",
+      "defaultValue": "stack"
+    },
+    "stack": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "vulnderUrl": {
+      "type": "String",
+      "defaultValue": "https://vulnder.com"
+    },
+    "days": {
+      "type": "Int",
+      "defaultValue": 30
+    },
+    "ingestUrl": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "source": {
+      "type": "String",
+      "defaultValue": "vulnder"
+    }
+  },
+  "triggers": {
+    "Every_hour": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Hour",
+        "interval": 1
+      }
+    }
+  },
+  "actions": {
+    "Init_rows": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "rows",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Init_apps": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "apps",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Init_rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_next": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "next",
+            "type": "string",
+            "value": "https://graph.microsoft.com/v1.0/deviceManagement/detectedApps"
+          }
+        ]
+      },
+      "runAfter": {
+        "Init_apps": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Switch_on_mode": {
+      "type": "Switch",
+      "expression": "@parameters('mode')",
+      "runAfter": {
+        "Init_next": [
+          "Succeeded"
+        ]
+      },
+      "cases": {
+        "Defender": {
+          "case": "defender",
+          "actions": {
+            "Hunt_open_CVEs": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://graph.microsoft.com/v1.0/security/runHuntingQuery",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "Query": "DeviceTvmSoftwareVulnerabilities | distinct CveId"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://graph.microsoft.com"
+                }
+              },
+              "runAfter": {}
+            },
+            "CVE_IDs": {
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Hunt_open_CVEs')?['results']",
+                "select": "@item()?['CveId']"
+              },
+              "runAfter": {
+                "Hunt_open_CVEs": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "If_any_CVEs": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(body('CVE_IDs'))",
+                      0
+                    ]
+                  }
+                ]
+              },
+              "runAfter": {
+                "CVE_IDs": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {}
+              },
+              "actions": {
+                "For_each_2000_CVEs": {
+                  "type": "Foreach",
+                  "foreach": "@chunk(body('CVE_IDs'), 2000)",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "runAfter": {},
+                  "actions": {
+                    "Rank_CVEs": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "cves": "@items('For_each_2000_CVEs')",
+                          "days": "@parameters('days')"
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Merge_CVE_rows": {
+                      "type": "Compose",
+                      "inputs": "@union(variables('rows'), body('Rank_CVEs')?['rows'])",
+                      "runAfter": {
+                        "Rank_CVEs": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Keep_CVE_rows": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "rows",
+                        "value": "@outputs('Merge_CVE_rows')"
+                      },
+                      "runAfter": {
+                        "Merge_CVE_rows": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Intune": {
+          "case": "intune",
+          "actions": {
+            "Page_through_apps": {
+              "type": "Until",
+              "expression": "@empty(variables('next'))",
+              "limit": {
+                "count": 1000,
+                "timeout": "PT1H"
+              },
+              "runAfter": {},
+              "actions": {
+                "Get_page": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "GET",
+                    "uri": "@variables('next')",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://graph.microsoft.com"
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Merge_page": {
+                  "type": "Compose",
+                  "inputs": "@union(variables('apps'), body('Get_page')?['value'])",
+                  "runAfter": {
+                    "Get_page": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Keep_apps": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "apps",
+                    "value": "@outputs('Merge_page')"
+                  },
+                  "runAfter": {
+                    "Merge_page": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Next_page": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "next",
+                    "value": "@{coalesce(body('Get_page')?['@odata.nextLink'], '')}"
+                  },
+                  "runAfter": {
+                    "Keep_apps": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              }
+            },
+            "Four_fields": {
+              "type": "Select",
+              "inputs": {
+                "from": "@take(variables('apps'), 8000)",
+                "select": {
+                  "displayName": "@item()?['displayName']",
+                  "version": "@item()?['version']",
+                  "publisher": "@item()?['publisher']",
+                  "deviceCount": "@item()?['deviceCount']"
+                }
+              },
+              "runAfter": {
+                "Page_through_apps": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Build_stack": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('vulnderUrl')}/api/v1/stack",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "inventory": "@body('Four_fields')"
+                }
+              },
+              "runAfter": {
+                "Four_fields": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rank_inventory": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "stack": "@body('Build_stack')?['stack']",
+                  "days": "@parameters('days')"
+                }
+              },
+              "runAfter": {
+                "Build_stack": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Keep_inventory_rows": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "rows",
+                "value": "@body('Rank_inventory')?['rows']"
+              },
+              "runAfter": {
+                "Rank_inventory": [
+                  "Succeeded"
+                ]
+              }
+            }
+          }
+        },
+        "Stack": {
+          "case": "stack",
+          "actions": {
+            "If_no_stack": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@trim(parameters('stack'))",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "runAfter": {},
+              "actions": {
+                "No_stack": {
+                  "type": "Terminate",
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "NoStack",
+                      "message": "mode stack needs the stack parameter"
+                    }
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            }
+          }
+        }
+      },
+      "default": {
+        "actions": {
+          "Unknown_mode": {
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "UnknownMode",
+                "message": "mode must be defender, intune or stack"
+              }
+            },
+            "runAfter": {}
+          }
+        }
+      }
+    },
+    "If_stack": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "equals": [
+                "@trim(parameters('stack'))",
+                ""
+              ]
+            }
+          }
+        ]
+      },
+      "runAfter": {
+        "Switch_on_mode": [
+          "Succeeded"
+        ]
+      },
+      "actions": {
+        "Rank_stack": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "stack": "@parameters('stack')",
+              "days": "@parameters('days')"
+            }
+          },
+          "runAfter": {}
+        },
+        "Merge_stack_rows": {
+          "type": "Compose",
+          "inputs": "@union(variables('rows'), body('Rank_stack')?['rows'])",
+          "runAfter": {
+            "Rank_stack": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Keep_stack_rows": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "rows",
+            "value": "@outputs('Merge_stack_rows')"
+          },
+          "runAfter": {
+            "Merge_stack_rows": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    },
+    "Tag_rows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@variables('rows')",
+        "select": "@addProperty(addProperty(addProperty(addProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'source', parameters('source'))"
+      },
+      "runAfter": {
+        "If_stack": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_any_rows": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(body('Tag_rows'))",
+              0
+            ]
+          }
+        ]
+      },
+      "runAfter": {
+        "Tag_rows": [
+          "Succeeded"
+        ]
+      },
+      "actions": {
+        "For_each_500_rows": {
+          "type": "Foreach",
+          "foreach": "@chunk(body('Tag_rows'), 500)",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "runAfter": {},
+          "actions": {
+            "Send_to_Log_Analytics": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@parameters('ingestUrl')",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@items('For_each_500_rows')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://monitor.azure.com"
+                }
+              },
+              "runAfter": {}
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  },
+  "outputs": {}
+}

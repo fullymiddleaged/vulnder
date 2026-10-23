@@ -1,0 +1,19 @@
+// Mode "defender", in the Defender portal's Advanced hunting (with Sentinel
+// connected, so Vulnder_CL and Defender's tables can be queried together):
+// the devices behind each Act now and Attend CVE. Device names stay in the
+// tenant; Vulnder only ever got the CVE IDs.
+let level = (p: string) { case(p == "act", 4, p == "attend", 3, p == "watch", 2, 1) };
+// Each deployment's (Source's) latest run counts, and a CVE more than one
+// found keeps its highest priority.
+let latest = Vulnder_CL | where TimeGenerated > ago(1d) | summarize arg_max(TimeGenerated, RunId) by Source | project RunId;
+Vulnder_CL
+| where TimeGenerated > ago(1d) and RunId in (latest)
+| summarize arg_max(level(Priority) * 1000 + Score, *) by Cve
+| where Priority in ("act", "attend")
+| join kind=inner (
+    DeviceTvmSoftwareVulnerabilities
+    | project DeviceId, DeviceName, CveId, SoftwareVendor, SoftwareName, SoftwareVersion, RecommendedSecurityUpdate
+  ) on $left.Cve == $right.CveId
+| summarize Devices = dcount(DeviceId), DeviceNames = make_set(DeviceName, 50), Software = make_set(strcat(SoftwareVendor, " ", SoftwareName, " ", SoftwareVersion), 10), Update = take_any(RecommendedSecurityUpdate)
+    by Cve, CveTitle, Priority, Score, RespondWithinHours, Why = tostring(Reasons)
+| order by level(Priority) desc, Score desc, Devices desc

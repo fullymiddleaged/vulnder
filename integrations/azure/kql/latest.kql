@@ -1,0 +1,10 @@
+// The latest Vulnder run of each deployment (Source), together: every CVE
+// affecting the tenant, most urgent first. A CVE two deployments both found
+// shows once, at the higher priority, with both in Sources.
+let level = (p: string) { case(p == "act", 4, p == "attend", 3, p == "watch", 2, 1) };
+let latest = Vulnder_CL | where TimeGenerated > ago(1d) | summarize arg_max(TimeGenerated, RunId) by Source | project RunId;
+Vulnder_CL
+| where TimeGenerated > ago(1d) and RunId in (latest)
+| summarize arg_max(level(Priority) * 1000 + Score, *), Sources = make_set(Source) by Cve
+| order by level(Priority) desc, Score desc
+| project Cve, CveTitle, Priority, Score, RespondWithinHours, Reasons, Exploited, KevDueDate, Epss, Cvss, Matched, MatchType, Confidence, FixedVersions, Mitigation, Advisory, Sources

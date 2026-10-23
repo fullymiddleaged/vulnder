@@ -43,9 +43,13 @@ https://vulnder.com/feed.xml?s=…      Atom, one entry per change
 https://vulnder.com/badge.svg?s=…     "N known-exploited CVEs", green at zero
 https://vulnder.com/api/feed?s=…      JSON, for scripts and agents
 https://vulnder.com/mcp               MCP server for AI agents
+https://vulnder.com/api/v1/stack      POST: names and versions in, a stack out
+https://vulnder.com/api/v1/rank       POST: a stack or CVE IDs in, flat rows out
 ```
 
 The results page doesn't link the JSON feed, but it's the API the page loads, with the same priorities, scores, reasons and Fix first list ([fields](docs/RANKING.md#in-the-feeds)). `days` sets the window (1–90, default 30). A stack holds up to 200 components and 2,000 CVE IDs. The `s` format is a versioned public contract: [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md).
+
+For scheduled runners and SIEMs, the `/api/v1/` endpoints take the stack in a POST body, with no URL to build. `stack` turns an inventory's product names into a stack, and `rank` returns one flat row per CVE, ready for a log table: [docs/API.md](docs/API.md). For Microsoft Sentinel and Defender, [docs/AZURE.md](docs/AZURE.md) has a template that ranks a tenant's CVEs hourly and opens incidents for new Act now CVEs, whether or not the tenant has Defender Vulnerability Management.
 
 ## Use it with AI agents
 
@@ -71,7 +75,7 @@ A list of what you run is useful to an attacker, so Vulnder keeps as little as i
 
 - **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. On vulnder.com, only those free-text entries are logged, by Cloudflare's AI Gateway; self-hosters can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
 - **Lockfiles, SBOMs, MCP configs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent. An MCP config's `env` and headers, where keys live, are never read.
-- **MCP requests aren't logged or stored.** The stack travels in the request body, and the MCP server calls no model.
+- **MCP and `/api/v1/` requests aren't logged or stored.** The stack travels in the request body, and neither calls a model.
 - **Stack URLs aren't logged.** IPs are used only as rate-limit keys or a daily-salted hash, and there's no analytics.
 - **Feed passes hold no stacks**, only keyed hashes, and are deleted after a day.
 - **Not indexed.** Stack pages and feeds are `noindex`, and no `Referer` is sent.

@@ -1,0 +1,10 @@
+// CVEs that became Act now in the last hour: Act now in a Vulnder run within
+// the hour, and in no run in the two days before. Each CVE alerts once, at
+// the first run that has it at Act now, however the rule's schedule lines up
+// with the Logic App's. Runs hourly as the "Vulnder: new Act now CVE"
+// analytics rule (main.bicep with sentinelRules=true).
+Vulnder_CL
+| where TimeGenerated > ago(2d) and Priority == "act"
+| summarize FirstAct = min(TimeGenerated), arg_max(TimeGenerated, *) by Cve
+| where FirstAct > ago(1h)
+| project TimeGenerated, Cve, CveTitle, Priority, Reasons, Exploited, KevAddedAt, KevDueDate, KnownRansomware, SsvcExploitation, RespondWithinHours, Matched, FixedVersions, Mitigation, Advisory
