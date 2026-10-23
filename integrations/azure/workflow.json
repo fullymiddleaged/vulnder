@@ -329,31 +329,34 @@
         "Stack": {
           "case": "stack",
           "actions": {
-            "Rank_stack": {
-              "type": "Http",
-              "inputs": {
-                "method": "POST",
-                "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
-                "headers": {
-                  "Content-Type": "application/json"
-                },
-                "body": {
-                  "stack": "@parameters('stack')",
-                  "days": "@parameters('days')"
+            "If_no_stack": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@trim(parameters('stack'))",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "runAfter": {},
+              "actions": {
+                "No_stack": {
+                  "type": "Terminate",
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "NoStack",
+                      "message": "mode stack needs the stack parameter"
+                    }
+                  },
+                  "runAfter": {}
                 }
               },
-              "runAfter": {}
-            },
-            "Keep_stack_rows": {
-              "type": "SetVariable",
-              "inputs": {
-                "name": "rows",
-                "value": "@body('Rank_stack')?['rows']"
-              },
-              "runAfter": {
-                "Rank_stack": [
-                  "Succeeded"
-                ]
+              "else": {
+                "actions": {}
               }
             }
           }
@@ -375,6 +378,67 @@
         }
       }
     },
+    "If_stack": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "equals": [
+                "@trim(parameters('stack'))",
+                ""
+              ]
+            }
+          }
+        ]
+      },
+      "runAfter": {
+        "Switch_on_mode": [
+          "Succeeded"
+        ]
+      },
+      "actions": {
+        "Rank_stack": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "stack": "@parameters('stack')",
+              "days": "@parameters('days')"
+            }
+          },
+          "runAfter": {}
+        },
+        "Merge_stack_rows": {
+          "type": "Compose",
+          "inputs": "@union(variables('rows'), body('Rank_stack')?['rows'])",
+          "runAfter": {
+            "Rank_stack": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Keep_stack_rows": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "rows",
+            "value": "@outputs('Merge_stack_rows')"
+          },
+          "runAfter": {
+            "Merge_stack_rows": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    },
     "Tag_rows": {
       "type": "Select",
       "inputs": {
@@ -382,7 +446,7 @@
         "select": "@addProperty(addProperty(addProperty(addProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'source', parameters('source'))"
       },
       "runAfter": {
-        "Switch_on_mode": [
+        "If_stack": [
           "Succeeded"
         ]
       }

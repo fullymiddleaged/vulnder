@@ -12,7 +12,7 @@ param workspaceName string
 @allowed(['defender', 'intune', 'stack'])
 param mode string
 
-@description('For mode "stack" only: the stack, as /api/v1/stack returns it or in the stack URL format.')
+@description('The stack, as /api/v1/stack returns it or in the stack URL format. Needed for mode "stack". In modes "defender" and "intune" it is optional and ranked alongside, for what they can\'t see, such as firewalls and VPNs.')
 param stack string = ''
 
 @description('Your Vulnder deployment.')

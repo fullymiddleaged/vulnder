@@ -27,7 +27,9 @@ az deployment group create -g <workspace-resource-group> \
   -p workspaceName=<workspace> mode=intune sentinelRules=true
 ```
 
-For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3,p:paloaltonetworks/pan-os@11.1`.
+For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge`.
+
+In modes `defender` and `intune`, `stack` is optional. Pass one to rank what Defender and Intune can't see, such as firewalls, VPN gateways and other appliances, in the same run. Its rows go into the same table, and `Matched` names the stack item each one came from.
 
 Then grant the Logic App's identity (the `principalId` output) the Microsoft Graph permission its mode needs. This takes an admin who can grant application permissions, such as a Privileged Role Administrator:
 
@@ -47,7 +49,7 @@ az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/
 
 Runs before the grant fail at the Graph call and write nothing. Rows can take a few minutes to appear in a new table.
 
-To use more than one mode, for example `intune` for laptops and `stack` for firewalls, deploy again into the same workspace with another `name` (`-p name=vulnder-edge ...`). Each deployment gets its own Logic App and data collection rule and writes its `name` to the `Source` column of the shared table. The queries below read each deployment's latest run, and a CVE that more than one finds shows once, at its highest priority.
+To run more than one mode, or keep a team's stack apart from the rest, deploy again into the same workspace with another `name` (`-p name=vulnder-edge ...`). Each deployment gets its own Logic App and data collection rule and writes its `name` to the `Source` column of the shared table. The queries below read each deployment's latest run, and a CVE that more than one finds shows once, at its highest priority.
 
 ## Alerting the SOC and the patching teams
 
@@ -63,8 +65,8 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 ## Notes per mode
 
 - **`defender`** sends Defender's distinct CVE IDs, up to 2,000 per call, in as many calls as needed. Vulnder ranks each listed CVE whatever its age, so nothing Defender found is left out.
-- **`intune`** reads every page of `detectedApps` (up to 8,000 entries a run) and sends four fields per app. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run in mode `stack` with a second deployment (another `name`, see [Deploy](#deploy)), for example `p:microsoft/windows_11_24h2`.
-- **`stack`** suits edge devices and appliances, which Defender and Intune can't see. Mark internet-facing ones `;edge` so they get the edge-device deadlines.
+- **`intune`** reads every page of `detectedApps` (up to 8,000 entries a run) and sends four fields per app. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run to `stack`, for example `p:microsoft/windows_11_24h2`.
+- **`stack`** suits edge devices and appliances, which Defender and Intune can't see. Mark internet-facing ones `;edge` so they get the edge-device deadlines. If you also run `defender` or `intune`, pass the stack to that deployment instead of deploying twice.
 
 ## Privacy and cost
 

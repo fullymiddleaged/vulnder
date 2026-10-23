@@ -61,6 +61,17 @@ describe('Azure workflow', () => {
     for (const p of declared) expect(passed, `main.bicep passes ${p}`).toMatch(new RegExp(`\\b${p}: \\{ value: `));
   });
 
+  it('ranks the stack after any mode, adding to its rows, and fails mode stack without one', () => {
+    const actions = workflow.actions as Record<string, Json>;
+    const ifStack = actions.If_stack as { runAfter: Json; actions: Record<string, Json> };
+    expect(Object.keys(ifStack.runAfter)).toEqual(['Switch_on_mode']);
+    expect(Object.keys((actions.Tag_rows as { runAfter: Json }).runAfter)).toEqual(['If_stack']);
+    expect(JSON.stringify(ifStack.actions.Rank_stack)).toContain("parameters('stack')");
+    expect(ifStack.actions.Merge_stack_rows!.inputs).toBe("@union(variables('rows'), body('Rank_stack')?['rows'])");
+    const stackCase = (actions.Switch_on_mode as { cases: Record<string, { case: string; actions: Json }> }).cases.Stack!;
+    expect(JSON.stringify(stackCase.actions)).toContain('"runStatus":"Failed"');
+  });
+
   it('has a case for every mode main.bicep allows', () => {
     const allowed = [...(/@allowed\(\[([^\]]+)\]\)\s*param mode/.exec(bicep)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
     const cases = Object.values((workflow.actions.Switch_on_mode as { cases: Record<string, { case: string }> }).cases).map((c) => c.case);
