@@ -19,6 +19,8 @@ import { KEV_URL } from '../src/ingest/sources/kev';
 import { EPSS_URL } from '../src/ingest/sources/epss';
 import { METASPLOIT_URL } from '../src/ingest/metasploit';
 import { NUCLEI_URL } from '../src/ingest/nuclei';
+import { REPORT_SOURCES } from '../src/ingest/reporters';
+import { cveIdsIn, parseFeed } from '../src/ingest/reports';
 
 const OUT = path.join(import.meta.dirname, '..', 'test', 'fixtures');
 
@@ -42,6 +44,7 @@ const NAMED_CVES = [
   'CVE-2024-34393', // npm package via collectionURL, CVSS 3.1
   'CVE-2026-104910', // CPE, CVSS 4.0, CNA SSVC
   'CVE-2022-48816', // Linux kernel: git ranges, many branches, CISA ADP SSVC
+  'CVE-2026-109618', // PHP: one fix per release branch, CVSS 4.0, CISA ADP SSVC
   // Rejected, for where a rejection points (cve_index.replaced_by):
   'CVE-2024-0228', // duplicate of one CVE
   'CVE-2023-0884', // reservation duplicate, ConsultIDs form
@@ -175,12 +178,54 @@ async function recordExploits(): Promise<void> {
   for (const id of EXPLOIT_CVES) await write(`cve/records/${id}.json`, await (await get(cveRecordUrl(id))).json());
 }
 
+/** Items kept from each trusted source's feed: enough for PHP2Shell's write-ups on 2026-10-21. */
+const REPORT_ITEMS = 6;
+/** Pages kept per source that reads them (CERT-EU's JSON, NCSC UK's news pages). */
+const REPORT_PAGES = 2;
+
+/**
+ * Each trusted source's RSS feed cut to its newest items, as served, and the
+ * pages of the first items whose feed entry names no CVE.
+ */
+async function recordReports(): Promise<void> {
+  const feeds: Record<string, { etag: string | null; body: string }> = {};
+  const pages: Record<string, string> = {};
+  for (const src of REPORT_SOURCES) {
+    const res = await get(src.feed);
+    const xml = await res.text();
+    const head = xml.slice(0, Math.max(0, xml.indexOf('<item')));
+    const items = parseFeed(xml).length;
+    let at = head.length;
+    for (let i = 0; i < Math.min(REPORT_ITEMS, items); i++) at = xml.indexOf('</item>', at) + '</item>'.length;
+    feeds[src.id] = { etag: res.headers.get('etag'), body: `${xml.slice(0, at)}
+</channel>
+</rss>
+` };
+    if (!src.page) continue;
+    let kept = 0;
+    for (const item of parseFeed(xml.slice(0, at))) {
+      if (kept >= REPORT_PAGES || !item.link || cveIdsIn(`${item.title}
+${item.text}`).length > 0 || !src.page.when.test(item.title)) continue;
+      const url = src.page.url(item.link);
+      pages[url] = await (await get(url)).text();
+      kept++;
+    }
+  }
+  await write('reports/feeds.json', feeds);
+  await write('reports/pages.json', pages);
+}
+
 if (process.argv.includes('--exploits')) {
   await recordExploits();
   process.exit(0);
 }
+if (process.argv.includes('--reports')) {
+  await recordReports();
+  process.exit(0);
+}
 
 await recordExploits();
+await recordReports();
 const cveIds = await recordCve();
 const ghsaCves = await recordGhsa();
 const kevIds = await recordKev();

@@ -14,6 +14,9 @@ import {
   supportByItem,
   supportLines,
   supportPriority,
+  REPORTED_INTRO,
+  reportedResults,
+  reportSummary,
   TARGETED_INTRO,
   targetedByItem,
   targetedCount,
@@ -143,6 +146,12 @@ function mdResult(r: Result): string[] {
   add('Other reasons', r.why.others.length > 0 ? r.why.others.map((o) => mdText(o.text)).join('; ') : null);
   add('Not available', r.why.missing.length > 0 ? r.why.missing.map(mdText).join('; ') : null);
   add('Exploitation', evidenceLine(r));
+  add(
+    'Open-source reports',
+    (r.reports ?? []).length > 0
+      ? r.reports!.map((x) => `${mdText(x.source)}${mdLink(x.url) ? ` ${mdLink(x.url)}` : ''}${x.title ? ` (“${mdText(x.title)}”)` : ''}, ${x.publishedAt}`).join('; ') + '. Warnings, not evidence of exploitation'
+      : null,
+  );
   add('CVSS', r.cvss ? `${r.cvss.score.toFixed(1)} (${cvssSeverity(r.cvss.score)})${r.cvss.vector ? ` ${code(r.cvss.vector)}` : ''}` : 'none published');
   add('Fixed in', r.fixedVersions.length > 0 ? r.fixedVersions.map(code).join(', ') : r.confidence === 'listed' ? 'see the advisory' : 'no fixed version listed');
   add('Action', mdText(remediation(r)));
@@ -219,6 +228,11 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder', sources?: Health['s
       );
     }
   }
+  const reported = reportedResults(feed.results);
+  if (reported.length > 0) {
+    out.push('', '## Open-source reports', '', REPORTED_INTRO, '');
+    for (const r of reported) out.push(`- ${r.id} (${RISK[r.priority].label})${r.title ? `: ${mdText(r.title)}` : ''}. ${mdText(reportSummary(r))}.`);
+  }
   const targetedItems = targetedByItem(targeted);
   const isTargeted = (g: ComponentGroup) => targetedItems.has(g.component) || g.also.some((i) => targetedItems.has(itemMarks(i).name));
 
@@ -268,6 +282,7 @@ export const RECORD_SOURCES: [key: string, label: string][] = [
   ['eol', 'End-of-life dates (endoflife.date)'],
   ['metasploit', 'Metasploit modules'],
   ['nuclei', 'Nuclei templates'],
+  ['reports', 'Write-ups (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK)'],
 ];
 
 /** "2026-10-18 09:12 UTC" */

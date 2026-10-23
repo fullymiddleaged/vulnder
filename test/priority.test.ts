@@ -551,3 +551,69 @@ describe('assess: overdue', () => {
     expect(r.reasons).toContain('Proof-of-concept exploit');
   });
 });
+
+describe('reported by trusted sources', () => {
+  // PHP2Shell (CVE-2026-109618) on 2026-10-22: critical, no EPSS yet, CISA says not exploited and not automatable.
+  const php: Signals = {
+    ...base,
+    cvss: 9.2,
+    cvssVector: 'CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N',
+    ssvc: ssvc('none', 'no', 'total'),
+    ageDays: 1,
+  };
+  const by = (sources: string[], ageDays: number | null, urgent: string[] = [], urgentAgeDays: number | null = null): Signals['reported'] => ({ sources, ageDays, urgent, urgentAgeDays });
+
+  it('was Attend before, and is Act now within 3 days once two sources write it up', () => {
+    expect(assess(php)).toMatchObject({ priority: 'attend', respondWithinHours: 168 });
+    const r = assess({ ...php, reported: by(['Huntress', 'Rapid7', 'CERT-EU'], 1) });
+    expect(r).toMatchObject({ priority: 'act', respondWithinHours: 72 });
+    expect(r.why.decisive).toEqual({ kind: 'context', text: 'Critical bug reported by Huntress, Rapid7 and CERT-EU: Act now while EPSS and CISA catch up' });
+    expect(r.reasons.join(' ')).not.toMatch(/exploited/i);
+  });
+
+  it('is Act now on one source that calls it critical or urgent', () => {
+    const r = assess({ ...php, reported: by(['CERT-EU'], null, ['CERT-EU'], 1) });
+    expect(r).toMatchObject({ priority: 'act', respondWithinHours: 72 });
+    expect(r.why.decisive!.text).toBe('Critical bug CERT-EU calls urgent: Act now while EPSS and CISA catch up');
+  });
+
+  it('stays in Attend on one source that doesn’t, with the reason and a higher score', () => {
+    const r = assess({ ...php, reported: by(['watchTowr'], null) });
+    expect(r.priority).toBe('attend');
+    expect(r.reasons).toContain('Reported by watchTowr');
+    expect(r.score).toBeGreaterThan(assess(php).score);
+  });
+
+  it('lifts any critical whatever its EPSS or what an attacker needs, but nothing below critical', () => {
+    for (const s of [
+      { ...php, epss: 0.004 },
+      { ...php, epss: 0.09 },
+      { ...php, cvss: 9.0, cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H' },
+      { ...php, cvssVector: null, ssvc: null },
+      { ...base, cvss: null, severityLabel: 'critical' as const },
+    ]) {
+      expect(assess({ ...s, reported: by(['Huntress', 'Rapid7'], 1) }).priority).toBe('act');
+    }
+    for (const s of [{ ...php, cvss: 8.9 }, { ...base, cvss: null, severityLabel: 'high' as const }]) {
+      expect(assess({ ...s, reported: by(['Huntress', 'Rapid7'], 1, ['Huntress'], 1) }).priority).not.toBe('act');
+    }
+  });
+
+  it('holds for 30 days from the write-ups, then the usual rules decide', () => {
+    expect(assess({ ...php, reported: by(['Huntress', 'Rapid7'], 30) }).priority).toBe('act');
+    expect(assess({ ...php, reported: by(['Huntress', 'Rapid7'], 31) }).priority).toBe('attend');
+    expect(assess({ ...php, reported: by(['Huntress'], null, ['Huntress'], 31) }).priority).toBe('attend');
+  });
+
+  it('never outranks evidence: KEV stays Act within a day and sorts first', () => {
+    const kev = assess({ ...php, kevAddedAt: '2026-10-22', reported: by(['Huntress', 'Rapid7'], 1) });
+    expect(kev).toMatchObject({ priority: 'act', respondWithinHours: 24 });
+    expect(kev.why.decisive!.text).toBe('On CISA KEV');
+    const reported = assess({ ...php, reported: by(['Huntress', 'Rapid7'], 1) });
+    expect(comparePriority(kev, reported)).toBeLessThan(0);
+  });
+
+  it('leaves the EPSS reason decisive when EPSS already put it in Act now', () => {
+    expect(assess({ ...php, epss: 0.2, reported: by(['Huntress', 'Rapid7'], 1) }).why.decisive!.text).toBe('EPSS 20% on a critical bug');
+  });
+});

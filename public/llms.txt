@@ -50,7 +50,7 @@ Full guide: [AI_AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/
 
 ## Reading the results
 
-- Priorities and suggested response windows: `act` (Act now: on CISA KEV or actively exploited, 24 hours; about to be exploited, 3 days), `attend` (7 days), `watch` (30 days), `track` (next routine update). Windows are guidance, not deadlines.
+- Priorities and suggested response windows: `act` (Act now: on CISA KEV or actively exploited, 24 hours; about to be exploited, or a critical bug trusted security teams are warning about, 3 days), `attend` (7 days), `watch` (30 days), `track` (next routine update). Windows are guidance, not deadlines.
 - `fixFirst`: the components to upgrade, most urgent first. One upgrade often closes several CVEs, so work from this list.
 - `support`: releases past their vendor's end of support (`eol`, ranked with Act now whatever their CVEs) or ending within 90 days (`ending`). Only a release named specifically counts, never a broad name.
 - `targeted`: components with any CVE CISA added to KEV in the last 90 days. In a 2025–26 backtest, about a third of products with a KEV add got another within 90 days, so patch that product's next advisory quickly. It doesn't change any CVE's priority.

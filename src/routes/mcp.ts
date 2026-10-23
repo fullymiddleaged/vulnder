@@ -72,6 +72,7 @@ function slimResult(r: MatchedVuln) {
     fixedVersions: r.fixedVersions,
     mitigation: r.mitigation,
     links: r.links,
+    reports: r.reports,
     beforeWindow: r.beforeWindow,
     related: r.related,
     ...(r.replaces && { replaces: r.replaces }),
@@ -221,7 +222,6 @@ export function mcpServer(c: Context<AppEnv>): McpServer {
 
 export const mcp = new Hono<AppEnv>().all('/', (c) =>
   createMcpHandler(() => mcpServer(c), {
-    responseMode: 'json',
     maxRequestBodySize: MAX_BODY_BYTES,
     // Errors can quote a request; report only their kind.
     onerror: (err) => console.error(`mcp: ${err.name}`),

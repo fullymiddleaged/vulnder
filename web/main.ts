@@ -64,6 +64,9 @@ import {
   supportByItem,
   supportLines,
   supportPriority,
+  REPORTED_INTRO,
+  reportedResults,
+  reportSummary,
   TARGETED_INTRO,
   targetedByItem,
   targetedCount,
@@ -1057,6 +1060,9 @@ async function renderResults(stack: string, days: number): Promise<void> {
   // Also before the CVEs, and also a finding about the item: it can hold even when no CVE matched.
   const targeted = renderTargeted(feed);
   if (targeted) app.append(targeted);
+  // Warnings about CVEs in these results, before the ledger that ranks them.
+  const reported = renderReported(feed);
+  if (reported) app.append(reported);
   if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
   app.append(renderChanges(feed));
   if (feed.results.length > 0) {
@@ -1350,6 +1356,56 @@ function renderTargetedItem(n: TargetedNotice, results: readonly Result[]): HTML
       ` on ${latest.addedAt}. `,
       targetedStatus(n, results),
     ),
+  );
+}
+
+/**
+ * CVEs in these results that trusted security teams are warning about, with
+ * who and when. A note, not a tier: like Targeted it carries no risk colour,
+ * and each CVE's own card says its priority. Null when there are none.
+ */
+function renderReported(feed: Feed): HTMLElement | null {
+  const reported = reportedResults(feed.results);
+  if (reported.length === 0) return null;
+  return h(
+    'section',
+    { class: 'block reported', 'aria-labelledby': 'reported-title' },
+    h('h2', { id: 'reported-title' }, 'Open-source reports'),
+    h('p', { class: 'muted small' }, REPORTED_INTRO),
+    h(
+      'ul',
+      { class: 'targeted-list', role: 'list' },
+      reported.map((r) =>
+        h(
+          'li',
+          { class: 'targeted-item' },
+          h(
+            'p',
+            { class: 'row wrap' },
+            h('code', {}, externalLink(`https://www.cve.org/CVERecord?id=${encodeURIComponent(r.id)}`, r.id)),
+            h('span', { class: 'small muted' }, RISK[r.priority].label),
+            r.title ? h('span', { class: 'small' }, r.title) : null,
+          ),
+          h('p', { class: 'small' }, reportSummary(r)),
+        ),
+      ),
+    ),
+  );
+}
+
+/** "Warned about by" on a card: each source, linked, with its post's title as its own words. */
+function reportsLine(r: Result): HTMLElement | null {
+  const reports = r.reports ?? [];
+  if (reports.length === 0) return null;
+  return h(
+    'p',
+    { class: 'reports small' },
+    h('strong', {}, 'Warned about by: '),
+    ...reports.flatMap((x, i) => [
+      i > 0 ? '; ' : '',
+      externalLink(x.url, x.source),
+      x.title ? h('span', { class: 'muted' }, ` “${x.title}”, ${x.publishedAt}`) : h('span', { class: 'muted' }, `, ${x.publishedAt}`),
+    ]),
   );
 }
 
@@ -1954,6 +2010,7 @@ function renderResult(r: Result): HTMLElement {
     e.kevAddedAt
       ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
       : null,
+    reportsLine(r),
     matchedLine(r),
     h(
       'p',

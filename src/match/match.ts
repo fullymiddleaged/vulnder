@@ -9,10 +9,12 @@ import { isEdge } from '../stack/teams';
 import { cveIdsOf, FEED_CHUNK, itemKey, loadComponents, rowKey, type AffectedRow, type ComponentCache, type ExploitRef, type VulnRow } from './components';
 import { matchListed, type Listed } from './listed';
 import { queryKey, type OsvClient, type OsvQuery } from './osv';
-import { assess, comparePriority, fixFirst, type FixItem, type Priority, type Why } from './priority';
+import { REPORT_KIND, URGENT_KIND } from '../ingest/reports';
+import { reportSource } from '../ingest/reporters';
+import { assess, comparePriority, fixFirst, REPORTS_ACT, type FixItem, type Priority, type Signals, type Why } from './priority';
 import { supportFor, type Support, type SupportState } from './support';
 import { recentKev, recentKevByProduct, type KevAdd } from './targeted';
-import { explicitlyUnaffected } from './versions';
+import { compareDotted, explicitlyUnaffected, fixesFor, splitFixes } from './versions';
 
 /**
  * Matches a confirmed stack against stored vulnerabilities.
@@ -64,8 +66,18 @@ export interface MatchedVuln {
   cvss: { score: number; vector: string | null } | null;
   cwe: string[];
   ssvc: Ssvc | null;
-  /** `exploit`: public attack code (a Metasploit module or the record's exploit reference), when there is some. */
-  links: { advisory: string | null; patch: string | null; exploit: string | null };
+  /**
+   * `exploit`: public attack code (a Metasploit module or the record's exploit
+   * reference), when there is some. `reports`: trusted sources' write-ups of it
+   * (src/ingest/reporters.ts), earliest first.
+   */
+  links: { advisory: string | null; patch: string | null; exploit: string | null; reports: string[] };
+  /**
+   * Trusted security teams' write-ups of it (src/ingest/reporters.ts),
+   * earliest first: who, their post's title and link, its day, and whether it
+   * calls the bug critical or urgent. Warnings, never evidence of exploitation.
+   */
+  reports: { source: string; title: string | null; url: string; publishedAt: string; urgent: boolean }[];
   /** What to do about it: act, attend, watch or track. */
   priority: Priority;
   /** 0–100, for ordering within a priority and ranking components. */
@@ -273,7 +285,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
             confirmed = true;
             matched.add(formatItem(item));
             if (!item.close) exact = true;
-            if (r.fixed_version) fixes.add(r.fixed_version);
+            for (const f of fixesFor(item.version, splitFixes(r.fixed_version))) fixes.add(f);
           }
           // Checked and not affected: this row does not count as a match.
           continue;
@@ -284,7 +296,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
         matched.add(formatItem(item));
         if (!item.close) exact = true;
         if (isEdge(item)) edge = true;
-        if (r.fixed_version) fixes.add(r.fixed_version);
+        for (const f of fixesFor(item.version, splitFixes(r.fixed_version))) fixes.add(f);
       }
     }
     if (!confirmed && !unverified) continue;
@@ -295,7 +307,7 @@ export async function matchStack(store: Store, stack: StackItem[], opts: MatchOp
         confirmed ? 'version_confirmed' : 'product_match',
         exact ? 'exact' : 'close',
         [...matched].sort(),
-        [...fixes].sort(),
+        [...fixes].sort((a, b) => compareDotted(a, b) ?? a.localeCompare(b)),
         edge,
         opts.now,
         exploitedSibling(v),
@@ -443,7 +455,8 @@ export function toResult(
   const exploitRef = v.exploit_ref ?? firstExploitRef(refs);
   const metasploit = exploits.find((e) => e.source === 'metasploit' && e.kind === 'exploit') ?? exploits.find((e) => e.source === 'metasploit') ?? null;
   const msfKind = metasploit ? (metasploit.kind === 'exploit' ? 'exploit' : 'auxiliary') : null;
-  const links = { ...pickLinks(v.id, refs), exploit: exploitLink(metasploit, exploitRef) };
+  const reports = reportsOf(exploits);
+  const links = { ...pickLinks(v.id, refs), exploit: exploitLink(metasploit, exploitRef), reports: reports.map((r) => r.url) };
   const ssvc = v.ssvc ? parseJson<Ssvc | null>(v.ssvc, null) : null;
   const levNow = lev(v.lev_log ?? 0, v.epss, v.epss_date, now);
   const { priority, score, reasons, why, respondWithinHours } = assess({
@@ -459,6 +472,7 @@ export function toResult(
     ssvc,
     edge,
     ageDays: v.published_at ? daysBetween(v.published_at, now.toISOString()) : null,
+    reported: reportedSignal(reports, now),
   });
   return {
     id: v.id,
@@ -485,6 +499,7 @@ export function toResult(
     cwe: parseJson<string[]>(v.cwe, []),
     ssvc,
     links,
+    reports: reports.map((r) => ({ source: r.name, title: r.title, url: r.url, publishedAt: r.day, urgent: r.urgent })),
     priority,
     score,
     reasons,
@@ -512,6 +527,44 @@ export function mitigationFor(
 ): { action: string | null; advisory: string | null } | null {
   if ((priority !== 'act' && priority !== 'attend') || fixedVersions.length > 0) return null;
   return { action: requiredAction?.trim() || null, advisory };
+}
+
+/** Trusted write-ups among a CVE's exploit rows, one per source, earliest first. */
+export function reportsOf(exploits: readonly ExploitRef[]): Report[] {
+  const out = new Map<string, Report>();
+  for (const e of exploits) {
+    const src = e.kind === REPORT_KIND || e.kind === URGENT_KIND ? reportSource(e.source) : undefined;
+    if (!src || !e.url || !e.published_at || !/^https:\/\//.test(e.url)) continue;
+    const prev = out.get(src.id);
+    const urgent = e.kind === URGENT_KIND || !!prev?.urgent;
+    const day = e.published_at.slice(0, 10);
+    out.set(src.id, !prev || day < prev.day ? { name: src.name, url: e.url, title: e.title ?? null, day, urgent } : { ...prev, urgent });
+  }
+  return [...out.values()].sort((a, b) => a.day.localeCompare(b.day) || a.name.localeCompare(b.name));
+}
+
+export interface Report {
+  name: string;
+  url: string;
+  /** The post's title as plain text, or null; shown as text, never HTML. */
+  title: string | null;
+  /** YYYY-MM-DD of the source's earliest post on it. */
+  day: string;
+  /** The source called it critical or asked for an update now (src/ingest/reports.ts isUrgent). */
+  urgent: boolean;
+}
+
+/** What assess() reads from the write-ups: who, how long since the REPORTS_ACT-th, and who called it urgent and since when. */
+export function reportedSignal(reports: readonly Report[], now: Date): Signals['reported'] {
+  if (reports.length === 0) return null;
+  const today = now.toISOString();
+  const urgent = reports.filter((r) => r.urgent);
+  return {
+    sources: reports.map((r) => r.name),
+    ageDays: reports.length >= REPORTS_ACT ? daysBetween(reports[REPORTS_ACT - 1]!.day, today) : null,
+    urgent: urgent.map((r) => r.name),
+    urgentAgeDays: urgent.length > 0 ? daysBetween(urgent[0]!.day, today) : null,
+  };
 }
 
 /**

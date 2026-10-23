@@ -45,4 +45,6 @@ export const STALE_AFTER_HOURS: Record<string, number> = {
   // Fetched once a day, like support dates.
   metasploit: 72,
   nuclei: 72,
+  // Read hourly, like the CVE sources.
+  reports: 6,
 };

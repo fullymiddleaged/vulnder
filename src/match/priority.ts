@@ -12,7 +12,11 @@ import type { SupportState } from './support';
  *             evidence yet, a critical that EPSS or LEV rates likely, EPSS of
  *             50% or more, or an edge device that is automatable with total
  *             impact (CISA BOD 26-04's 3-day case for an internet-facing
- *             system, and edge devices are the one place Vulnder knows that).
+ *             system, and edge devices are the one place Vulnder knows that),
+ *             or a critical that two trusted sources have written up, or one
+ *             has called critical or urgent, in the last 30 days, whatever its
+ *             EPSS (EPSS and CISA's assessment lag a new CVE; their write-ups
+ *             don't).
  *             Exploited results sort first and get a day; the rest get 3 days.
  *     attend  a similar CVE in the same product (its family) on KEV or
  *             actively exploited, a Metasploit exploit module,
@@ -91,6 +95,7 @@ type ReasonKey =
   | 'nuclei'
   | 'total'
   | 'edge'
+  | 'reported'
   | 'overdue'
   | 'access'
   | 'cvss'
@@ -145,6 +150,14 @@ export interface Signals {
    * ones) and a Nuclei template (src/ingest/exploits.ts). Never evidence of exploitation.
    */
   exploit?: { ref: boolean; metasploit: 'exploit' | 'auxiliary' | null; nuclei: boolean };
+  /**
+   * Trusted sources that have written it up (src/ingest/reporters.ts), by
+   * name, earliest first, and whole days since the REPORTS_ACT-th of them did
+   * (null with fewer); and those whose post calls it critical or asks for an
+   * update now, with days since the first did. Coverage, never evidence of
+   * exploitation.
+   */
+  reported?: { sources: string[]; ageDays: number | null; urgent: string[]; urgentAgeDays: number | null } | null;
 }
 
 const CRITICAL_CVSS = 9;
@@ -181,6 +194,12 @@ const AUTOMATABLE_BOOST = 1.25;
 /** VPNs, edge firewalls and gateways face the internet and fill much of KEV: the same weight as automatable. */
 const EDGE_BOOST = 1.25;
 const RANSOMWARE_BOOST = 1.2;
+/** Trusted sources that must have written up a critical anyone can reach, for Act now. */
+export const REPORTS_ACT = 2;
+/** For this long after the REPORTS_ACT-th write-up; by then EPSS and CISA have caught up. */
+export const REPORTS_ACT_DAYS = 30;
+/** A write-up by any trusted source orders a result first within its band, like automatable. */
+const REPORTED_BOOST = 1.25;
 
 export function assess(s: Signals): Assessment {
   const exploitation = s.ssvc?.exploitation?.toLowerCase() ?? null;
@@ -216,7 +235,17 @@ export function assess(s: Signals): Assessment {
   const veryLikely = !active && s.epss !== null && s.epss >= EPSS_VERY_HIGH - 1e-9;
   const criticalLikely = !active && critical && (likely || likelyBefore);
   const takeover = !active && !!s.edge && automatable && totalImpact;
-  const predicted = veryLikely || criticalLikely || takeover;
+  // Written up by trusted sources while EPSS and CISA catch up: Act now for a
+  // critical two of them have written up, or one has called critical or
+  // urgent, whatever its EPSS. One with EPSS of 10% or more is Act already, so
+  // this lifts the ones EPSS hasn't scored or scores low.
+  const reporters = s.reported?.sources ?? [];
+  const urgentBy = s.reported?.urgent ?? [];
+  const recent = (days: number | null | undefined) => days != null && days <= REPORTS_ACT_DAYS;
+  const widelyReported = reporters.length >= REPORTS_ACT && recent(s.reported?.ageDays);
+  const calledUrgent = urgentBy.length > 0 && recent(s.reported?.urgentAgeDays);
+  const reportedCritical = !active && critical && (widelyReported || calledUrgent);
+  const predicted = veryLikely || criticalLikely || takeover || reportedCritical;
   // BOD 26-04 as a floor, never looser than CISA: every item gets at least its
   // deadline for a system that isn't exposed (automatable: 60 days, so Watch),
   // and an edge device its deadline for one that is (automatable or total
@@ -245,7 +274,13 @@ export function assess(s: Signals): Assessment {
     : Math.max(MIN_THREAT, s.epss ?? 0, s.lev ?? 0, poc ? POC_THREAT : 0, sibling || msfExploit ? SIBLING_THREAT : 0, bandThreat);
   const unscoredImpact = (s.severityLabel && LABEL_IMPACT[s.severityLabel]) ?? UNKNOWN_IMPACT;
   const impact = Math.max(s.cvss !== null ? s.cvss / 10 : unscoredImpact, totalImpact ? TOTAL_IMPACT : 0);
-  const raw = threat * impact * (automatable || scannable ? AUTOMATABLE_BOOST : 1) * (s.edge ? EDGE_BOOST : 1) * (s.knownRansomware ? RANSOMWARE_BOOST : 1);
+  const raw =
+    threat *
+    impact *
+    (automatable || scannable ? AUTOMATABLE_BOOST : 1) *
+    (s.edge ? EDGE_BOOST : 1) *
+    (s.knownRansomware ? RANSOMWARE_BOOST : 1) *
+    (reporters.length > 0 ? REPORTED_BOOST : 1);
   const score = Math.round(Math.min(1, raw) * 1000) / 10;
 
   const all: (Reason & { key: ReasonKey })[] = [];
@@ -279,6 +314,11 @@ export function assess(s: Signals): Assessment {
     else if (edgeWatch) add('edge', 'context', 'Edge device: CISA sets internet-facing systems a deadline for every bug it assesses');
     else if (s.edge) add('edge', 'context', 'Edge device: VPNs, firewalls and gateways are a top target');
   }
+  if (reportedCritical) {
+    const who = widelyReported ? `reported by ${listNames(reporters)}` : `${listNames(urgentBy)} ${urgentBy.length === 1 ? 'calls' : 'call'} urgent`;
+    add('reported', 'context', `Critical bug ${who}: Act now while EPSS and CISA catch up`);
+  }
+  else if (reporters.length > 0) add('reported', 'context', `Reported by ${listNames(reporters)}`);
   // Said only where it holds the band, so Act now results don't carry it.
   if (overdue && priority === (severe ? 'attend' : 'watch')) {
     add('overdue', 'context', `Public for ${formatAge(s.ageDays!)} at CVSS ${severe ? '8.0' : '7.0'} or more: a fix is overdue`);
@@ -291,7 +331,7 @@ export function assess(s: Signals): Assessment {
   const first = (rules: [boolean, ReasonKey][]) => rules.find(([holds]) => holds)?.[1] ?? null;
   const decidedBy: ReasonKey | null =
     priority === 'act'
-      ? first([[active, 'active'], [veryLikely || (criticalLikely && likely), 'epss'], [criticalLikely, 'lev'], [true, 'takeover']])
+      ? first([[active, 'active'], [veryLikely || (criticalLikely && likely), 'epss'], [criticalLikely, 'lev'], [takeover, 'takeover'], [true, 'reported']])
       : priority === 'attend'
         ? first([
             [sibling, 'sibling'],
@@ -369,6 +409,11 @@ export function severity(cvss: number): 'critical' | 'high' | 'medium' | 'low' |
   if (cvss >= 4) return 'medium';
   if (cvss > 0) return 'low';
   return 'none';
+}
+
+/** "Huntress", "Huntress and Rapid7", "Huntress, Rapid7 and CERT-EU". */
+function listNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 function formatPct(v: number): string {

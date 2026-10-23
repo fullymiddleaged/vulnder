@@ -59,7 +59,9 @@ export interface Result {
   fixedVersions: string[];
   cvss: { score: number; vector: string | null } | null;
   /** `exploit`: public attack code, when there is some; absent from feeds cached before it existed. */
-  links: { advisory: string | null; patch: string | null; exploit?: string | null };
+  links: { advisory: string | null; patch: string | null; exploit?: string | null; reports?: string[] };
+  /** Trusted security teams' write-ups of it, earliest first (src/match/match.ts); absent from older feeds. */
+  reports?: Report[];
   priority: Priority;
   /** 0–100: orders results within a priority. */
   score: number;
@@ -111,6 +113,18 @@ export interface FixItem {
 export type SupportState = 'eol' | 'ending' | 'covered';
 
 /** A stack item's vendor support finding (src/match/support.ts). */
+/** A trusted security team's write-up of a CVE: never evidence of exploitation. */
+export interface Report {
+  source: string;
+  /** The post's title as plain text; shown as text, never HTML. */
+  title: string | null;
+  url: string;
+  /** YYYY-MM-DD */
+  publishedAt: string;
+  /** The post calls the bug critical or urgent. */
+  urgent: boolean;
+}
+
 /** Stack items whose CVEs CISA added to KEV in the last 90 days, whatever version they affect (src/match/targeted.ts). */
 export interface TargetedNotice {
   /** The stack items it's about. */
