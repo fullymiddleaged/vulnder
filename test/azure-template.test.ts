@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import bicep from '../integrations/azure/main.bicep?raw';
 import workflowText from '../integrations/azure/workflow.json?raw';
 import newAct from '../integrations/azure/kql/new-act.kql?raw';
+import latest from '../integrations/azure/kql/latest.kql?raw';
+import defenderDevices from '../integrations/azure/kql/defender-devices.kql?raw';
 import type { MatchedVuln } from '../src/match/match';
 import { toRow } from '../src/routes/api';
 
@@ -55,7 +57,7 @@ describe('Azure workflow', () => {
       Object.values(s.actions).flatMap((a) => (a.type === 'InitializeVariable' ? ((a.inputs as { variables: { name: string }[] }).variables.map((v) => v.name)) : [])),
     );
     for (const v of refs('variables')) expect(initialised).toContain(v);
-    const passed = /parameters: \{([^}]*\}){5}/s.exec(bicep)?.[0] ?? '';
+    const passed = /definition: loadJsonContent\('workflow\.json'\)\s*parameters: \{.*?\n {4}\}/s.exec(bicep)?.[0] ?? '';
     for (const p of declared) expect(passed, `main.bicep passes ${p}`).toMatch(new RegExp(`\\b${p}: \\{ value: `));
   });
 
@@ -94,7 +96,7 @@ describe('Azure data collection rule', () => {
   const transform = /transformKql: '(.*)'/.exec(bicep)?.[1] ?? '';
 
   it('declares every field a rank row has, plus what the workflow adds', () => {
-    expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode'].sort());
+    expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode', 'source'].sort());
   });
 
   it('maps every declared field to a table column, and every column comes from the transform', () => {
@@ -105,6 +107,14 @@ describe('Azure data collection rule', () => {
 
   it('never names a column Log Analytics reserves', () => {
     for (const reserved of ['id', 'Title', 'Type', 'TenantId', 'UniqueId', '_ResourceId', '_SubscriptionId']) expect(columns).not.toContain(reserved);
+  });
+
+  it("reads every deployment's latest run, not only the newest run in the table", () => {
+    for (const [file, kql] of [['latest.kql', latest], ['defender-devices.kql', defenderDevices]]) {
+      expect(kql, file).toMatch(/summarize arg_max\(TimeGenerated, RunId\) by Source/);
+      expect(kql, file).toMatch(/RunId in \(latest\)/);
+      expect(kql, file).toMatch(/summarize arg_max\(level\(Priority\) \* 1000 \+ Score, \*\).* by Cve/);
+    }
   });
 
   it('alerts only from columns the table has', () => {

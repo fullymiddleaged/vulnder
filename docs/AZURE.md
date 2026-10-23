@@ -47,12 +47,14 @@ az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/
 
 Runs before the grant fail at the Graph call and write nothing. Rows can take a few minutes to appear in a new table.
 
+To use more than one mode, for example `intune` for laptops and `stack` for firewalls, deploy again into the same workspace with another `name` (`-p name=vulnder-edge ...`). Each deployment gets its own Logic App and data collection rule and writes its `name` to the `Source` column of the shared table. The queries below read each deployment's latest run, and a CVE that more than one finds shows once, at its highest priority.
+
 ## Alerting the SOC and the patching teams
 
 - **SOC: new Act now CVEs**, from the analytics rule, hourly. A CVE alerts once, the first hour it is Act now: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert carries Vulnder's reasons, the CISA due date where there is one, and the fixed versions. The first run alerts on every CVE already at Act now.
 - **Patching: a daily list**, from [daily-patch-list.kql](../integrations/azure/kql/daily-patch-list.kql). It lists CVEs now at Act now or Attend that are new or rose in priority since the week before, with what to upgrade to. Run it as a scheduled query or a workbook, or have a Logic App post it to Teams.
 - **Which devices**, in mode `defender`, from [defender-devices.kql](../integrations/azure/kql/defender-devices.kql) in the Defender portal's Advanced hunting, with Sentinel connected. It joins Vulnder's priorities to `DeviceTvmSoftwareVulnerabilities` and shows each CVE's devices and the update to install.
-- **The current picture**, from [latest.kql](../integrations/azure/kql/latest.kql): every CVE in the latest run, most urgent first.
+- **The current picture**, from [latest.kql](../integrations/azure/kql/latest.kql): every CVE in each deployment's latest run, most urgent first, with the deployments that found it in `Sources`.
 
 These rules look for CVEs that are new to the table, or whose priority rose. They don't use Vulnder's change dates, because a CVE can reach Vulnder after the date its change carries (see [API.md](API.md#post-apiv1rank)).
 
@@ -61,7 +63,7 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 ## Notes per mode
 
 - **`defender`** sends Defender's distinct CVE IDs, up to 2,000 per call, in as many calls as needed. Vulnder ranks each listed CVE whatever its age, so nothing Defender found is left out.
-- **`intune`** reads every page of `detectedApps` (up to 8,000 entries a run) and sends four fields per app. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run in mode `stack` with a second deployment (another `name`), for example `p:microsoft/windows_11_24h2`.
+- **`intune`** reads every page of `detectedApps` (up to 8,000 entries a run) and sends four fields per app. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run in mode `stack` with a second deployment (another `name`, see [Deploy](#deploy)), for example `p:microsoft/windows_11_24h2`.
 - **`stack`** suits edge devices and appliances, which Defender and Intune can't see. Mark internet-facing ones `;edge` so they get the edge-device deadlines.
 
 ## Privacy and cost

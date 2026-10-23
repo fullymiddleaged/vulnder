@@ -27,6 +27,8 @@ param days int = 30
 param sentinelRules bool = false
 
 param location string = resourceGroup().location
+
+@description('Names the Logic App and its data collection rule, and fills the Source column. Deploy again with another name to add a second mode to the same workspace.')
 param name string = 'vulnder'
 
 var streamName = 'Custom-VulnderRows'
@@ -51,6 +53,7 @@ resource table 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
         { name: 'TimeGenerated', type: 'dateTime' }
         { name: 'RunId', type: 'string' }
         { name: 'Mode', type: 'string' }
+        { name: 'Source', type: 'string' }
         { name: 'Cve', type: 'string' }
         { name: 'CveTitle', type: 'string' }
         { name: 'Priority', type: 'string' }
@@ -80,7 +83,7 @@ resource table 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
   }
 }
 
-// The rows as /api/v1/rank returns them, plus three fields the Logic App adds.
+// The rows as /api/v1/rank returns them, plus four fields the Logic App adds.
 // Fields Vulnder adds later aren't declared, so they're dropped, not refused.
 resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
   name: '${name}-dcr'
@@ -93,6 +96,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
           { name: 'timeGenerated', type: 'string' }
           { name: 'runId', type: 'string' }
           { name: 'mode', type: 'string' }
+          { name: 'source', type: 'string' }
           { name: 'cve', type: 'string' }
           { name: 'title', type: 'string' }
           { name: 'priority', type: 'string' }
@@ -128,8 +132,9 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
         streams: [streamName]
         destinations: ['workspace']
         outputStream: 'Custom-${tableName}'
-        // Title is a reserved column name, hence CveTitle.
-        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Cve = cve, CveTitle = title, Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
+        // Title is a reserved column name, hence CveTitle. The field source is
+        // bracketed because the input table is also called source.
+        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = [\'source\'], Cve = cve, CveTitle = title, Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
       }
     ]
   }
@@ -153,6 +158,7 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
       vulnderUrl: { value: vulnderUrl }
       days: { value: days }
       ingestUrl: { value: ingestUrl }
+      source: { value: name }
     }
   }
 }

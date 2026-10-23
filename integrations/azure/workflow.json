@@ -21,6 +21,10 @@
     "ingestUrl": {
       "type": "String",
       "defaultValue": ""
+    },
+    "source": {
+      "type": "String",
+      "defaultValue": "vulnder"
     }
   },
   "triggers": {
@@ -375,7 +379,7 @@
       "type": "Select",
       "inputs": {
         "from": "@variables('rows')",
-        "select": "@addProperty(addProperty(addProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode'))"
+        "select": "@addProperty(addProperty(addProperty(addProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'source', parameters('source'))"
       },
       "runAfter": {
         "Switch_on_mode": [
