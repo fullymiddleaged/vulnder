@@ -7,7 +7,7 @@ import { bumpDataVersionStatement } from '../src/ingest/meta';
 import type { VulnPatch } from '../src/ingest/types';
 import { OSV_QUERYBATCH_URL } from '../src/match/osv';
 import type { MatchedVuln } from '../src/match/match';
-import { cveStack, headline, MAX_RESULT_LIMIT } from '../src/routes/mcp';
+import { batchRefusal, cveStack, headline, MAX_BATCH_MESSAGES, MAX_RESULT_LIMIT } from '../src/routes/mcp';
 import { parseStack } from '../src/stack/format';
 import { resetDb, store } from './helpers/db';
 
@@ -217,6 +217,33 @@ describe('MCP limits', () => {
     expect(logged).not.toMatch(/next@14\.2\.3|ios_xe|secret-host/);
   });
 
+  it('refuses batches the client’s protocol revision doesn’t have, and caps the ones it does', async () => {
+    const call = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/list' });
+    const send = (body: unknown, version?: string) =>
+      app.request(
+        `${env.BASE_URL}/mcp`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'cf-connecting-ip': IP, ...(version ? { 'mcp-protocol-version': version } : {}) },
+          body: JSON.stringify(body),
+        },
+        env,
+      );
+    const refusal = async (res: Response) => {
+      expect(res.status).toBe(400);
+      return ((await res.json()) as { error: { code: number; message: string } }).error;
+    };
+
+    expect(await refusal(await send([call(1), call(2)], '2025-06-18'))).toEqual({ code: -32600, message: "JSON-RPC batches aren't part of MCP 2025-06-18; send one message per POST" });
+    expect((await refusal(await send([call(1)], '2026-07-28'))).message).toMatch(/aren't part of MCP 2026-07-28/);
+    expect((await refusal(await send(Array.from({ length: MAX_BATCH_MESSAGES + 1 }, (_, i) => call(i))))).message).toMatch(/at most 10 messages/);
+
+    // A 2025-03-26 client sends no version header, and its batches still reach the server.
+    const res = await send([call(1), call(2)]);
+    expect(res.status).toBe(200);
+    expect(await res.text()).not.toMatch(/batch/i);
+  });
+
   it('serves a call without a warning in the logs', async () => {
     stubOsvFetch();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -262,6 +289,24 @@ describe('headline', () => {
   it('says listed CVEs in a mixed stack count whatever their age', () => {
     const line = headline({ stack: 'npm:next@14.2.3,cve:2021-44228', days: 30, priorities: { ...none, act: 1 }, results: [result], watching: [] });
     expect(line).toMatch(/^1 CVE affects this stack .*, plus the listed CVEs whatever their age\.$/);
+  });
+});
+
+describe('batchRefusal', () => {
+  const call = { jsonrpc: '2.0', id: 1, method: 'tools/call' };
+
+  it('lets single messages through under every revision', () => {
+    for (const version of [null, '2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28']) expect(batchRefusal(call, version)).toBeNull();
+    expect(batchRefusal(null, null)).toBeNull();
+  });
+
+  it('allows small batches from 2025-03-26 clients only, never with initialize', () => {
+    expect(batchRefusal([call, call], null)).toBeNull();
+    expect(batchRefusal([call, call], '2025-03-26')).toBeNull();
+    expect(batchRefusal([call], '2025-11-25')).toMatch(/aren't part of MCP 2025-11-25/);
+    expect(batchRefusal(Array<unknown>(MAX_BATCH_MESSAGES + 1).fill(call), null)).toMatch(/at most/);
+    expect(batchRefusal([{ ...call, method: 'initialize' }], null)).toMatch(/initialize/);
+    expect(batchRefusal([null, 3], null)).toBeNull();
   });
 });
 

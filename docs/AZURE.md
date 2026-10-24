@@ -49,6 +49,11 @@ az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/
 
 Runs before the grant fail at the Graph call and write nothing. Rows can take a few minutes to appear in a new table.
 
+Who can see and change it:
+
+- **Contributor or Logic App Contributor** on the resource group can edit the workflow and make any Graph call its identity is allowed. In `defender` mode that means any advanced hunting query across the tenant, not just the one the template runs. Give that role only to people you'd trust with `ThreatHunting.Read.All` themselves, or deploy into a resource group of its own.
+- **Reader** on the Logic App can open its run history, which keeps each run's Graph responses (the open CVE IDs, or Intune's app list) for 90 days by default. These never leave your tenant. To hide them, turn on secure inputs and outputs for the actions in the designer; that also hides them from you when a run needs debugging.
+
 To run more than one mode, or keep a team's stack apart from the rest, deploy again into the same workspace with another `name` (`-p name=vulnder-edge ...`). Each deployment gets its own Logic App and data collection rule and writes its `name` to the `Source` column of the shared table. The queries below read each deployment's latest run, and a CVE that more than one finds shows once, at its highest priority.
 
 ## Alerting the SOC and the patching teams

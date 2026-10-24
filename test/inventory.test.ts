@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { fromInventory, isProduct, productName, vendorName } from '../src/resolve/inventory';
+import { COMPANY_SUFFIX, fromInventory, isProduct, productName, vendorName } from '../src/resolve/inventory';
 import { fitItems } from '../src/routes/api';
 import type { Chip } from '../src/resolve/catalog';
 
@@ -40,14 +40,24 @@ describe('vendorName', () => {
     ['Fortinet Inc', 'Fortinet'],
     ['Igor Pavlov', 'Igor Pavlov'],
     ['TeamViewer Germany GmbH', 'TeamViewer Germany'],
+    ['Acme,, Inc.', 'Acme'],
+    ['Example Co., Ltd.', 'Example'],
   ])('%s → %s', (publisher, want) => {
     expect(vendorName(publisher)).toBe(want);
+  });
+
+  it('strips a suffix in linear time, however long the run of separators before it', () => {
+    // The 200-character cap hides the cost; uncapped, a quadratic match on these takes seconds.
+    const start = performance.now();
+    for (const s of [`${','.repeat(20_000)}x`, `${', '.repeat(10_000)}x`, `${',,,, '.repeat(4_000)}x`]) expect(COMPANY_SUFFIX.test(s)).toBe(false);
+    expect(performance.now() - start).toBeLessThan(100);
   });
 
   it('gives null for a missing or empty publisher', () => {
     expect(vendorName(null)).toBeNull();
     expect(vendorName('   ')).toBeNull();
     expect(vendorName('Inc.')).toBeNull();
+    expect(vendorName(', Inc.')).toBeNull();
   });
 });
 

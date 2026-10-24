@@ -68,6 +68,7 @@ Results include CVE summaries and advisory text written by third parties. Agents
 ## Limits
 
 - A call holds up to 200 components and 2,000 CVEs. Send the whole stack in one call, not one call per package.
+- One JSON-RPC message per POST. MCP dropped batch arrays in 2025-06-18, so a batch sent with a later `MCP-Protocol-Version` gets a JSON-RPC error. 2025-03-26 clients, which send no version header, may batch up to 10 messages, never including `initialize`.
 - Repeat lookups are served from the edge cache and are free. New lookups are rate-limited per IP address, in a bucket separate from the website's (60 a minute, 6 a minute for very large stacks such as the Linux kernel). Over the limit, the tool returns an error asking the agent to retry in 60 seconds.
 - Connectors in claude.ai and other hosted assistants call from the provider's servers, so their users share one bucket. If you hit it, connect from a local client such as Claude Code, or run your own copy.
 

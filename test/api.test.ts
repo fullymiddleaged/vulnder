@@ -162,6 +162,15 @@ describe('POST /api/v1/stack', () => {
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM usage_counters WHERE bucket = 'api-stack'").first<{ n: number }>()).toEqual({ n: 0 });
   });
 
+  it('counts an inventory against the day’s lookups before cleaning it', async () => {
+    const ip = freshIp();
+    expect((await post('/api/v1/stack', { products: [{ name: 'postgres' }] }, ip)).status).toBe(200);
+    await env.DB.prepare('UPDATE usage_counters SET count = ? WHERE bucket = ?').bind(STACK_DAILY_PER_CLIENT, 'api-stack').run();
+    // Windows updates clean away to nothing, so only an early quota check refuses this.
+    const res = await post('/api/v1/stack', { inventory: [{ displayName: 'Update for Windows 10 (KB5001716)', version: null, publisher: 'Microsoft Corporation' }] }, ip);
+    expect(res.status).toBe(429);
+  });
+
   it('answers 422 with what it couldn’t match when nothing resolves', async () => {
     const res = await post('/api/v1/stack', { products: [{ name: 'qqzzv flurbo' }] });
     expect(res.status).toBe(422);
@@ -274,5 +283,18 @@ describe('machine API privacy', () => {
     await post('/api/v1/rank', { stack: 'npm:next,bogus:secret-host' });
     const logged = spies.flatMap((s) => s.mock.calls.flat().map(String)).join('\n');
     expect(logged).not.toMatch(/next@14\.2\.3|ios_xe|secret-host|postgres/);
+  });
+
+  it('logs an unhandled error’s kind, never its message', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing = {
+      prepare() {
+        throw new Error('D1_ERROR: near "secret-host": syntax error');
+      },
+    } as unknown as D1Database;
+    expect((await post('/api/v1/stack', { products: [{ name: 'postgres' }] }, freshIp(), { ...env, DB: failing })).status).toBe(500);
+    const logged = error.mock.calls.flat().map(String).join('\n');
+    expect(logged).toMatch(/unhandled error on POST \/api\/v1\/stack: Error D1_ERROR$/m);
+    expect(logged).not.toMatch(/secret-host/);
   });
 });

@@ -1,6 +1,7 @@
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import { BodyTooLarge, readCapped } from '../lib/body';
 import type { Listed } from '../match/listed';
 import type { MatchedVuln } from '../match/match';
 import { PRIORITIES, type FixItem, type Priority } from '../match/priority';
@@ -183,7 +184,7 @@ export function mcpServer(c: Context<AppEnv>): McpServer {
     { name: c.env.DISPLAY_NAME || 'Vulnder', version: '1.0.0' },
     {
       instructions:
-        'Vulnder ranks the CVEs affecting a software stack by what to fix first, with the reason for each. Use rank_stack for packages and products, rank_cves for a list of CVE IDs (from a scanner report, say). Nothing sent is stored.',
+        'Vulnder ranks the CVEs affecting a software stack by what to fix first, with the reason for each. Use rank_stack for packages and products, rank_cves for a list of CVE IDs (from a scanner report, say). Send the whole stack or CVE list in one call, not one call per item or many calls at once. Nothing sent is stored.',
     },
   );
   server.registerTool(
@@ -220,10 +221,51 @@ export function mcpServer(c: Context<AppEnv>): McpServer {
   return server;
 }
 
-export const mcp = new Hono<AppEnv>().all('/', (c) =>
-  createMcpHandler(() => mcpServer(c), {
+/**
+ * JSON-RPC batches are part of MCP 2025-03-26 only: 2025-06-18 removed them,
+ * and that revision brought the MCP-Protocol-Version header, so a 2025-03-26
+ * client sends none. The SDK takes a batch of up to 100 messages under any
+ * revision and runs its tool calls at once.
+ */
+export const MAX_BATCH_MESSAGES = 10;
+const BATCH_REVISION = '2025-03-26';
+
+/** Why a batch is refused, or null when the body isn't one or is allowed. */
+export function batchRefusal(body: unknown, protocolVersion: string | null): string | null {
+  if (!Array.isArray(body)) return null;
+  if (protocolVersion !== null && protocolVersion !== BATCH_REVISION) return `JSON-RPC batches aren't part of MCP ${protocolVersion}; send one message per POST`;
+  if (body.length > MAX_BATCH_MESSAGES) return `A batch holds at most ${MAX_BATCH_MESSAGES} messages; send the whole stack in one call`;
+  if (body.some((m) => (m as { method?: unknown } | null)?.method === 'initialize')) return 'initialize must not be part of a batch';
+  return null;
+}
+
+const jsonRpcError = (message: string, status: 400 | 413) => Response.json({ jsonrpc: '2.0', error: { code: -32600, message }, id: null }, { status });
+
+export const mcp = new Hono<AppEnv>().all('/', async (c) => {
+  let req = c.req.raw;
+  if (req.method === 'POST' && req.body) {
+    let raw: string;
+    try {
+      raw = await readCapped(req, MAX_BODY_BYTES);
+    } catch (err) {
+      if (err instanceof BodyTooLarge) return jsonRpcError('request too large', 413);
+      throw err;
+    }
+    let body: unknown = null;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      // Not JSON: the SDK answers with its own parse error.
+    }
+    const refusal = batchRefusal(body, req.headers.get('mcp-protocol-version'));
+    if (refusal) return jsonRpcError(refusal, 400);
+    const headers = new Headers(req.headers);
+    headers.delete('content-length');
+    req = new Request(req.url, { method: 'POST', headers, body: raw });
+  }
+  return createMcpHandler(() => mcpServer(c), {
     maxRequestBodySize: MAX_BODY_BYTES,
     // Errors can quote a request; report only their kind.
     onerror: (err) => console.error(`mcp: ${err.name}`),
-  }).fetch(c.req.raw),
-);
+  }).fetch(req);
+});
