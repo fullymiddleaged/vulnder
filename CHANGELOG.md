@@ -97,6 +97,11 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - Pasted manifests could make the server spend minutes of CPU on one request: a long run of spaces or blank lines, or unclosed tags in a `pom.xml`, made the format detection and the Maven parser quadratic. They now run in linear time.
 - A description or manifest repeating one product thousands of times, or naming a product category many times, made one request do millions of comparisons. Each distinct product is now looked up once, repeats share the result, each name is compared only with catalog entries that share its first letters, and a request whose names would match more than 2,000 products is refused.
 - Resolving a vendor name ("Cisco", "Microsoft Exchange") now reads only that vendor's top few products from the database instead of all of them, up to 12,000 fewer rows read per request. Needs migration 0006.
+- The MCP server refuses JSON-RPC batch arrays from clients on MCP 2025-06-18 or later, which removed them. 2025-03-26 clients, whose revision has batches, can send up to 10 messages per batch, never including `initialize`, instead of the SDK's 100 tool calls at once. Single-message clients are unaffected. llms.txt and AI_AGENTS.md say to send one message per POST.
+- `/api/v1/stack` counts an Intune inventory against the day's lookups before cleaning its names, and a publisher name padded with commas or spaces no longer costs quadratic time to clean. A request with only CVE IDs still spends no lookups.
+- A purl type such as `constructor` in a pasted SBOM is ignored instead of reading a built-in property.
+- Unhandled errors are logged by their type and D1 error code only, never their message, which could quote a request.
+- docs/AZURE.md says who can change the Logic App's Graph calls, and that run history keeps the Graph responses for 90 days.
 - zod is updated to 4.6.7 for GHSA-mrhx-c7xc-m3w5. With 4.6.5, a request body near the 1 MB cap holding a huge array could use a lot of memory and CPU before the length limit turned it away.
 - IPv6 clients are rate-limited and counted by their /64 rather than their full address, which one connection can change at will.
 - Updated Wrangler to 4.149 for CVE-2026-96889 in `sharp`'s bundled librsvg (development tooling only; the deployed Worker doesn't include it).

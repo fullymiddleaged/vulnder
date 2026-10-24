@@ -274,6 +274,10 @@ describe('SBOMs', () => {
     expect(parsePurl('pkg:rpm/fedora/curl@7.50')).toBeNull();
     expect(parsePurl('not a purl')).toBeNull();
   });
+
+  it('never reads an inherited key as a purl type', () => {
+    for (const type of ['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__']) expect(parsePurl(`pkg:${type}/x@1`)).toBeNull();
+  });
 });
 
 describe('MCP configs', () => {

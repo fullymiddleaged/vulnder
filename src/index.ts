@@ -50,7 +50,9 @@ app.notFound((c) => {
 
 app.onError((err, c) => {
   // Never log request URLs or bodies: stack URLs describe someone's infrastructure.
-  console.error(`unhandled error on ${c.req.method} ${c.req.routePath}: ${err.message}`);
+  // Only the error's kind, and D1's error code if there is one: a message can quote the input that caused it.
+  const code = /^D1_[A-Z_]+/.exec(err.message)?.[0];
+  console.error(`unhandled error on ${c.req.method} ${c.req.routePath}: ${err.name}${code ? ` ${code}` : ''}`);
   return c.json({ error: 'internal error' }, 500);
 });
 

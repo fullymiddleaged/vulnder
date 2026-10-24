@@ -53,7 +53,8 @@ const TRAILING_VERSION = /\s+(?:-\s+)?v?\d+(?:[._]\d+)+(?:[-+.][0-9a-z]{1,12})?\
 /** " - en-us", " - de-de", " - x64" at the end. */
 const TRAILING_DASH_TAG = /\s+-\s+(?:[a-z]{2}-[a-z]{2,4}|x64|x86|64-bit|32-bit|arm64)\s*$/i;
 const TRAILING_ARCH = /\s+(?:x64|x86|x86_64|amd64|arm64|64-bit|32-bit)\s*$/i;
-const COMPANY_SUFFIX = /(?:^|[,\s]+)(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|ag|sa|s\.a|bv|b\.v|plc|pty|srl|s\.r\.l|kk|oy|ab|as|a\/s)\.?\s*$/i;
+// The lookbehind starts a separator run only at its first character, so a long run of commas or spaces is scanned once, not once per position.
+export const COMPANY_SUFFIX = /(?:^|(?<![,\s])[,\s]+)(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|ag|sa|s\.a|bv|b\.v|plc|pty|srl|s\.r\.l|kk|oy|ab|as|a\/s)\.?\s*$/i;
 
 /** A display name without its version, architecture, locale and install scope. */
 export function productName(displayName: string): string {

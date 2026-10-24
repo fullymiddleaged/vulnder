@@ -241,14 +241,17 @@ export const api = new Hono<AppEnv>()
 
     const named = toCandidates(body);
     const productsNamed = named.filter((n) => n.kind === 'product').length;
+    const store = new D1BindingStore(c.env.DB);
+    // Charged before the inventory is cleaned, since that's most of a lookup's CPU. CVE IDs alone stay free.
+    if (named.length > 0 || (body.inventory?.length ?? 0) > 0) {
+      const quota = await takeDailyQuota(store, 'api-stack', client, { perClient: STACK_DAILY_PER_CLIENT, total: STACK_DAILY_TOTAL }, new Date());
+      if (quota !== 'ok') return c.json({ error: "today's limit for stack lookups is used up; reuse the stack from an earlier lookup" }, 429, { 'Retry-After': '3600' });
+    }
     // An inventory fills whatever product lookups the named products leave.
     const inventory = body.inventory ? fromInventory(body.inventory, Math.max(0, MAX_PRODUCT_LOOKUPS - productsNamed)) : null;
     const candidates = [...named, ...(inventory?.candidates ?? [])];
     let result: ResolveResult = { chips: [], droppedTransitive: 0 };
     if (candidates.length > 0) {
-      const store = new D1BindingStore(c.env.DB);
-      const quota = await takeDailyQuota(store, 'api-stack', client, { perClient: STACK_DAILY_PER_CLIENT, total: STACK_DAILY_TOTAL }, new Date());
-      if (quota !== 'ok') return c.json({ error: "today's limit for stack lookups is used up; reuse the stack from an earlier lookup" }, 429, { 'Retry-After': '3600' });
       try {
         result = await resolveCandidates(store, candidates);
       } catch (err) {

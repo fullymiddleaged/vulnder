@@ -1,4 +1,4 @@
-import type { Ecosystem } from '../../lib/normalize';
+import { ownValue, type Ecosystem } from '../../lib/normalize';
 
 /**
  * Package URLs (https://github.com/package-url/purl-spec), as found in
@@ -24,7 +24,7 @@ const TYPES: Record<string, Ecosystem> = {
 export function parsePurl(purl: string): { ecosystem: Ecosystem; name: string; version: string | null } | null {
   const m = /^pkg:([a-zA-Z][a-zA-Z0-9.+-]*)\/([^?#]+?)(?:@([^?#]+))?(?:[?#].*)?$/.exec(purl.trim());
   if (!m) return null;
-  const ecosystem = TYPES[m[1]!.toLowerCase()];
+  const ecosystem = ownValue(TYPES, m[1]!.toLowerCase());
   if (!ecosystem) return null;
   const segments = m[2]!.split('/').map((s) => decodeURIComponent(s));
   const version = m[3] ? decodeURIComponent(m[3]) : null;
