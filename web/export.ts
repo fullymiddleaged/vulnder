@@ -55,26 +55,36 @@ export function remediation(r: Result): string {
 }
 
 export function remediationSteps(r: Result): string[] {
+  const { steps, cisa } = remediationParts(r);
+  if (!cisa) return steps;
+  const last = steps.length - 1;
+  return [...steps.slice(0, last), `${steps[last]} ${cisa.lead}: ${cisa.action}`];
+}
+
+/**
+ * The same steps with CISA's required action held apart, so the page can fold
+ * its long wording away. remediationSteps puts it back at the end of the last step.
+ */
+export function remediationParts(r: Result): { steps: string[]; cisa: { lead: string; action: string } | null } {
   const steps: string[] = [];
+  let cisa: { lead: string; action: string } | null = null;
   if (r.match === 'close') steps.push('Confirm you run this product: it is a close match for a vaguely named item.');
   if (r.confidence === 'product_match') steps.push('Confirm the installed version is affected: only the product matched, not the version.');
   if (r.fixedVersions.length > 0) steps.push(`Upgrade to a fixed version (${r.fixedVersions.join(', ')}) or later on the same release line.`);
   // Listed: the list said where it is, not which version runs, so the advisory names the fix.
   else if (r.confidence === 'listed') {
-    steps.push(
-      r.mitigation?.action
-        ? `Patch every system it was found on, using the fixed version in the advisory. Until then, CISA's required action: ${r.mitigation.action}`
-        : 'Patch every system it was found on, using the fixed version or workaround in the advisory.',
-    );
+    if (r.mitigation?.action) {
+      steps.push('Patch every system it was found on, using the fixed version in the advisory.');
+      cisa = { lead: "Until then, CISA's required action", action: r.mitigation.action };
+    } else steps.push('Patch every system it was found on, using the fixed version or workaround in the advisory.');
   }
   else if (r.mitigation) {
-    steps.push(
-      r.mitigation.action
-        ? `No fixed version is known yet. CISA's required action: ${r.mitigation.action}`
-        : 'No fixed version is known yet. Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships.',
-    );
+    if (r.mitigation.action) {
+      steps.push('No fixed version is known yet.');
+      cisa = { lead: "CISA's required action", action: r.mitigation.action };
+    } else steps.push('No fixed version is known yet. Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships.');
   } else steps.push('No fixed version is listed. Check the advisory for a fix or workaround.');
-  return steps;
+  return { steps, cisa };
 }
 
 const KIND: Record<Reason['kind'], string> = { evidence: 'evidence', prediction: 'prediction', severity: 'severity', context: 'context' };

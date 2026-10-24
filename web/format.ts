@@ -296,6 +296,19 @@ export const RISK: Record<Priority, { label: string; light: 'red' | 'amber' | 'y
   },
 };
 
+/** How many Watch or Track results show before the rest wait behind a button. */
+export const TIER_SHOWN = 10;
+
+/**
+ * Splits a priority's results into those drawn at once and those drawn on request.
+ * Act now and Attend always show in full; Watch and Track show their first few,
+ * so a lockfile's hundreds of quiet CVEs don't bury the page. Nothing is dropped.
+ */
+export function tierFold<T>(p: Priority, items: readonly T[]): { shown: T[]; rest: T[] } {
+  if (p === 'act' || p === 'attend' || items.length <= TIER_SHOWN) return { shown: [...items], rest: [] };
+  return { shown: items.slice(0, TIER_SHOWN), rest: items.slice(TIER_SHOWN) };
+}
+
 /** "14 items: 12 exact, 2 close matches", for the folded stack on the results page. */
 export function stackSummary(items: readonly { close?: boolean }[]): string {
   const n = items.length;

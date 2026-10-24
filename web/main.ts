@@ -29,7 +29,7 @@ import {
 } from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
-import { exportFileName, exportMarkdown, remediationSteps } from './export';
+import { exportFileName, exportMarkdown, remediationParts } from './export';
 import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
 import { capEntries, fileProblem, joinNotes, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProblem, textProblem } from './upload';
 import {
@@ -71,6 +71,7 @@ import {
   targetedByItem,
   targetedCount,
   targetedStatus,
+  tierFold,
   turnstileSize,
   withItemMarks,
   type ChangeGroup,
@@ -99,6 +100,15 @@ const PRIORITIES: Priority[] = ['act', 'attend', 'watch', 'track'];
 
 const app = document.getElementById('app')!;
 const status = document.getElementById('status')!;
+
+/**
+ * A new view: back to the top of the page, with main taking focus so screen readers land there.
+ * Focus alone would scroll main into view, and on a phone that hides the name and tagline above it.
+ */
+function focusMain(): void {
+  window.scrollTo(0, 0);
+  app.focus({ preventScroll: true });
+}
 const DEFAULT_TITLE = document.title;
 let config: AppConfig | null = null;
 let turnstileToken: string | null = null;
@@ -140,7 +150,7 @@ function showInput(): void {
   markIndexable();
   document.title = DEFAULT_TITLE;
   renderInput();
-  app.focus();
+  focusMain();
 }
 
 async function refreshPass(): Promise<void> {
@@ -220,6 +230,7 @@ const CVE_EXAMPLE = ['CVE-2021-44228', 'CVE-2024-3400', 'CVE-2014-0160', 'CVE-20
  */
 function renderInput(prefill = '', tab: InputTab = tabFromHash()): void {
   clear(app);
+  delete document.body.dataset.view;
   const stackPanel = stackForm(tab === 'stack' ? prefill : '', () => select('cves', true));
   const cvePanel = cveForm(tab === 'cves' ? prefill : '');
   const panels: Record<InputTab, { el: HTMLElement; error: HTMLElement; field: HTMLTextAreaElement }> = { stack: stackPanel, cves: cvePanel };
@@ -558,7 +569,7 @@ function mountTurnstile(box: HTMLElement): void {
 
 /** Offered when free text can't be read: the verification check failed or the model is unavailable. */
 function addByHandButton(): HTMLElement {
-  return h('button', { type: 'button', class: 'link', onclick: () => (renderEdit([]), app.focus()) }, 'Add items by hand instead');
+  return h('button', { type: 'button', class: 'link', onclick: () => (renderEdit([]), focusMain()) }, 'Add items by hand instead');
 }
 
 // ---------- Loading ----------
@@ -776,14 +787,14 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
       void busy.done();
       renderEdit([]);
       report(notes.join(' ') || 'Nothing recognisable there. Add items by hand below.');
-      return void app.focus();
+      return void focusMain();
     }
     const stack = parseStack(items.join(','));
     if (stack.length > 200) {
       void busy.done();
       renderEdit(items);
       report('That is more than 200 items. Trim the list, or self-host Vulnder for larger stacks.');
-      return void app.focus();
+      return void focusMain();
     }
     pendingNotes = notes;
     pendingUnmatched = unrecognised.length;
@@ -796,7 +807,7 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
     if (err instanceof ApiError && err.fallback === 'manual') {
       renderEdit([]);
       report(err.message);
-      app.focus();
+      focusMain();
     } else if (err instanceof ApiError && err.reason === 'timeout') {
       // The description stays in the box, so trying again costs nothing.
       report(err.message, addByHandButton());
@@ -814,6 +825,7 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
  */
 function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map(), listed: string[] = []): void {
   clear(app);
+  delete document.body.dataset.view;
   const items = [...new Set(initial)];
   const cves = [...new Set(listed)];
   // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
@@ -986,6 +998,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
     busy = null;
   }
   clearInterval(lockTimer);
+  // Results get the wider column; sentences inside it keep their measure.
+  document.body.dataset.view = 'results';
   say(FEED_TITLE);
   busy ??= isList(stack) ? showBusy(LIST_TITLE, LIST_DETAIL, LIST_STEPS) : showBusy(FEED_TITLE, FEED_DETAIL, FEED_STEPS);
   let feed: Feed;
@@ -1121,7 +1135,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
   });
   const editButton = h(
     'button',
-    { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i])), supportByItem(feed.support ?? []), cves), app.focus()) },
+    { type: 'button', id: 'edit-stack', onclick: () => (renderEdit(items.map((i) => serializeStack([i])), supportByItem(feed.support ?? []), cves), focusMain()) },
     'Edit stack',
   );
   // Once this hour's stacks are used, nothing loads: not another stack, and not another window of this one.
@@ -1204,7 +1218,7 @@ function renderListStack(cves: string[], notes: string[]): HTMLElement {
         markIndexable();
         document.title = DEFAULT_TITLE;
         renderInput(cves.join('\n'), 'cves');
-        app.focus();
+        focusMain();
       },
     },
     'Edit list',
@@ -1464,7 +1478,7 @@ function riskSummary(feed: Feed): HTMLElement {
               'ul',
               { class: 'tile-vulns small', 'aria-label': `${RISK[p].label} CVEs` },
               shown.map((r) => h('li', {}, externalLink(r.links.advisory, r.id))),
-              rest > 0 ? h('li', {}, h('button', { type: 'button', class: 'link', onclick: jumpToResults }, `+${rest} more below`)) : null,
+              rest > 0 ? h('li', { class: 'more' }, h('button', { type: 'button', class: 'link', onclick: () => jumpToResults(p) }, `+${rest} more below`)) : null,
             )
           : null,
       );
@@ -1473,9 +1487,12 @@ function riskSummary(feed: Feed): HTMLElement {
   return h('div', { class: 'risk' }, strip, ledger, glossary());
 }
 
-/** Moves to the full results, smoothly unless motion is reduced, and takes focus there so keyboard and screen reader users land too. */
-function jumpToResults(): void {
-  const results = document.getElementById('results');
+/**
+ * Moves to the full results (to the priority's own section when they're grouped by priority),
+ * smoothly unless motion is reduced, and takes focus there so keyboard and screen reader users land too.
+ */
+function jumpToResults(p?: Priority): void {
+  const results = (p && document.getElementById(`tier-${p}-section`)) || document.getElementById('results');
   if (!results) return;
   results.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   results.focus({ preventScroll: true });
@@ -1739,15 +1756,41 @@ function groupingToggle(draw: (g: Grouping) => void, current: Grouping, teamed: 
 /** One section per priority that has results; the ledger above already shows the empty ones as 0. */
 function renderByPriority(results: Result[]): HTMLElement[] {
   const groups = byPriority(results);
-  return PRIORITIES.filter((p) => groups[p].length > 0).map((p) =>
-    h(
+  return PRIORITIES.filter((p) => groups[p].length > 0).map((p) => {
+    const families = foldFamilies(groups[p]);
+    const { shown, rest } = tierFold(p, families);
+    const list = renderFamilies(shown);
+    const left = rest.reduce((n, f) => n + 1 + f.related.length, 0);
+    const more = rest.length > 0
+      ? h(
+          'button',
+          {
+            type: 'button',
+            class: 'show-rest',
+            onclick: (ev: Event) => {
+              const added = renderFamilies(rest);
+              const first = added.firstElementChild as HTMLElement | null;
+              list.append(...added.children);
+              (ev.currentTarget as HTMLElement).remove();
+              if (first) {
+                first.tabIndex = -1;
+                first.focus();
+              }
+            },
+          },
+          `Show the other ${left.toLocaleString('en')} ${RISK[p].label} ${left === 1 ? 'CVE' : 'CVEs'}`,
+        )
+      : null;
+    return h(
       'section',
-      { class: `tier ${RISK[p].light}`, 'aria-labelledby': `tier-${p}` },
+      { class: `tier ${RISK[p].light}`, id: `tier-${p}-section`, 'aria-labelledby': `tier-${p}`, tabindex: -1 },
       h('h2', { id: `tier-${p}` }, h('span', { class: 'light', 'aria-hidden': 'true' }), `${RISK[p].label} `, h('span', { class: 'count' }, String(groups[p].length))),
-      h('p', { class: 'muted small' }, RISK[p].note, ' ', h('strong', { class: 'window' }, `${RISK[p].window}.`)),
-      renderList(groups[p]),
-    ),
-  );
+      h('p', { class: 'tier-brief small' }, `${RISK[p].brief} `, h('strong', { class: 'window' }, `${RISK[p].window}.`)),
+      h('details', { class: 'tier-criteria small' }, h('summary', {}, `What puts a CVE in ${RISK[p].label}`), h('p', { class: 'muted' }, RISK[p].note)),
+      list,
+      more,
+    );
+  });
 }
 
 /** One collapsible group per stack item, in fix-first order; urgent groups start open. */
@@ -1808,10 +1851,14 @@ function renderByTeam(groups: ComponentGroup[]): HTMLElement[] {
 
 /** Results, with each family of similar CVEs folded under its highest-ranked member. */
 function renderList(results: Result[]): HTMLElement {
+  return renderFamilies(foldFamilies(results));
+}
+
+function renderFamilies(families: ReturnType<typeof foldFamilies>): HTMLElement {
   return h(
     'ol',
     { class: 'results' },
-    foldFamilies(results).map(({ lead, related }) => {
+    families.map(({ lead, related }) => {
       const li = renderResult(lead);
       if (related.length > 0) {
         li.append(
@@ -1937,84 +1984,92 @@ function olderBadge(r: Result): HTMLElement {
   );
 }
 
-/** How it matched: a listed CVE says so in place of exact or close, and names any duplicates it replaces. */
-function matchBadges(r: Result): HTMLElement[] {
-  const replaces = r.replaces?.length
-    ? [h('span', { class: 'badge replaces', title: 'Rejected as a duplicate of this CVE, so this one ranks in its place' }, `Replaces ${r.replaces.join(', ')}`)]
-    : [];
-  if (r.confidence === 'listed') return [h('span', { class: 'badge match-exact' }, r.matched.length > 0 ? 'From your list' : 'In place of a duplicate'), ...replaces];
+/** How it matched, in words: a listed CVE says so in place of exact or close, and has no version to confirm. */
+function matchFacts(r: Result): HTMLElement[] {
+  if (r.confidence === 'listed') return [fact('Match', r.matched.length > 0 ? 'From your list' : 'In place of a duplicate')];
   return [
-    h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
-    h('span', { class: `badge ${r.confidence}` }, r.confidence === 'version_confirmed' ? 'Version confirmed' : 'Version not confirmed'),
-    ...replaces,
+    fact('Match', [h('span', { class: `match-${r.match}` }, r.match === 'exact' ? 'Exact' : 'Close match')]),
+    fact('Version', [h('span', { class: r.confidence }, r.confidence === 'version_confirmed' ? 'Confirmed' : 'Not confirmed')]),
   ];
 }
 
-/** The stack items it matched; listed CVEs are left out, since the ID above already says it. */
-function matchedLine(r: Result): HTMLElement | null {
-  const items = r.matched.filter((m) => !m.startsWith('cve:'));
-  if (items.length === 0) return null;
-  return h('p', { class: 'small' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '');
+/** One line of the fact rail: a quiet name and its value. */
+function fact(name: string, value: (string | HTMLElement | null)[] | string, attrs: { title?: string; class?: string } = {}): HTMLElement {
+  return h('div', attrs, h('dt', {}, name), h('dd', {}, ...(typeof value === 'string' ? [value] : value)));
 }
 
+/**
+ * A result is a card of two parts: a rail of facts (priority, scores, dates,
+ * how it matched, links) and a body to read (the ID, what it is, why it ranks
+ * where it does, what to do). On a wide screen the rail sits beside the body;
+ * on a narrow one the head goes first and the facts follow the body.
+ */
 function renderResult(r: Result): HTMLElement {
   const advisory = safeHref(r.links.advisory);
   const patch = safeHref(r.links.patch);
   const mitigationLink = safeHref(r.mitigation?.advisory);
   const e = r.evidence;
   const light = RISK[r.priority].light;
+  const items = r.matched.filter((m) => !m.startsWith('cve:'));
+  // The same steps as the export, so the page and a file handed to an assistant say the same thing;
+  // CISA's long required action is folded away rather than repeated in full on every card.
+  const { steps, cisa } = remediationParts(r);
   return h(
     'li',
     { class: `result ${light}` },
     h(
       'div',
-      { class: 'row wrap' },
+      { class: 'result-head' },
       h('span', { class: `pill ${light}` }, RISK[r.priority].label),
       h('span', { class: 'score', title: 'Risk score, 0 to 100: orders results within a priority' }, `Risk ${formatScore(r.score)}`),
       r.respondWithinHours !== null
         ? h(
             'span',
-            { class: 'badge respond', title: 'Guidance, not a deadline: exploits for urgent bugs now often appear within hours of disclosure' },
+            { class: 'respond small', title: 'Guidance, not a deadline: exploits for urgent bugs now often appear within hours of disclosure' },
             `Respond within ${describeHours(r.respondWithinHours)}`,
           )
         : null,
-      h('h3', {}, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id),
-      r.beforeWindow ? olderBadge(r) : null,
+      e.knownRansomware ? h('span', { class: 'ransomware small' }, 'Used in ransomware') : null,
     ),
-    r.title ? h('p', { class: 'title' }, r.title) : null,
-    renderSummary(r.summary),
-    renderWhy(r),
-    // The same steps as the export, so the page and a file handed to an assistant say the same thing.
-    h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), remediationSteps(r).join(' ')),
     h(
-      'p',
-      { class: 'facts row wrap small' },
-      r.cvss ? h('span', { class: 'badge' }, `CVSS ${r.cvss.score.toFixed(1)} ${cvssSeverity(r.cvss.score).toLowerCase()}`) : h('span', { class: 'badge muted' }, 'No CVSS'),
-      e.epss !== null
-        ? h(
-            'span',
-            { class: 'badge', title: 'Predicted probability of exploitation in the next 30 days' },
-            `EPSS ${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`,
-          )
-        : h('span', { class: 'badge muted' }, 'No EPSS yet'),
-      e.lev !== null && e.lev >= 0.01
-        ? h(
-            'span',
-            { class: 'badge', title: 'NIST LEV: estimated chance it has already been exploited, from its EPSS history. A lower bound, not evidence.' },
-            `LEV ${pct(e.lev)}`,
-          )
+      'div',
+      { class: 'result-body' },
+      h('h3', { class: 'row wrap' }, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id, r.beforeWindow ? olderBadge(r) : null),
+      r.title ? h('p', { class: 'title' }, r.title) : null,
+      // Listed CVEs are left out: the ID above already says it.
+      items.length > 0
+        ? h('p', { class: 'matched small muted' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '')
         : null,
-      e.knownRansomware ? h('span', { class: 'badge ransomware' }, 'Used in ransomware') : null,
-      ...matchBadges(r),
+      renderSummary(r.summary),
+      renderWhy(r),
+      h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), steps.join(' ')),
+      cisa ? h('details', { class: 'cisa-action small' }, h('summary', {}, cisa.lead), h('p', {}, cisa.action)) : null,
+      reportsLine(r),
     ),
-    e.kevAddedAt
-      ? h('p', { class: 'evidence' }, `On CISA KEV since ${e.kevAddedAt.slice(0, 10)}${e.kevDueDate ? `, federal due date ${e.kevDueDate.slice(0, 10)}` : ''}`)
-      : null,
-    reportsLine(r),
-    matchedLine(r),
+    h(
+      'dl',
+      { class: 'result-facts small' },
+      fact('CVSS', r.cvss ? `${r.cvss.score.toFixed(1)} ${cvssSeverity(r.cvss.score).toLowerCase()}` : [h('span', { class: 'muted' }, 'None')]),
+      fact(
+        'EPSS',
+        e.epss !== null
+          ? `${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`
+          : [h('span', { class: 'muted' }, 'Not yet')],
+        { title: 'Predicted probability of exploitation in the next 30 days' },
+      ),
+      e.lev !== null && e.lev >= 0.01
+        ? fact('LEV', pct(e.lev), { title: 'NIST LEV: estimated chance it has already been exploited, from its EPSS history. A lower bound, not evidence.' })
+        : null,
+      e.kevAddedAt ? fact('On CISA KEV', e.kevAddedAt.slice(0, 10)) : null,
+      e.kevAddedAt && e.kevDueDate ? fact('Federal due', e.kevDueDate.slice(0, 10)) : null,
+      ...matchFacts(r),
+      r.replaces?.length
+        ? fact('Replaces', r.replaces.flatMap((id, i) => [i > 0 ? ', ' : '', h('code', {}, id)]), { title: 'Rejected as a duplicate of this CVE, so this one ranks in its place' })
+        : null,
+    ),
     h(
       'p',
-      { class: 'small links' },
+      { class: 'small links result-links' },
       advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
       patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
       mitigationLink && mitigationLink !== advisory ? h('a', { href: mitigationLink, rel: 'noreferrer noopener', target: '_blank' }, 'Mitigation guidance') : null,
@@ -2161,7 +2216,7 @@ async function route(): Promise<void> {
     if (at !== routes) return;
     renderInput();
   }
-  app.focus();
+  focusMain();
 }
 
 window.addEventListener('popstate', () => void route());

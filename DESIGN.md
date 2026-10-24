@@ -103,7 +103,7 @@ components:
   result-card:
     backgroundColor: "{colors.card-white}"
     rounded: "{rounded.control}"
-    padding: "0.75rem 1rem"
+    padding: "1.1rem 1.4rem"
 ---
 
 # Design System: Vulnder
@@ -183,7 +183,7 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 
 ## Layout
 
-A single centred column, max 54rem (`--column`), with a 1rem gutter on each side. The header, main, status line and footer all share it. Rows, the ledger, Fix first and tables use its full width; sentences (result summaries, section intros, notices) stop at 72ch (`--measure`) so lines stay readable. In Fix first, each CVE is one line: its pill and ID keep their size and a long title clips with an ellipsis, so every row lines up. Sections in `main` stack on a grid with a 2.25rem gap; inside a section, items stack at about 0.6rem. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem and one below 36rem. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
+A single centred frame, max 72rem (`--column`), with a 1rem gutter on each side. The header, main, status line and footer all share it, on every page, so the logo and navigation never move between views. Content keeps to 54rem (`--content`), aligned to the frame's left edge: the home form, Edit, the prose pages and the footer's text. Results fill the whole frame (`body[data-view='results']`) so cards can carry a fact rail. Going from the form to results, the content grows to the right and nothing else shifts. Rows, the ledger, Fix first and tables use its full width; sentences (result summaries, section intros, notices, the headline's subtitle) stop at 72ch (`--measure`) so lines stay readable. In Fix first, each CVE is one line: its pill and ID keep their size and a long title clips with an ellipsis, so every row lines up. Sections in `main` stack on a grid with a 2.25rem gap. Result cards sit 1.25rem apart and priority sections 3rem apart (2.5rem on a phone), so each card reads as its own block. Watch and Track draw their first 10 cards and a "Show the other N" button; Act now and Attend always draw in full. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem; below 36rem it stays at two and drops each tile's CVE links. On a wide screen, Targeted by attackers sets each product on the left and its line on the right. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
 
 ## Elevation & Depth
 
@@ -220,7 +220,10 @@ The home form's two modes, "By stack" and "By CVE list", sit above the headline 
 - **Background:** Card White.
 - **Shadow Strategy:** none (see Elevation & Depth).
 - **Border:** 1px Hairline, plus a 4px left border in the tier's colour.
-- **Internal Padding:** 0.75rem 1rem for results, 0.6rem 0.9rem for changes.
+- **Internal Padding:** 1rem for results on a phone, 1.1rem 1.4rem from 56rem up; 0.6rem 0.9rem for changes.
+
+### Result card
+Two parts. The **head and rail**: the priority pill, `Risk N`, "Respond within …" in the tier's ink, then the facts as a `<dl>` of muted names and ink values (CVSS, EPSS, LEV, On CISA KEV, Federal due, Match, Version, Replaces), then Advisory and Patch links. The facts are plain text, not boxed badges. A close match says so in amber words, a confirmed version in green. The **body**: the ID (mono, linked), the title, "Matched `item`" in muted small text, the summary, Why, What to do, and who is warning about it. From 56rem up the rail is a 14rem column beside the body, split by a hairline. Below that, the head goes first, the body follows, and the facts wrap into a short block under a hairline. When there's no fixed version, What to do gives Vulnder's step and folds CISA's required action behind a "CISA's required action" summary. The words are unchanged, and the export carries them in full. Each priority section opens with its one-line brief and window, and folds its full criteria behind "What puts a CVE in …".
 
 ### Inputs / Fields
 - **Style:** Card White, 1px Control Edge border, 4px radius, 0.6rem 0.75rem padding, inherited font, violet caret. The description textarea is at least 9rem tall and resizes vertically.
@@ -249,7 +252,7 @@ The logo's lens circles its own centre while the right half of the broken shield
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep every page in the single 54rem column with the 1rem gutter, and running text within the 72ch measure.
+- **Do** keep every page in the same 72rem frame with the 1rem gutter, content at 54rem from its left edge (results use the full frame), and running text within the 72ch measure.
 - **Do** tie each result to its tier with the 4px left border and the tier's `--light` / `--ink` pair.
 - **Do** set IDs, package names and versions in Atkinson Mono.
 - **Do** define every colour as a token in both the light and dark blocks.

@@ -19,8 +19,13 @@
 
 :root {
   color-scheme: light dark;
-  /* The one column every page sits in; running text inside it keeps a readable measure. */
-  --column: 54rem;
+  /*
+   * The frame every page sits in, the same width everywhere so the header never moves.
+   * Content keeps to --content, aligned to the frame's left edge; results use the whole frame.
+   * Running text inside either keeps a readable measure.
+   */
+  --column: 72rem;
+  --content: 54rem;
   --measure: 72ch;
   /* Paper and ink lean towards the brand purple rather than a neutral grey. */
   --bg: #f5f3f8;
@@ -92,7 +97,12 @@ header.site, main, footer.site, .status { max-width: var(--column); margin: 0 au
 header.site { padding-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--fg); text-decoration: none; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
 .logo { width: 2.1rem; height: 2.1rem; color: var(--accent); align-self: center; }
-.tagline { flex-basis: 100%; color: var(--muted); margin: 0; font: inherit; }
+/* What Vulnder does, in one line under the name: the first sentence in ink, the rest muted. */
+.tagline { flex-basis: 100%; color: var(--muted); margin: 0.15rem 0 0; font: inherit; font-size: 1.15rem; line-height: 1.4; text-wrap: balance; }
+.tagline .lead { color: var(--fg); font-weight: 700; }
+/* The form, Edit and prose keep the narrower content width; results fill the frame for the card rail. */
+main > *, footer.site > * { max-width: var(--content); }
+body[data-view='results'] main > * { max-width: none; }
 /* minmax(0, 1fr): no single unbreakable item can make the column, and so the page, wider than the screen. */
 main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.25rem; margin-top: 2.5rem; }
 footer.site { margin: 4rem auto 2rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
@@ -241,7 +251,7 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 /* The match: a big headline, a strip in proportion to each priority, then a ledger of the four. */
 /* The floor shrinks only below about 300px, so "Unfortunately." still fits on one line. */
 .headline h2 { font-size: clamp(min(2.1rem, 11vw), 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 0.6rem; }
-.headline p { margin: 0; font-size: 1.1rem; }
+.headline p { margin: 0; font-size: 1.1rem; max-width: var(--measure); }
 .share-bar { margin-top: 1rem; gap: 0.4rem; }
 .risk { display: grid; gap: 1rem; margin-top: -1rem; }
 .risk-strip { display: flex; gap: 3px; height: 0.9rem; }
@@ -270,8 +280,14 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 .glossary dt { font-weight: 700; }
 .glossary dd { margin: 0; color: var(--muted); }
 @media (max-width: 48rem) {
-  .risk-summary { grid-template-columns: repeat(2, 1fr); row-gap: 1.25rem; }
+  .risk-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 1.25rem; }
   .risk-tile:nth-child(3) { padding-left: 0; border-left: none; }
+}
+/* On a phone the tiles keep their counts and windows; their first CVEs lead each priority's list just below anyway. */
+@media (max-width: 36rem) {
+  .risk-tile { padding: 0 0.75rem; }
+  .risk-tile:nth-child(odd) { padding-left: 0; border-left: none; }
+  .tile-vulns li:not(.more) { display: none; }
 }
 
 .grouping { border: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
@@ -281,7 +297,7 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 .segment span { display: inline-block; border: 1px solid var(--control); border-radius: 999px; padding: 0.25rem 0.85rem; }
 .segment input:checked + span { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 700; }
 .segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
-.results-view { display: grid; gap: 2rem; margin-top: -1rem; }
+.results-view { display: grid; gap: 3rem; margin-top: -1rem; }
 .results-view:focus { outline: none; }
 .results-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
 
@@ -298,26 +314,82 @@ details[open] > summary .when-open { display: inline; }
 .tier .window { color: var(--fg); }
 .tier .count { font-size: 0.85rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .tier > p { margin-top: 0; }
+/* A priority opens with one line and its window; what puts a CVE there is a click away. */
+.tier .tier-brief { margin: 0 0 0.2rem; }
+.tier-criteria { margin-bottom: 1.1rem; }
+.tier-criteria summary { cursor: pointer; color: var(--accent); }
+.tier-criteria p { margin: 0.4rem 0 0; max-width: var(--measure); }
+.show-rest { margin-top: 1.25rem; }
 /* A team's heading carries its priority pills; the components under it carry their own lights. */
 .team h2 { flex-wrap: wrap; }
 .team h2 .tally { display: flex; gap: 0.3rem; flex-wrap: wrap; font-weight: 400; }
 .summary .expand { font-weight: 600; white-space: nowrap; }
-.results { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+/* Room between cards, so each reads as its own block rather than one wall of text. */
+.results { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.25rem; }
 /* CVE text carries long identifiers, paths and URLs; break them rather than widen the page. */
 .result, .change, .brief { overflow-wrap: anywhere; }
-.result { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--light); border-radius: var(--radius); padding: 0.75rem 1rem; }
+/*
+ * A result: head (priority, score, respond-by), body (what it is, why, what to do),
+ * then its facts and links. Narrow, they stack in that order; wide, the head, facts
+ * and links form a rail beside the body.
+ */
+.result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'head' 'body' 'facts' 'links';
+  row-gap: 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--light);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
 .result h3 a, .brief strong a, .change h3 a { font-family: var(--mono); }
+.result-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; }
+.result-head .respond { font-weight: 700; color: var(--ink); }
+.result-head .ransomware { font-weight: 700; }
+.result-body { grid-area: body; min-width: 0; display: grid; align-content: start; gap: 0.6rem; }
+.result .result-body > * { margin: 0; }
+.result-body h3 { gap: 0.3rem 0.6rem; font-size: 1.05rem; }
+/* The ID, its title and what it matched in your stack read as one heading. */
+.result .result-body .title { margin-top: -0.25rem; }
+.result .result-body .matched { margin-top: -0.4rem; }
+/* Facts as plain name and value, no boxes: names muted, values in ink. */
+.result-facts { grid-area: facts; margin: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; line-height: 1.4; border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.result-facts > div { display: flex; gap: 0.35rem; }
+.result-facts dt { color: var(--muted); }
+.result-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.result-facts .match-close { color: var(--likely); font-weight: 700; }
+.result-facts .version_confirmed { color: var(--ok); }
+.result .result-links { grid-area: links; margin: 0; }
+/* Similar CVEs fold under the card, across its full width. */
+.result > .related { grid-column: 1 / -1; margin-top: 0; }
+/* CISA's required action: the same words, folded so they aren't repeated in full on every card. */
+.cisa-action summary { cursor: pointer; color: var(--accent); }
+.cisa-action p { margin: 0.35rem 0 0; }
+@media (min-width: 56rem) {
+  .result {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-areas: 'head body' 'facts body' 'links body';
+    grid-template-rows: auto auto 1fr;
+    column-gap: 1.4rem;
+    padding: 1.1rem 1.4rem;
+  }
+  .result-body { border-left: 1px solid var(--border); padding-left: 1.4rem; }
+  .result-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .result-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 0.75rem; border-top: 0; padding-top: 0; align-content: start; }
+  .result-facts > div { display: contents; }
+  .result .result-links { align-self: start; }
+}
 
 .component { border-top: 1px solid var(--rule); border-left: 4px solid var(--light); padding: 0.3rem 0 0.3rem 0.85rem; }
 .component summary { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; cursor: pointer; padding: 0.35rem 0; font-weight: 700; }
 .component .tally { margin-left: auto; display: flex; gap: 0.3rem; flex-wrap: wrap; }
 .component[open] > .results { margin: 0.4rem 0 0.75rem; }
-.result p { margin: 0.3rem 0; }
 .result .title { font-weight: 700; }
 .related { margin-top: 0.5rem; }
 .related > summary { cursor: pointer; color: var(--muted); }
 .related[open] > .results { margin-top: 0.5rem; }
-.evidence { font-size: 0.9rem; }
 .badge { font-size: 0.78rem; border-radius: 3px; padding: 0.05rem 0.45rem; border: 1px solid currentColor; white-space: nowrap; }
 .badge.severity { color: var(--fg); }
 .badge.version_confirmed { color: var(--ok); }
@@ -330,8 +402,6 @@ details[open] > summary .when-open { display: inline; }
 
 @media (max-width: 36rem) {
   .row { flex-wrap: wrap; }
-  .risk-summary { grid-template-columns: 1fr; }
-  .risk-tile { padding-left: 0; border-left: none; }
   .component .tally { margin-left: 0; }
   .brand { font-size: 1.3rem; }
   .stack-actions { margin-left: 0; }
@@ -341,8 +411,7 @@ details[open] > summary .when-open { display: inline; }
 
 .badge.match-exact { color: var(--fg); }
 .badge.match-close { color: var(--likely); border-style: dashed; }
-.result .row { gap: 0.4rem 0.6rem; }
-.change-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.6rem; }
+.change-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 1.25rem; }
 .change { border: 1px solid var(--border); border-left: 4px solid var(--light); border-radius: var(--radius); padding: 0.6rem 0.9rem; background: var(--card); }
 .change h3 { margin: 0.3rem 0; }
 .change h3 .title { font-weight: 500; }
@@ -384,9 +453,15 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .badge.support.eol { color: var(--exploited); }
 .badge.support.ending { color: var(--likely); }
 /* Targeted by attackers: evidence about the product, not a priority, so no tier colour and no edge. */
-.targeted-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.targeted-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 1rem; }
 .targeted-item { overflow-wrap: anywhere; }
 .targeted-item p { margin: 0.2rem 0; }
+/* Wide: one row per product, its name on the left and what CISA added on the right. */
+@media (min-width: 48rem) {
+  .targeted-list { gap: 0.6rem; }
+  .targeted-item { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); column-gap: 1.25rem; align-items: baseline; }
+  .targeted-item p { margin: 0; }
+}
 .badge.targeted { color: var(--fg); font-weight: 700; }
 .rank { display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border-radius: 3px; background: var(--light); color: var(--on-light); font-weight: 800; font-size: 0.85rem; flex: none; font-variant-numeric: tabular-nums; }
 .score { font-size: 0.8rem; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -398,7 +473,6 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .mitigate strong { color: var(--ink); }
 /* Evidence, not a priority: set strong in ink rather than in a tier colour. */
 .badge.ransomware { color: var(--fg); font-weight: 700; }
-.facts { gap: 0.35rem 0.5rem; margin: 0.4rem 0; }
 .badge.muted { color: var(--muted); border-style: dashed; }
 /* From before the chosen window, shown by the year-long safety net. */
 .badge.older { color: var(--muted); }
@@ -410,6 +484,8 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .fix-item .product-name { font-weight: 700; }
 @media (max-width: 36rem) {
   .fix-item .tally { margin-left: 0; }
+  .fix-item summary { padding: 0.85rem 0.25rem; }
+  .results-view { gap: 2.5rem; }
   .briefs { padding-left: 0.25rem; }
 }
 /* A phone with a large font setting gets this narrow: unwrapped labels would push the page wider and Chrome would zoom out. */
