@@ -97,6 +97,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 - Pasted manifests could make the server spend minutes of CPU on one request: a long run of spaces or blank lines, or unclosed tags in a `pom.xml`, made the format detection and the Maven parser quadratic. They now run in linear time.
 - A description or manifest repeating one product thousands of times, or naming a product category many times, made one request do millions of comparisons. Each distinct product is now looked up once, repeats share the result, each name is compared only with catalog entries that share its first letters, and a request whose names would match more than 2,000 products is refused.
 - Resolving a vendor name ("Cisco", "Microsoft Exchange") now reads only that vendor's top few products from the database instead of all of them, up to 12,000 fewer rows read per request. Needs migration 0006.
+- zod is updated to 4.6.7 for GHSA-mrhx-c7xc-m3w5. With 4.6.5, a request body near the 1 MB cap holding a huge array could use a lot of memory and CPU before the length limit turned it away.
 - IPv6 clients are rate-limited and counted by their /64 rather than their full address, which one connection can change at will.
 - Updated Wrangler to 4.149 for CVE-2026-96889 in `sharp`'s bundled librsvg (development tooling only; the deployed Worker doesn't include it).
 
