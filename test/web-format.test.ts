@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, TIER_SHOWN, tierFold, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -94,6 +94,16 @@ describe('UI formatting', () => {
     expect(matchHeadline(0, 30, 0).subtitle).toMatch(/^Nobody's been into your stack/);
     // With matches, unmatched names don't change the headline; the stack notes cover them.
     expect(matchHeadline(2, 30, 3).title).toBe("It's a match. Unfortunately.");
+  });
+
+  it('draws Act now and Attend in full, and the first few of Watch and Track with the rest kept', () => {
+    const many = Array.from({ length: TIER_SHOWN + 5 }, (_, i) => i);
+    expect(tierFold('act', many)).toEqual({ shown: many, rest: [] });
+    expect(tierFold('attend', many)).toEqual({ shown: many, rest: [] });
+    const watch = tierFold('watch', many);
+    expect(watch.shown).toHaveLength(TIER_SHOWN);
+    expect([...watch.shown, ...watch.rest]).toEqual(many);
+    expect(tierFold('track', many.slice(0, TIER_SHOWN))).toEqual({ shown: many.slice(0, TIER_SHOWN), rest: [] });
   });
 
   it('sums up a stack by how sure each match is', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Feed, Result } from '../web/api';
 import { serializeStack } from '../src/stack/format';
-import { EXPORT_INSTRUCTIONS, exportFileName, exportMarkdown, mdText, remediation, remediationSteps } from '../web/export';
+import { EXPORT_INSTRUCTIONS, exportFileName, exportMarkdown, mdText, remediation, remediationParts, remediationSteps } from '../web/export';
 
 function result(id: string, over: Partial<Result> = {}): Result {
   return {
@@ -90,6 +90,18 @@ describe('remediation', () => {
     expect(steps).toHaveLength(3);
     expect(steps[0]).toMatch(/^Confirm you run this product/);
     expect(steps.join(' ')).toBe(remediation(closeMatch));
+  });
+
+  it("holds CISA's action apart for the page to fold, and puts it back for the export", () => {
+    const productOnly = result('X', { confidence: 'product_match', mitigation: { action: 'Apply vendor mitigations.', advisory: null } });
+    expect(remediationParts(productOnly)).toEqual({
+      steps: ['Confirm the installed version is affected: only the product matched, not the version.', 'No fixed version is known yet.'],
+      cisa: { lead: "CISA's required action", action: 'Apply vendor mitigations.' },
+    });
+    expect(remediation(productOnly)).toBe(
+      "Confirm the installed version is affected: only the product matched, not the version. No fixed version is known yet. CISA's required action: Apply vendor mitigations.",
+    );
+    expect(remediationParts(exploited).cisa).toBeNull();
   });
 });
 
@@ -295,6 +307,10 @@ describe('a listed CVE list', () => {
       "Patch every system it was found on, using the fixed version in the advisory. Until then, CISA's required action: Apply updates per vendor instructions.",
     ]);
     expect(remediationSteps(replacement)).toEqual(['Patch every system it was found on, using the fixed version or workaround in the advisory.']);
+    expect(remediationParts(kev)).toEqual({
+      steps: ['Patch every system it was found on, using the fixed version in the advisory.'],
+      cisa: { lead: "Until then, CISA's required action", action: 'Apply updates per vendor instructions.' },
+    });
   });
 
   it('ends with a dated record of the check, its sources and a decisions table for what is due soon', () => {
