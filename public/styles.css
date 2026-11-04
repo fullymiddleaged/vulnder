@@ -203,7 +203,8 @@ code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; 
 .tab-panel > .block:first-child { border-top: none; padding-top: 0; }
 /* Nothing but identifiers goes in it. */
 #cve-text { font-family: var(--mono); font-size: 0.95rem; }
-.compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+/* A rem between rows, so the hint, examples, drop zone and button each get their own line of air. */
+.compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .compose-label { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin-bottom: 0.2rem; }
 /* Three facts the site states elsewhere, under the form; the privacy link opens the footer's details. */
 .trust { margin: 0; }
@@ -212,9 +213,11 @@ code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; 
 .sample > * { max-width: var(--content); }
 .sample p { margin: 0.75rem 0 0; }
 body[data-view] .sample, main[aria-busy='true'] ~ .sample { display: none; }
+/* The counter line is the field's caption, so it stays close to it. */
+.compose .row { margin-top: -0.5rem; }
 .compose .row p { margin: 0; }
 /* The button is the width of the Turnstile widget beneath it (300px, the smallest the widget renders at). */
-.compose button.primary { justify-self: start; width: min(300px, 100%); padding: 0.65rem 1.2rem; }
+.compose button.primary { justify-self: start; width: min(300px, 100%); padding: 0.65rem 1.2rem; margin-top: 0.25rem; }
 .turnstile { min-height: 65px; }
 .turnstile:empty { min-height: 0; }
 .examples { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
