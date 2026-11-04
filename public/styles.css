@@ -214,7 +214,7 @@ code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; 
 body[data-view] .sample, main[aria-busy='true'] ~ .sample { display: none; }
 .compose .row p { margin: 0; }
 /* The button is the width of the Turnstile widget beneath it (300px, the smallest the widget renders at). */
-.compose button.primary { justify-self: start; width: min(300px, 100%); padding: 0.8rem 1.2rem; font-size: 1.05rem; }
+.compose button.primary { justify-self: start; width: min(300px, 100%); padding: 0.65rem 1.2rem; }
 .turnstile { min-height: 65px; }
 .turnstile:empty { min-height: 0; }
 .examples { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
