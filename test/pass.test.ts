@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { maintenanceStatements } from '../src/ingest/maintenance';
-import { issuePass, lockedUntil, PASS_STACKS, passStatus, usePass } from '../src/lib/pass';
+import { issuePass, lockedUntil, passLimit, PASS_STACKS, passStatus, usePass } from '../src/lib/pass';
 import { SITEVERIFY_URL, TURNSTILE_ACTION } from '../src/resolve/turnstile';
 import { app } from '../src/index';
 import { resetDb, rows, store } from './helpers/db';
@@ -30,6 +30,18 @@ describe('feed passes', () => {
     expect(await usePass(store(), id, 'pypi:django', SECRET, at(60))).toEqual({ ok: true, status: { used: 1, limit: 2, resetsAt: at(120).toISOString() } });
   });
 
+  it('takes its hourly allowance from PASS_STACKS, up to 100', () => {
+    for (const [value, limit] of [['1', 1], ['10', 10], ['100', 100], ['101', 100]] as const) expect(passLimit(value)).toBe(limit);
+    for (const value of [undefined, '', '0', '2.5', '-3', 'ten', ' ']) expect(passLimit(value)).toBe(PASS_STACKS);
+  });
+
+  it('allows as many stacks as its limit', async () => {
+    const id = await issuePass(store(), T0);
+    for (const s of ['npm:next', 'pypi:django', 'p:f5/nginx']) expect(await usePass(store(), id, s, SECRET, T0, 3)).toMatchObject({ ok: true });
+    expect(await usePass(store(), id, 'gem:rails', SECRET, T0, 3)).toEqual({ ok: false, status: { used: 3, limit: 3, resetsAt: at(60).toISOString() } });
+    expect(await passStatus(store(), id, T0, 3)).toMatchObject({ used: 3, limit: 3 });
+  });
+
   it('stores only keyed hashes of stacks', async () => {
     const id = await issuePass(store(), T0);
     await usePass(store(), id, 'npm:next', SECRET, T0);
@@ -50,12 +62,29 @@ describe('feed passes', () => {
 });
 
 describe('feed passes on the routes', () => {
-  const e = () => ({ ...env, TURNSTILE_SECRET_KEY: SECRET });
+  // The default allowance, whatever a local .dev.vars raises it to.
+  const e = () => ({ ...env, TURNSTILE_SECRET_KEY: SECRET, PASS_STACKS: undefined });
   const feed = (s: string, cookie: string, limiter?: RateLimit) =>
     app.request(`/api/feed?s=${encodeURIComponent(s)}`, { headers: { cookie, 'cf-connecting-ip': '203.0.113.9' } }, { ...e(), ...(limiter ? { FEED_LIMITER: limiter } : {}) });
 
   /** The lock cookie a response sets, as `name=value`, or null. */
   const lockCookie = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith('vulnder_lock='))?.split(';')[0] ?? null;
+
+  it('lets PASS_STACKS raise the allowance on a deployment', async () => {
+    const id = await issuePass(store(), new Date());
+    const cookie = `vulnder_pass=${id}`;
+    const raised = { ...e(), PASS_STACKS: '3' };
+    // Stacks no other test asks for: a cached response would skip the limits the other tests check.
+    for (const s of ['cargo:serde', 'hex:phoenix', 'pub:http']) {
+      const res = await app.request(`/api/feed?s=${encodeURIComponent(s)}`, { headers: { cookie } }, raised);
+      expect(res.status).toBe(200);
+    }
+    const fourth = await app.request(`/api/feed?s=${encodeURIComponent('gem:rails')}`, { headers: { cookie } }, raised);
+    expect(fourth.status).toBe(429);
+    expect(await fourth.json()).toMatchObject({ reason: 'pass-limit', pass: { used: 3, limit: 3 } });
+    const status = await app.request('/api/pass', { headers: { cookie } }, raised);
+    expect(await status.json()).toMatchObject({ active: true, used: 3, limit: 3 });
+  });
 
   it('limits a pass to two different stacks an hour, then locks the browser', async () => {
     const id = await issuePass(store(), new Date());

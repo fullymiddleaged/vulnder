@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { BodyTooLarge, readCapped } from '../lib/body';
-import { lockedStatus } from '../lib/pass';
+import { lockedStatus, passLimit } from '../lib/pass';
 import { earnPass, passLimited, readLock } from './pass';
 import { clientKey } from '../lib/client';
 import { limitFromVar, takeDailyQuota, type QuotaResult } from '../lib/quota';
@@ -84,7 +84,7 @@ export const resolve = new Hono<AppEnv>().post('/', async (c) => {
   // A browser whose pass is spent couldn't load the result; refuse before Turnstile or D1.
   const now = new Date();
   const locked = readLock(c, now);
-  if (locked) return passLimited(c, lockedStatus(locked), now);
+  if (locked) return passLimited(c, lockedStatus(locked, passLimit(c.env.PASS_STACKS)), now);
 
   const ip = c.req.header('cf-connecting-ip') ?? null;
   // Limits and daily counts go by IPv6 /64, not the full address (src/lib/client.ts).

@@ -15,7 +15,7 @@ Describe what you run, drop in a lockfile or SBOM, or paste the CVE IDs from a s
 
 - Takes your stack three ways: a description in your own words, a lockfile, SBOM or MCP config, or a list of CVE IDs (pasted, or from a Nessus, Qualys, Tenable, Trivy or Grype report). Files are read in your browser. A CVE list is ranked whatever its age.
 - Lets you check the stack before the results. A broad name like "Cisco switches" becomes several close matches, marked `?` and never hidden. Tick Edge device on anything the internet can reach (VPNs, firewalls and gateways are ticked for you) and Has ESU on a release you pay extended support for. A description that reads as an enterprise stack gives each item a team, which you can change.
-- Shows the results: counts by priority, Fix first, out-of-support notices, what changed in the last 7 days, then every CVE, grouped by priority, by component or by team. Similar CVEs in one product fold under the highest-ranked one.
+- Shows the results: a line each for out of support, targeted products and security teams' warnings (each opens to its list), then two tabs. Results holds Fix first, counts by priority and every CVE, grouped by priority, by component or by team; What changed holds the last 7 days' changes. Similar CVEs in one product fold under the highest-ranked one.
 - Shares them: copy the page link, the Atom link or badge Markdown, or use Export for AI to save a Markdown file of every CVE with its priority, reasons and fix, for a coding agent (or a person) to work through. It ends with a dated record of the check and a decisions table, for your own records.
 
 ## Ranking

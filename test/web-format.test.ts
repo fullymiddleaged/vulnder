@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportLines, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, TIER_SHOWN, tierFold, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemLabel, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportHeadline, supportLines, targetedHeadline, reportedHeadline, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, TIER_SHOWN, tierFold, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -79,13 +79,11 @@ function change(vulnId: string, type: Change['type'], occurredAt: string, detail
 describe('UI formatting', () => {
   it('writes the match headline for none, one and many', () => {
     expect(matchHeadline(0, 30)).toEqual({ title: 'No matches.', subtitle: "Nobody's been into your stack in the last 30 days. Keep it that way." });
-    expect(matchHeadline(1, 7).subtitle).toBe('1 CVE is into your stack from the last 7 days. Red flags, ranked:');
-    expect(matchHeadline(3, 30)).toEqual({ title: "It's a match. Unfortunately.", subtitle: '3 CVEs are into your stack from the last 30 days. Red flags, ranked:' });
+    expect(matchHeadline(1, 7).subtitle).toBe('1 CVE from the last 7 days affects your stack.');
+    expect(matchHeadline(3, 30)).toEqual({ title: "It's a match. Unfortunately.", subtitle: '3 CVEs from the last 30 days affect your stack.' });
     // Older results from the safety net are counted apart, so the window isn't misstated.
-    expect(matchHeadline(3, 30, 0, 1).subtitle).toBe(
-      '2 CVEs are into your stack from the last 30 days, plus 1 older one from the last year that is exploited, likely to be, or critical. Red flags, ranked:',
-    );
-    expect(matchHeadline(2, 7, 0, 2).subtitle).toBe('2 CVEs from the last year are still into your stack: exploited, likely to be, or critical. Red flags, ranked:');
+    expect(matchHeadline(3, 30, 0, 1).subtitle).toBe('2 CVEs from the last 30 days affect your stack, plus 1 older one that is exploited, likely to be, or critical.');
+    expect(matchHeadline(2, 7, 0, 2).subtitle).toBe('2 CVEs from the last year affect your stack: exploited, likely to be, or critical.');
   });
 
   it("doesn't call a stack clear when some of its names were never checked", () => {
@@ -369,13 +367,36 @@ describe('support notices', () => {
   });
 
   it('says what happened and what to do', () => {
-    expect(supportLines(notice({}))).toEqual(['Out of support since 2020-01-14: it gets no more security updates. Upgrade to a supported release urgently.']);
+    expect(supportLines(notice({}))).toEqual(['Out of support since 2020-01-14. Upgrade to a supported release urgently.']);
     expect(supportLines(notice({ esuUntil: '2026-10-13' }))[1]).toBe('Paid extended security updates run until 2026-10-13. If you have them, tick Has ESU under Edit stack.');
-    expect(supportLines(notice({ esu: true }))[0]).toBe('Paid extended support ended on 2020-01-14, so it gets no more security updates. Upgrade to a supported release urgently.');
+    expect(supportLines(notice({ esu: true }))[0]).toBe('Paid extended support ended on 2020-01-14. Upgrade to a supported release urgently.');
     expect(supportLines(notice({ state: 'ending', date: '2026-11-10' }))).toEqual(['Support ends 2026-11-10. Plan the upgrade to a supported release now.']);
     expect(supportLines(notice({ state: 'covered', date: '2030-04-23', esu: true }))).toEqual(['Covered by paid extended support until 2030-04-23. Plan the upgrade before then.']);
-    expect(supportLines(notice({ date: null, source: 'cve', cve: 'CVE-2026-9214' }))[0]).toBe('Out of support: it gets no more security updates. Upgrade to a supported release urgently.');
+    expect(supportLines(notice({ date: null, source: 'cve', cve: 'CVE-2026-9214' }))[0]).toBe('Out of support. Upgrade to a supported release urgently.');
     expect(supportLines(notice({ edge: true })).at(-1)).toContain('BOD 26-02');
+  });
+
+  it('sums them up in one line', () => {
+    expect(supportHeadline([notice({})])).toBe('1 product no longer gets security fixes.');
+    expect(supportHeadline([notice({}), notice({}), notice({ state: 'ending' })])).toBe('2 products no longer get security fixes and 1 product loses support within 90 days.');
+    expect(supportHeadline([notice({ state: 'ending' }), notice({ state: 'ending' }), notice({ state: 'covered' })])).toBe(
+      '2 products lose support within 90 days and 1 product is on paid extended support.',
+    );
+    expect(supportHeadline([notice({}), notice({ state: 'ending' }), notice({ state: 'covered' }), notice({ state: 'covered' })])).toBe(
+      '1 product no longer gets security fixes, 1 product loses support within 90 days and 2 products are on paid extended support.',
+    );
+  });
+
+  it('says what CISA did, never that these versions are exploited', () => {
+    const t = { items: ['p:fortinet/fortios'], kev: [{ id: 'CVE-2026-1', addedAt: '2026-10-01' }] };
+    expect(targetedHeadline([t])).toBe('CISA added CVEs in 1 of your products to KEV in the last 90 days.');
+    expect(targetedHeadline([t, t, t])).toBe('CISA added CVEs in 3 of your products to KEV in the last 90 days.');
+    expect(targetedHeadline([t])).not.toMatch(/exploit/i);
+  });
+
+  it('counts the CVEs trusted teams are warning about', () => {
+    expect(reportedHeadline([result('CVE-1', 'exploited')])).toBe('Trusted security teams are warning about 1 CVE in these results.');
+    expect(reportedHeadline([result('CVE-1', 'exploited'), result('CVE-2', 'backlog')])).toBe('Trusted security teams are warning about 2 CVEs in these results.');
   });
 
   it('ranks out of support with Act now and ending with Attend', () => {
@@ -400,32 +421,32 @@ describe('targeted notices', () => {
   const hit = (id: string, matched: string[]) => ({ id, matched }) as unknown as Result;
 
   it('counts one or many', () => {
-    expect(targetedCount({ items: [], kev: [kev('CVE-1')] })).toBe('one of its CVEs');
-    expect(targetedCount({ items: [], kev: [kev('CVE-1'), kev('CVE-2')] })).toBe('2 of its CVEs');
+    expect(targetedCount({ items: [], kev: [kev('CVE-1')] })).toBe('1 CVE');
+    expect(targetedCount({ items: [], kev: [kev('CVE-1'), kev('CVE-2')] })).toBe('2 CVEs');
   });
 
   it('says whether the KEV CVEs are in the results for that item', () => {
     const n = { items: ['p:ivanti/connect_secure'], kev: [kev('CVE-1'), kev('CVE-2')] };
-    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure']), hit('CVE-2', ['p:ivanti/connect_secure'])])).toBe('Both affect your stack: see Act now below.');
-    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure'])])).toBe('1 of them affects your stack (see Act now below); the others affect versions you don’t run.');
+    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure']), hit('CVE-2', ['p:ivanti/connect_secure'])])).toBe('Both in Act now.');
+    expect(targetedStatus(n, [hit('CVE-1', ['p:ivanti/connect_secure'])])).toBe('1 in Act now; the rest aren’t in your version.');
     const three = { ...n, kev: [kev('CVE-1'), kev('CVE-2'), kev('CVE-3')] };
-    expect(targetedStatus(three, ['CVE-1', 'CVE-2', 'CVE-3'].map((id) => hit(id, ['p:ivanti/connect_secure'])))).toBe('All 3 affect your stack: see Act now below.');
-    expect(targetedStatus(n, [])).toBe('None affect the version you gave, but the product is a target.');
+    expect(targetedStatus(three, ['CVE-1', 'CVE-2', 'CVE-3'].map((id) => hit(id, ['p:ivanti/connect_secure'])))).toBe('All 3 in Act now.');
+    expect(targetedStatus(n, [])).toBe('None in your version.');
     // A result for the same CVE under another item doesn't count for this one.
-    expect(targetedStatus(n, [hit('CVE-1', ['p:other/thing'])])).toBe('None affect the version you gave, but the product is a target.');
+    expect(targetedStatus(n, [hit('CVE-1', ['p:other/thing'])])).toBe('None in your version.');
     const one = { items: ['npm:next@14.2.3'], kev: [kev('CVE-9')] };
-    expect(targetedStatus(one, [hit('CVE-9', ['npm:next@14.2.3'])])).toBe('It affects your stack: see Act now below.');
-    expect(targetedStatus(one, [])).toBe('It doesn’t affect the version you gave, but the product is a target.');
+    expect(targetedStatus(one, [hit('CVE-9', ['npm:next@14.2.3'])])).toBe('In Act now.');
+    expect(targetedStatus(one, [])).toBe('Not in your version.');
   });
 
   it('talks about the list for a listed CVE’s product, where results match cve: items', () => {
     const n = { items: ['p:ivanti/connect_secure'], kev: [kev('CVE-1'), kev('CVE-2')], listed: true as const, label: 'Ivanti Connect Secure' };
     const listed = (id: string) => hit(id, [`cve:${id.slice(4)}`]);
-    expect(targetedStatus(n, [listed('CVE-1'), listed('CVE-2')])).toBe('Both are in your list: see Act now below.');
-    expect(targetedStatus(n, [listed('CVE-1')])).toBe('1 of them is in your list (see Act now below); the others aren’t.');
-    expect(targetedStatus(n, [])).toBe('None are in your list, but the product is a target.');
-    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [listed('CVE-1')])).toBe('It’s in your list: see Act now below.');
-    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [])).toBe('It isn’t in your list, but the product is a target.');
+    expect(targetedStatus(n, [listed('CVE-1'), listed('CVE-2')])).toBe('Both in Act now.');
+    expect(targetedStatus(n, [listed('CVE-1')])).toBe('1 in Act now; the rest aren’t in your list.');
+    expect(targetedStatus(n, [])).toBe('None in your list.');
+    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [listed('CVE-1')])).toBe('In Act now.');
+    expect(targetedStatus({ ...n, kev: [kev('CVE-1')] }, [])).toBe('Not in your list.');
   });
 
   it('finds each item’s notice by its name, whatever its marks', () => {
@@ -434,7 +455,6 @@ describe('targeted notices', () => {
   });
 
   it('stays on KEV’s word and keeps priorities out of it', () => {
-    expect(TARGETED_INTRO).toContain('Known Exploited Vulnerabilities catalog');
     expect(TARGETED_INTRO).toContain('Priorities don’t change.');
     expect(TARGETED_INTRO).not.toMatch(/EPSS/);
   });
@@ -458,6 +478,21 @@ describe('item marks', () => {
     // Out of order or unknown: left in the name, as the server would reject it.
     expect(itemMarks('p:f5/nginx;edge;platform').name).toBe('p:f5/nginx;edge');
     expect(itemMarks('p:f5/nginx;esu;edge').name).toBe('p:f5/nginx;esu');
+  });
+
+  it('shows a name without the prefix the URL needs', () => {
+    expect(itemLabel('p:fortinet/fortios')).toEqual({ label: 'fortinet/fortios', ecosystem: null });
+    expect(itemLabel('p:microsoft/windows_server_2025@2025')).toEqual({ label: 'microsoft/windows_server_2025@2025', ecosystem: null });
+    expect(itemLabel('npm:@angular/core@17.0.0')).toEqual({ label: '@angular/core@17.0.0', ecosystem: 'npm' });
+    expect(itemLabel('pypi:fastapi')).toEqual({ label: 'fastapi', ecosystem: 'PyPI' });
+    // Only the prefix goes: Maven names keep their own colon.
+    expect(itemLabel('maven:org.apache.logging.log4j:log4j-core@2.17.1')).toEqual({ label: 'org.apache.logging.log4j:log4j-core@2.17.1', ecosystem: 'Maven' });
+    expect(itemLabel('swift:github.com/vapor/vapor')).toEqual({ label: 'github.com/vapor/vapor', ecosystem: 'Swift' });
+    expect(itemLabel('cve:2021-44228')).toEqual({ label: 'CVE-2021-44228', ecosystem: null });
+  });
+
+  it('leaves a name it cannot read whole', () => {
+    for (const name of ['nginx', 'foo:bar', 'constructor:x', '__proto__:x', 'p:', ':x']) expect(itemLabel(name)).toEqual({ label: name, ecosystem: null });
   });
 
   it('writes the marks back in canonical order, matching the stack format', () => {

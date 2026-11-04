@@ -5,5 +5,7 @@ BASE_URL=http://localhost:8787
 # the production widget only works on vulnder.com.
 TURNSTILE_SITE_KEY=1x00000000000000000000AA
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+# Different stacks a browser may look up each hour. Production leaves it unset (2).
+PASS_STACKS=10
 # Optional: raises the GitHub API limit from 60/h to 5,000/h.
 GITHUB_TOKEN=

@@ -1,4 +1,5 @@
-import { isTeam, parseStack, type Team } from '../src/stack/format';
+import { isTeam, parseStack, PREFIXES, type Team } from '../src/stack/format';
+import { ownValue } from '../src/lib/normalize';
 import type { Change, FixItem, Health, PassStatus, Priority, Result, SupportNotice, SupportState, TargetedNotice } from './api';
 
 /** Pure formatting helpers for the UI, kept DOM-free so they can be tested. */
@@ -37,11 +38,11 @@ export function matchHeadline(count: number, days: number, unmatched = 0, older 
   const cves = (n: number) => `${n} ${n === 1 ? 'CVE' : 'CVEs'}`;
   const from =
     older === 0
-      ? `${cves(count)} ${count === 1 ? 'is' : 'are'} into your stack from the last ${days} days.`
+      ? `${cves(count)} from the last ${days} days ${count === 1 ? 'affects' : 'affect'} your stack.`
       : recent === 0
-        ? `${cves(older)} from the last year ${older === 1 ? 'is' : 'are'} still into your stack: exploited, likely to be, or critical.`
-        : `${cves(recent)} ${recent === 1 ? 'is' : 'are'} into your stack from the last ${days} days, plus ${older} older ${older === 1 ? 'one' : 'ones'} from the last year that ${older === 1 ? 'is' : 'are'} exploited, likely to be, or critical.`;
-  return { title: "It's a match. Unfortunately.", subtitle: `${from} Red flags, ranked:` };
+        ? `${cves(older)} from the last year ${older === 1 ? 'affects' : 'affect'} your stack: exploited, likely to be, or critical.`
+        : `${cves(recent)} from the last ${days} days ${recent === 1 ? 'affects' : 'affect'} your stack, plus ${older} older ${older === 1 ? 'one' : 'ones'} that ${older === 1 ? 'is' : 'are'} exploited, likely to be, or critical.`;
+  return { title: "It's a match. Unfortunately.", subtitle: from };
 }
 
 /**
@@ -392,6 +393,25 @@ export function itemMarks(item: string): { name: string } & ItemMarks {
   return { name, close, team, edge, esu };
 }
 
+/** The ecosystem names people know, where they differ from OSV's. */
+const ECOSYSTEM_LABELS: Record<string, string> = { SwiftURL: 'Swift' };
+
+/**
+ * A stack item's name as the page shows it, without the prefix the URL needs: a product as
+ * `vendor/product`, a package by its name with its ecosystem beside it, a listed CVE by its ID.
+ * A prefix Vulnder doesn't know is left in the name rather than dropped.
+ */
+export function itemLabel(name: string): { label: string; ecosystem: string | null } {
+  const colon = name.indexOf(':');
+  const prefix = name.slice(0, colon);
+  const rest = name.slice(colon + 1);
+  if (colon < 0 || rest === '') return { label: name, ecosystem: null };
+  if (prefix === 'p') return { label: rest, ecosystem: null };
+  if (prefix === 'cve') return { label: `CVE-${rest}`, ecosystem: null };
+  const ecosystem = ownValue(PREFIXES, prefix);
+  return ecosystem ? { label: rest, ecosystem: ownValue(ECOSYSTEM_LABELS, ecosystem) ?? ecosystem } : { label: name, ecosystem: null };
+}
+
 /** The item written back with the given marks, in canonical order. */
 export function withItemMarks(name: string, marks: ItemMarks): string {
   const edge = marks.edge === null ? '' : marks.edge ? ';edge' : ';internal';
@@ -486,8 +506,8 @@ export function supportLines(n: SupportNotice): string[] {
   if (n.state === 'eol') {
     out.push(
       n.esu
-        ? `Paid extended support ended${n.date ? ` on ${n.date}` : ''}, so it gets no more security updates. Upgrade to a supported release urgently.`
-        : `Out of support${since}: it gets no more security updates. Upgrade to a supported release urgently.`,
+        ? `Paid extended support ended${n.date ? ` on ${n.date}` : ''}. Upgrade to a supported release urgently.`
+        : `Out of support${since}. Upgrade to a supported release urgently.`,
     );
     if (n.esuUntil) out.push(`Paid extended security updates run until ${n.esuUntil}. If you have them, tick Has ESU under Edit stack.`);
   } else if (n.state === 'ending') {
@@ -506,13 +526,36 @@ export function supportByItem(notices: readonly SupportNotice[]): Map<string, Su
   return out;
 }
 
+/** The one line that stands for the support findings until it is opened: "2 products no longer get security fixes and 1 loses support within 90 days." */
+export function supportHeadline(notices: readonly SupportNotice[]): string {
+  const count = (state: SupportState) => notices.filter((n) => n.state === state).length;
+  const products = (k: number) => (k === 1 ? '1 product' : `${k} products`);
+  const [eol, ending, covered] = [count('eol'), count('ending'), count('covered')];
+  const parts = [
+    eol > 0 ? `${products(eol)} no longer ${eol === 1 ? 'gets' : 'get'} security fixes` : '',
+    ending > 0 ? `${products(ending)} ${ending === 1 ? 'loses' : 'lose'} support within 90 days` : '',
+    covered > 0 ? `${products(covered)} ${covered === 1 ? 'is' : 'are'} on paid extended support` : '',
+  ].filter(Boolean);
+  return `${parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`}.`;
+}
+
+/** The one line that stands for the Targeted notices until it is opened. Says what CISA did, not that these versions are exploited. */
+export function targetedHeadline(notices: readonly TargetedNotice[]): string {
+  return `CISA added CVEs in ${notices.length === 1 ? '1 of your products' : `${notices.length} of your products`} to KEV in the last 90 days.`;
+}
+
+/** The one line that stands for the open-source reports until it is opened. */
+export function reportedHeadline(reported: readonly Result[]): string {
+  return `Trusted security teams are warning about ${reported.length === 1 ? '1 CVE' : `${reported.length} CVEs`} in these results.`;
+}
+
 /** Why the Targeted section is there, said once above its list. The backtest is in docs/plans/product-pressure.md. */
 export const TARGETED_INTRO =
-  'CISA added CVEs in these items to its Known Exploited Vulnerabilities catalog in the last 90 days. 1 in 3 products with a KEV add get another within 90 days: patch their next advisory within days, and check whether they face the internet. Priorities don’t change.';
+  '1 in 3 products with a KEV add get another within 90 days: patch their next advisory fast. Priorities don’t change.';
 
 /** Why the open-source reports section is there, said once above its list. */
 export const REPORTED_INTRO =
-  'Trusted security teams (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK) are warning about these CVEs. A critical one that two of them write up, or one calls critical or urgent, is Act now. Their warnings aren’t evidence of exploitation: CISA KEV is.';
+  'From Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK. A critical CVE two of them write up, or one calls critical or urgent, is Act now. A warning isn’t evidence of exploitation: CISA KEV is.';
 
 /** Results that trusted security teams have written up, in results order. */
 export function reportedResults(results: readonly Result[]): Result[] {
@@ -534,9 +577,9 @@ export function targetedByItem(notices: readonly TargetedNotice[]): Map<string, 
   return out;
 }
 
-/** "one of its CVEs", "3 of its CVEs". */
+/** "1 CVE", "3 CVEs". */
 export function targetedCount(n: TargetedNotice): string {
-  return n.kev.length === 1 ? 'one of its CVEs' : `${n.kev.length} of its CVEs`;
+  return n.kev.length === 1 ? '1 CVE' : `${n.kev.length} CVEs`;
 }
 
 /**
@@ -549,14 +592,10 @@ export function targetedStatus(n: TargetedNotice, results: readonly Result[]): s
   // A listed product's CVEs match `cve:` items, not the group, so any result counts.
   const shown = n.kev.filter((k) => results.some((r) => r.id === k.id && (n.listed || r.matched.some((m) => items.has(m))))).length;
   const total = n.kev.length;
-  if (n.listed) {
-    if (shown === total) return `${total === 1 ? 'It’s' : total === 2 ? 'Both are' : `All ${total} are`} in your list: see Act now below.`;
-    if (shown === 0) return `${total === 1 ? 'It isn’t' : 'None are'} in your list, but the product is a target.`;
-    return `${shown} of them ${shown === 1 ? 'is' : 'are'} in your list (see Act now below); the others aren’t.`;
-  }
-  if (shown === total) return `${total === 1 ? 'It affects' : total === 2 ? 'Both affect' : `All ${total} affect`} your stack: see Act now below.`;
-  if (shown === 0) return `${total === 1 ? 'It doesn’t' : 'None'} affect the version you gave, but the product is a target.`;
-  return `${shown} of them ${shown === 1 ? 'affects' : 'affect'} your stack (see Act now below); the others affect versions you don’t run.`;
+  const where = n.listed ? 'your list' : 'your version';
+  if (shown === total) return `${total === 1 ? 'In' : total === 2 ? 'Both in' : `All ${total} in`} Act now.`;
+  if (shown === 0) return `${total === 1 ? 'Not' : 'None'} in ${where}.`;
+  return `${shown} in Act now; the rest aren’t in ${where}.`;
 }
 
 /**
