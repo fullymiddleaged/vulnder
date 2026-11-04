@@ -104,28 +104,23 @@
       <section class="block" aria-labelledby="why">
         <h2 id="why">Why I built it</h2>
         <p>
-          In 2025, 48,185 CVEs were published, 20.6% more than in 2024.<a href="#s1"><sup>1</sup></a>
-          2026 is moving faster: Google counted 5,045 disclosures in January and 10,740 in August.<a href="#s2"><sup>2</sup></a>
-          Some of that is bookkeeping. The Linux kernel became one of the largest issuers once its developers began assigning their own CVEs,<a href="#s3"><sup>3</sup></a> and kernel records alone came to about 5,000 in those eight months.<a href="#s2"><sup>2</sup></a>
-          Some of it is AI. Google found that AI-assisted research turns up a larger share of remote code execution bugs, and thinks attackers may be using the same tools to turn patches into working exploits.<a href="#s2"><sup>2</sup></a>
-          Mandiant estimates the mean time to exploit in 2025 at minus seven days, meaning that on average exploitation began a week before a patch was out.<a href="#s4"><sup>4</sup></a>
-          Of the known-exploited vulnerabilities VulnCheck recorded in the first half of 2026, 23.43% showed exploitation on or before the day the CVE was published.<a href="#s5"><sup>5</sup></a>
-          NIST now enriches known-exploited, government and critical software first,<a href="#s6"><sup>6</sup></a> and the CVE programme itself nearly lost its funding in April 2025, before CISA confirmed in early 2026 that it is fully funded.<a href="#s9"><sup>9</sup></a>
+          In 2025, 48,185 CVEs were published, 20.6% more than in 2024,<a href="#s1"><sup>1</sup></a> and 2026 is moving faster: 5,045 disclosures in January, 10,740 in August.<a href="#s2"><sup>2</sup></a>
+          Some of that is bookkeeping. The Linux kernel now assigns its own CVEs<a href="#s3"><sup>3</sup></a> and filed about 5,000 in those eight months.<a href="#s2"><sup>2</sup></a>
+          Some of it is AI: Google finds that AI-assisted research turns up more remote code execution bugs, and thinks attackers may be using the same tools to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
+          Exploitation is faster too. Mandiant puts the mean time to exploit in 2025 at minus seven days,<a href="#s4"><sup>4</sup></a> and of the known-exploited vulnerabilities VulnCheck recorded in the first half of 2026, 23% were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a>
+          NIST now enriches known-exploited, government and critical software first, and the rest aren't scheduled for immediate enrichment.<a href="#s6"><sup>6</sup></a>
         </p>
         <p>
           Most CVEs get a CVSS score from 0 to 10.
-          It rates how much damage a bug could do if someone used it: whether it can be reached over the network, whether it needs a login or a user's help, and how much of the system it hands over.
-          That makes it a measure of potential risk. A 9.8 can sit unused for years while a 6.5 is being used in ransomware this week, and the score says nothing about whether anyone is exploiting the bug now, or is about to.
+          It rates how much damage a bug could do if someone used it: whether it can be reached over the network, whether it needs a login, how much of the system it hands over.
+          That's a measure of potential. A 9.8 can sit unused for years while a 6.5 is being used in ransomware this week, and the score says nothing about which is which.
         </p>
         <p>
           Those numbers land on security and systems teams.
-          In a HackerOne survey this year, nearly 70% of security leaders said findings arrive faster than their teams can fix them.<a href="#s8"><sup>8</sup></a>
-          In 2025 almost 19,000 new CVEs were scored high or critical,<a href="#s1"><sup>1</sup></a> and a scanner lists every one that touches your estate with little to say about which are being used in attacks.
-          Verizon puts the median time to fully patch at 43 days, up from 32.<a href="#s7"><sup>7</sup></a>
-          I've been on those teams, and I built Vulnder because I think a short list, ranked for the software we ran, would have helped.
+          Nearly 70% of security leaders told HackerOne that findings arrive faster than their teams can fix them,<a href="#s8"><sup>8</sup></a> scanners hand them every CVE that touches the estate with most of it marked critical, and Verizon puts the median time to fully patch at 43 days, up from 32.<a href="#s7"><sup>7</sup></a>
+          I've been on those teams, and I built Vulnder because a short list, ranked for the software we ran, would have helped.
         </p>
         <p>
-          Most CVEs are filed against software you don't run, yet plenty of tools mark everything critical and hand whoever does the patching a long list.
           Vulnder starts from what you run. Describe your stack and it shows the CVEs that could apply to it, for you to confirm; a broad name like "Cisco switches" brings in close matches, marked as close.
           Paste the CVE IDs from a scanner report instead and it ranks the ones you already know affect you.
           Either way, the list is in the order to fix them.
@@ -197,9 +192,7 @@
           <li id="s5"><a href="https://www.vulncheck.com/blog/state-of-exploitation-1h-2026" rel="noreferrer">VulnCheck, State of Exploitation 1H 2026</a> (28 July 2026)</li>
           <li id="s6"><a href="https://www.nist.gov/news-events/news/2026/04/nist-updates-nvd-operations-address-record-cve-growth" rel="noreferrer">NIST, NIST Updates NVD Operations to Address Record CVE Growth</a> (15 April 2026)</li>
           <li id="s7"><a href="https://tenable.com/blog/key-findings-from-the-verizon-dbir-2026" rel="noreferrer">Tenable, Key findings from the Verizon DBIR 2026</a> (19 May 2026; Verizon's figures as Tenable reports them)</li>
-          <li id="s8"><a href="https://www.hackerone.com/blog/exposure-management-find-to-fix-gap-2026" rel="noreferrer">HackerOne, The Exposure Debt Benchmark: What the 2026 Data Says About the Find-to-Fix Gap</a> (14 October 2026)</li>
-          <li id="s9"><a href="https://therecord.media/mitre-warns-of-cve-program-lapse-contract-expires" rel="noreferrer">The Record, MITRE warns of CVE program lapse</a> (16 April 2025), and <a href="https://www.csoonline.com/article/4142600/cve-program-funding-secured-easing-fears-of-repeat-crisis.html" rel="noreferrer">CSO Online, CVE program funding secured, easing fears of repeat crisis</a> (9 March 2026)</li>
-        </ol>
+          <li id="s8"><a href="https://www.hackerone.com/blog/exposure-management-find-to-fix-gap-2026" rel="noreferrer">HackerOne, The Exposure Debt Benchmark: What the 2026 Data Says About the Find-to-Fix Gap</a> (14 October 2026)</li>        </ol>
       </section>
     </main>
 
