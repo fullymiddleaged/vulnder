@@ -29,7 +29,7 @@ import {
 } from './api';
 import { clear, h, safeHref } from './dom';
 import { indexable } from './url';
-import { exportFileName, exportMarkdown, remediationParts } from './export';
+import { exportFileName, exportMarkdown, pageSteps, remediationParts } from './export';
 import { TEAM, TEAM_GROUPS, teamOf, type TeamGroup } from './teams';
 import { capEntries, fileProblem, joinNotes, MANIFEST_FORMATS, SCAN_FORMATS, scanFileProblem, textProblem } from './upload';
 import {
@@ -58,7 +58,6 @@ import {
   passNotice,
   ordinal,
   pct,
-  preview,
   RISK,
   shortSummary,
   stackSummary,
@@ -1185,7 +1184,16 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
   const items = all.filter((i) => !isCveItem(i));
   const cves = all.filter(isCveItem).map((c) => c.id);
   if (items.length === 0) return renderListStack(cves, notes);
-  const daySelect = h('select', { id: 'days', 'aria-label': 'Time window' }, [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)));
+  const daySelect = h(
+    'select',
+    {
+      id: 'days',
+      'aria-label': 'Time window',
+      // The year-long safety net, said where the window is chosen; the glossary says it too, under "Older".
+      title: 'Whatever the window, CVEs from the last year show too, marked Older, if CISA reports them exploited or they’re likely to be exploited, at any severity, or if they score CVSS 9.9+.',
+    },
+    [7, 30, 90].map((d) => h('option', { value: d, selected: d === feed.days }, `Last ${d} days`)),
+  );
   daySelect.addEventListener('change', () => {
     // A key press can still get through on some browsers; put the window back.
     if (isLocked()) return void (daySelect.value = String(feed.days));
@@ -1213,12 +1221,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
       h('span', { class: 'muted' }, stackSummary(items), cves.length > 0 ? `, plus ${cveCount(cves.length)} from your list` : ''),
       h('span', { class: 'stack-actions' }, daySelect, editButton),
     ),
-    h(
-      'p',
-      { class: 'muted small' },
-      'Whatever the window, CVEs from the last year show too if CISA reports them exploited or they’re likely to be exploited, at any severity, or if they score CVSS 9.9+.',
-      cves.length > 0 ? ' The window doesn’t apply to the CVEs you listed: they all show, whatever their age.' : '',
-    ),
+    cves.length > 0 ? h('p', { class: 'muted small' }, 'The window doesn’t apply to the CVEs you listed: they all show.') : null,
     editNotice,
     allNotes.length > 0 ? h('ul', { class: 'notice notes', 'aria-label': 'About this lookup' }, allNotes.map((n) => h('li', {}, n))) : null,
     h(
@@ -1508,7 +1511,10 @@ function targetedBadge(): HTMLElement {
   );
 }
 
-/** Links that keep showing this stack's latest results, and exports of them as they are now. */
+/**
+ * What following and exporting give you, after the results. The full set of buttons is under the
+ * headline; here, only the two this sentence is about.
+ */
 function renderShare(feed: Feed): HTMLElement {
   return h(
     'section',
@@ -1517,21 +1523,18 @@ function renderShare(feed: Feed): HTMLElement {
     h(
       'p',
       { class: 'muted small' },
-      'The page link and Atom feed always show the latest results for this stack, so you can come back or subscribe. Export for AI saves the results as they are now, as a Markdown file an AI agent can work through to apply the fixes.',
+      'The page link and Atom feed always show this stack’s latest results; Export for AI saves them as they are now, as Markdown an AI agent can work through.',
     ),
-    h('div', { class: 'row wrap' }, copyButtons(feed), exportButtons(feed)),
+    h('div', { class: 'row wrap' }, copyButtons(feed, ['atom']), exportButtons(feed)),
   );
 }
 
-/** How many CVEs each priority tile links before pointing at the full list. */
-const TILE_SHOWN = 3;
-
 /**
  * A strip split by how many results sit at each priority, then one column per
- * priority with its count, meaning and links to the first few CVEs.
+ * priority with its count and name, each a button to that priority's results.
+ * What each priority means and its window are said once, at its section.
  */
 function riskSummary(feed: Feed): HTMLElement {
-  const groups = byPriority(feed.results);
   // The strip repeats the counts below, so screen readers skip it.
   const strip = h(
     'div',
@@ -1543,21 +1546,14 @@ function riskSummary(feed: Feed): HTMLElement {
     { class: 'risk-summary', 'aria-label': 'Results by priority' },
     PRIORITIES.map((p) => {
       const n = feed.priorities[p];
-      const { shown, rest } = preview(groups[p], TILE_SHOWN);
+      const head = [h('span', { class: 'risk-count' }, String(n)), h('span', { class: 'risk-label' }, RISK[p].label)];
       return h(
         'li',
         { class: `risk-tile ${RISK[p].light}${n === 0 ? ' empty' : ''}` },
-        h('span', { class: 'risk-head' }, h('span', { class: 'risk-count' }, String(n)), h('span', { class: 'risk-label' }, RISK[p].label)),
-        h('span', { class: 'risk-note small' }, RISK[p].brief),
-        h('span', { class: 'risk-window small' }, RISK[p].window),
-        shown.length > 0
-          ? h(
-              'ul',
-              { class: 'tile-vulns small', 'aria-label': `${RISK[p].label} CVEs` },
-              shown.map((r) => h('li', {}, externalLink(r.links.advisory, r.id))),
-              rest > 0 ? h('li', { class: 'more' }, h('button', { type: 'button', class: 'link', onclick: () => jumpToResults(p) }, `+${rest} more below`)) : null,
-            )
-          : null,
+        // An empty priority has nothing to jump to, so it stays plain text.
+        n > 0
+          ? h('button', { type: 'button', class: 'risk-head', title: `Go to the ${RISK[p].label} results`, onclick: () => jumpToResults(p) }, head)
+          : h('span', { class: 'risk-head' }, head),
       );
     }),
   );
@@ -1585,6 +1581,7 @@ function glossary(): HTMLElement {
     ['Risk score', 'A 0–100 score that orders results within a priority. Total risk adds up a component’s scores. Neither is a probability.'],
     ['Exact or close match', 'An exact match is a product you named. A close match is one your description loosely fits: check it is yours.'],
     ['Version confirmed', 'Your version is in the affected range. "Version not confirmed" means only the product matched, so compare your version with "Fixed in".'],
+    ['Older', 'From before your time window. Whatever the window, CVEs from the last year show too if CISA reports them exploited or they’re likely to be exploited, at any severity, or if they score CVSS 9.9+.'],
   ];
   return h(
     'details',
@@ -1903,7 +1900,8 @@ function renderComponent(g: ComponentGroup, shown: Set<string>): HTMLElement {
       tally(g.counts),
     ),
     sameCves(g),
-    fresh.length > 0 ? renderList(fresh) : null,
+    // The group already names the item, so its rows don't repeat it.
+    fresh.length > 0 ? renderList(fresh, true) : null,
     listedAbove(repeated),
   );
 }
@@ -1935,29 +1933,33 @@ function renderByTeam(groups: ComponentGroup[]): HTMLElement[] {
   });
 }
 
-/** Results, with each family of similar CVEs folded under its highest-ranked member. */
-function renderList(results: Result[]): HTMLElement {
-  return renderFamilies(foldFamilies(results));
+/**
+ * Results, with each family of similar CVEs folded under its highest-ranked member.
+ * `grouped`: the list sits under a group that already names the item (By component, By team).
+ */
+function renderList(results: Result[], grouped = false): HTMLElement {
+  return renderFamilies(foldFamilies(results), grouped);
 }
 
-function renderFamilies(families: ReturnType<typeof foldFamilies>): HTMLElement {
+function renderFamilies(families: ReturnType<typeof foldFamilies>, grouped = false): HTMLElement {
   return h(
     'ol',
     { class: 'results' },
-    families.map(({ lead, related }) => {
-      const li = renderResult(lead);
-      if (related.length > 0) {
-        li.append(
-          h(
-            'details',
-            { class: 'related' },
-            h('summary', { class: 'small' }, `+${related.length} similar ${related.length === 1 ? 'CVE' : 'CVEs'} in this product`),
-            h('ol', { class: 'results' }, related.map(renderResult)),
-          ),
-        );
-      }
-      return li;
-    }),
+    families.map(({ lead, related }) =>
+      h(
+        'li',
+        { class: 'result-item' },
+        renderResult(lead, grouped),
+        related.length > 0
+          ? h(
+              'details',
+              { class: 'related' },
+              h('summary', { class: 'small' }, `+${related.length} similar ${related.length === 1 ? 'CVE' : 'CVEs'} in this product`),
+              h('ol', { class: 'results' }, related.map((r) => h('li', { class: 'result-item' }, renderResult(r, grouped)))),
+            )
+          : null,
+      ),
+    ),
   );
 }
 
@@ -2084,12 +2086,15 @@ function fact(name: string, value: (string | HTMLElement | null)[] | string, att
 }
 
 /**
- * A result is a card of two parts: a rail of facts (priority, scores, dates,
- * how it matched, links) and a body to read (the ID, what it is, why it ranks
- * where it does, what to do). On a wide screen the rail sits beside the body;
- * on a narrow one the head goes first and the facts follow the body.
+ * A result is one row that opens to its detail. The row: priority, ID (linked), title, the
+ * matched item (left out under a group that names it), the reason that decided its priority,
+ * whether a fix exists, and Older when it predates the window. The detail is in two parts: a
+ * rail of facts (score, respond-by, dates, how it matched, links) and a body to read (what it
+ * is, why it ranks where it does, what to do). On a wide screen the rail sits beside the body;
+ * on a narrow one the head goes first and the facts follow the body. Act now rows start open;
+ * closed rows keep their detail in the page, folded.
  */
-function renderResult(r: Result): HTMLElement {
+function renderResult(r: Result, grouped = false): HTMLElement {
   const advisory = safeHref(r.links.advisory);
   const patch = safeHref(r.links.patch);
   const mitigationLink = safeHref(r.mitigation?.advisory);
@@ -2097,68 +2102,110 @@ function renderResult(r: Result): HTMLElement {
   const light = RISK[r.priority].light;
   const items = r.matched.filter((m) => !m.startsWith('cve:'));
   // The same steps as the export, so the page and a file handed to an assistant say the same thing;
-  // CISA's long required action is folded away rather than repeated in full on every card.
+  // CISA's long required action is folded away rather than repeated in full on every row, and the
+  // standard confirm-version case is said in short (the export keeps the full words).
   const { steps, cisa } = remediationParts(r);
+  const reason = r.why.decisive?.text ?? r.reasons[0] ?? null;
+  const versions = r.fixedVersions.join(', ');
+  const fix = r.fixedVersions.length > 0
+    ? h('span', { class: 'row-fix', title: `Fixed in ${versions}` }, 'Fix: ', h('code', {}, versions))
+    : r.confidence === 'listed'
+      ? null
+      : h('span', { class: 'row-fix muted' }, 'No fix yet');
+  // The ID links to its advisory. A link activates itself, not the summary around it, so it opens
+  // without toggling the row (by mouse or keyboard); stopping the click only keeps it from bubbling.
+  const id = advisory
+    ? h('a', { class: 'row-id', href: advisory, rel: 'noreferrer noopener', target: '_blank', onclick: (ev: Event) => ev.stopPropagation() }, r.id)
+    : h('span', { class: 'row-id' }, r.id);
   return h(
-    'li',
-    { class: `result ${light}` },
+    'details',
+    { class: `result ${light}`, open: r.priority === 'act' },
     h(
-      'div',
-      { class: 'result-head' },
+      'summary',
+      {},
       h('span', { class: `pill ${light}` }, RISK[r.priority].label),
-      h('span', { class: 'score', title: 'Risk score, 0 to 100: orders results within a priority' }, `Risk ${formatScore(r.score)}`),
-      r.respondWithinHours !== null
-        ? h(
-            'span',
-            { class: 'respond small', title: 'Guidance, not a deadline: exploits for urgent bugs now often appear within hours of disclosure' },
-            `Respond within ${describeHours(r.respondWithinHours)}`,
-          )
-        : null,
-      e.knownRansomware ? h('span', { class: 'ransomware small' }, 'Used in ransomware') : null,
+      pause(),
+      id,
+      // Always drawn, empty without a title, so the rest of the row lines up at the right.
+      r.title ? [pause(), h('span', { class: 'row-title', title: r.title }, r.title)] : h('span', { class: 'row-title' }),
+      h(
+        'span',
+        { class: 'row-meta small' },
+        !grouped && items.length > 0
+          ? [pause(), h('span', { class: 'row-item' }, itemName(itemMarks(items[0]!).name), items.length > 1 ? h('span', { class: 'muted' }, ` +${items.length - 1}`) : null)]
+          : null,
+        reason ? [pause(), h('span', { class: 'row-reason', title: reason }, reason)] : null,
+        fix ? [pause(), fix] : null,
+        r.beforeWindow ? [pause(), olderBadge(r)] : null,
+      ),
+      h('span', { class: 'expand', 'aria-hidden': 'true' }),
     ),
     h(
       'div',
-      { class: 'result-body' },
-      h('h3', { class: 'row wrap' }, advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, r.id) : r.id, r.beforeWindow ? olderBadge(r) : null),
-      r.title ? h('p', { class: 'title' }, r.title) : null,
-      // Listed CVEs are left out: the ID above already says it.
-      items.length > 0
-        ? h('p', { class: 'matched small muted' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', itemName(itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '')
-        : null,
-      renderSummary(r.summary),
-      renderWhy(r),
-      h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), steps.join(' ')),
-      cisa ? h('details', { class: 'cisa-action small' }, h('summary', {}, cisa.lead), h('p', {}, cisa.action)) : null,
-      reportsLine(r),
-    ),
-    h(
-      'dl',
-      { class: 'result-facts small' },
-      fact('CVSS', r.cvss ? `${r.cvss.score.toFixed(1)} ${cvssSeverity(r.cvss.score).toLowerCase()}` : [h('span', { class: 'muted' }, 'None')]),
-      fact(
-        'EPSS',
-        e.epss !== null
-          ? `${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`
-          : [h('span', { class: 'muted' }, 'Not yet')],
-        { title: 'Predicted probability of exploitation in the next 30 days' },
+      { class: 'result-detail' },
+      h(
+        'div',
+        { class: 'result-head' },
+        h('span', { class: 'score', title: 'Risk score, 0 to 100: orders results within a priority' }, `Risk ${formatScore(r.score)}`),
+        r.respondWithinHours !== null
+          ? h(
+              'span',
+              { class: 'respond small', title: 'Guidance, not a deadline: exploits for urgent bugs now often appear within hours of disclosure' },
+              `Respond within ${describeHours(r.respondWithinHours)}`,
+            )
+          : null,
+        e.knownRansomware ? h('span', { class: 'ransomware small' }, 'Used in ransomware') : null,
       ),
-      e.lev !== null && e.lev >= 0.01
-        ? fact('LEV', pct(e.lev), { title: 'NIST LEV: estimated chance it has already been exploited, from its EPSS history. A lower bound, not evidence.' })
-        : null,
-      e.kevAddedAt ? fact('On CISA KEV', e.kevAddedAt.slice(0, 10)) : null,
-      e.kevAddedAt && e.kevDueDate ? fact('Federal due', e.kevDueDate.slice(0, 10)) : null,
-      ...matchFacts(r),
-      r.replaces?.length
-        ? fact('Replaces', r.replaces.flatMap((id, i) => [i > 0 ? ', ' : '', h('code', {}, id)]), { title: 'Rejected as a duplicate of this CVE, so this one ranks in its place' })
-        : null,
+      h(
+        'div',
+        { class: 'result-body' },
+        // The row clips a long title; here it is in full.
+        r.title ? h('p', { class: 'title' }, r.title) : null,
+        // Listed CVEs are left out: the ID already says it.
+        items.length > 0
+          ? h('p', { class: 'matched small muted' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', itemName(itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '')
+          : null,
+        renderSummary(r.summary),
+        renderWhy(r),
+        h('p', { class: `todo small${r.mitigation && r.fixedVersions.length === 0 ? ' mitigate' : ''}` }, h('strong', {}, 'What to do: '), pageSteps(steps).join(' ')),
+        cisa ? h('details', { class: 'cisa-action small' }, h('summary', {}, cisa.lead), h('p', {}, cisa.action)) : null,
+        reportsLine(r),
+      ),
+      resultFacts(r),
+      h(
+        'p',
+        { class: 'small links result-links' },
+        advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
+        patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
+        mitigationLink && mitigationLink !== advisory ? h('a', { href: mitigationLink, rel: 'noreferrer noopener', target: '_blank' }, 'Mitigation guidance') : null,
+      ),
     ),
-    h(
-      'p',
-      { class: 'small links result-links' },
-      advisory ? h('a', { href: advisory, rel: 'noreferrer noopener', target: '_blank' }, 'Advisory') : null,
-      patch ? h('a', { href: patch, rel: 'noreferrer noopener', target: '_blank' }, 'Patch') : null,
-      mitigationLink && mitigationLink !== advisory ? h('a', { href: mitigationLink, rel: 'noreferrer noopener', target: '_blank' }, 'Mitigation guidance') : null,
+  );
+}
+
+/** A result's facts as plain names and values: scores, KEV dates, how it matched. */
+function resultFacts(r: Result): HTMLElement {
+  const e = r.evidence;
+  return h(
+    'dl',
+    { class: 'result-facts small' },
+    fact('CVSS', r.cvss ? `${r.cvss.score.toFixed(1)} ${cvssSeverity(r.cvss.score).toLowerCase()}` : [h('span', { class: 'muted' }, 'None')]),
+    fact(
+      'EPSS',
+      e.epss !== null
+        ? `${pct(e.epss)}${e.epssPercentile !== null ? `, ${ordinal(Math.round(e.epssPercentile * 100))} percentile` : ''}`
+        : [h('span', { class: 'muted' }, 'Not yet')],
+      { title: 'Predicted probability of exploitation in the next 30 days' },
     ),
+    e.lev !== null && e.lev >= 0.01
+      ? fact('LEV', pct(e.lev), { title: 'NIST LEV: estimated chance it has already been exploited, from its EPSS history. A lower bound, not evidence.' })
+      : null,
+    e.kevAddedAt ? fact('On CISA KEV', e.kevAddedAt.slice(0, 10)) : null,
+    e.kevAddedAt && e.kevDueDate ? fact('Federal due', e.kevDueDate.slice(0, 10)) : null,
+    ...matchFacts(r),
+    r.replaces?.length
+      ? fact('Replaces', r.replaces.flatMap((id, i) => [i > 0 ? ', ' : '', h('code', {}, id)]), { title: 'Rejected as a duplicate of this CVE, so this one ranks in its place' })
+      : null,
   );
 }
 
@@ -2189,17 +2236,20 @@ const KIND_LABEL: Record<Reason['kind'], string> = {
   context: 'reachability and context',
 };
 
-function copyButtons(feed: Feed): HTMLElement {
+type CopyKind = 'page' | 'atom' | 'badge';
+
+/** Buttons that copy this stack's links: all three under the headline, or just the ones named. */
+function copyButtons(feed: Feed, only?: readonly CopyKind[]): HTMLElement {
   const badgeMd = `[![known-exploited CVEs](${feed.links.badge})](${feed.links.page})`;
-  const items: [string, string][] = [
-    ['Copy page link', feed.links.page],
-    ['Copy Atom link', feed.links.atom],
-    ['Copy badge Markdown', badgeMd],
+  const items: [CopyKind, string, string][] = [
+    ['page', 'Copy page link', feed.links.page],
+    ['atom', 'Copy Atom link', feed.links.atom],
+    ['badge', 'Copy badge Markdown', badgeMd],
   ];
   return h(
     'div',
     { class: 'copy' },
-    items.map(([label, value]) =>
+    items.filter(([kind]) => !only || only.includes(kind)).map(([, label, value]) =>
       h('button', {
         type: 'button',
         onclick: async () => {

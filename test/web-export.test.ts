@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Feed, Result } from '../web/api';
 import { serializeStack } from '../src/stack/format';
-import { EXPORT_INSTRUCTIONS, exportFileName, exportMarkdown, mdText, remediation, remediationParts, remediationSteps } from '../web/export';
+import { EXPORT_INSTRUCTIONS, exportFileName, exportMarkdown, mdText, pageSteps, remediation, remediationParts, remediationSteps } from '../web/export';
 
 function result(id: string, over: Partial<Result> = {}): Result {
   return {
@@ -102,6 +102,36 @@ describe('remediation', () => {
       "Confirm the installed version is affected: only the product matched, not the version. No fixed version is known yet. CISA's required action: Apply vendor mitigations.",
     );
     expect(remediationParts(exploited).cisa).toBeNull();
+  });
+});
+
+describe('pageSteps', () => {
+  it('shortens the standard confirm-version case on the page, and the export keeps the full words', () => {
+    const productOnly = result('X', { confidence: 'product_match', mitigation: { action: 'Apply vendor mitigations.', advisory: null } });
+    const { steps } = remediationParts(productOnly);
+    expect(pageSteps(steps).join(' ')).toBe('Confirm your version is affected. No fix is listed yet.');
+    expect(remediation(productOnly)).toContain('Confirm the installed version is affected: only the product matched, not the version. No fixed version is known yet.');
+    const md = exportMarkdown({ ...feed, results: [productOnly] });
+    expect(md).toContain('only the product matched, not the version');
+    expect(md).not.toContain('Confirm your version is affected.');
+  });
+
+  it('leaves the steps unchanged when a fixed version is known', () => {
+    const fixable = result('X', { confidence: 'product_match', fixedVersions: ['15.5.24', '16.3.3'] });
+    const { steps } = remediationParts(fixable);
+    expect(pageSteps(steps)).toEqual(steps);
+    expect(pageSteps(steps)[0]).toBe('Confirm the installed version is affected: only the product matched, not the version.');
+    expect(pageSteps(remediationParts(exploited).steps)).toEqual(remediationParts(exploited).steps);
+  });
+
+  it('keeps a close match its own step, and leaves other wording alone', () => {
+    const close = result('X', { match: 'close', confidence: 'product_match', mitigation: { action: 'Apply vendor mitigations.', advisory: null } });
+    expect(pageSteps(remediationParts(close).steps)).toEqual([
+      'Confirm you run this product: it is a close match for a vaguely named item.',
+      'Confirm your version is affected. No fix is listed yet.',
+    ]);
+    // No mitigation: the advisory pointer stays, in full.
+    expect(pageSteps(remediationParts(closeMatch).steps)).toEqual(remediationParts(closeMatch).steps);
   });
 });
 

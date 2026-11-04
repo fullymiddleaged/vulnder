@@ -100,10 +100,10 @@ components:
     typography: "{typography.label}"
     rounded: "{rounded.tag}"
     padding: "0.05rem 0.45rem"
-  result-card:
+  result-row:
     backgroundColor: "{colors.card-white}"
     rounded: "{rounded.control}"
-    padding: "1.1rem 1.4rem"
+    padding: "0.5rem 0.75rem"
 ---
 
 # Design System: Vulnder
@@ -184,7 +184,7 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 
 ## Layout
 
-A single centred frame, max 72rem (`--column`), with a 1rem gutter on each side. The header, main, status line and footer all share it, on every page, so the logo and navigation never move between views. Content keeps to 54rem (`--content`), aligned to the frame's left edge: the home form, Edit, the prose pages and the footer's text. Results fill the whole frame (`body[data-view='results']`) so cards can carry a fact rail. Going from the form to results, the content grows to the right and nothing else shifts. Rows, the ledger, Fix first and tables use its full width; sentences (result summaries, section intros, notices, the headline's subtitle) stop at 72ch (`--measure`) so lines stay readable. In Fix first, each CVE is one line: its pill and ID keep their size and a long title clips with an ellipsis, so every row lines up. Sections in `main` stack on a grid with a 2.25rem gap. Result cards sit 1.25rem apart and priority sections 3rem apart (2.5rem on a phone), so each card reads as its own block. Watch and Track draw their first 10 cards and a "Show the other N" button; Act now and Attend always draw in full. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem; below 36rem it stays at two and drops each tile's CVE links. On a wide screen, Targeted by attackers sets each product on the left and its line on the right. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
+A single centred frame, max 72rem (`--column`), with a 1rem gutter on each side. The header, main, status line and footer all share it, on every page, so the logo and navigation never move between views. Content keeps to 54rem (`--content`), aligned to the frame's left edge: the home form, Edit, the prose pages and the footer's text. Results fill the whole frame (`body[data-view='results']`) so a result row fits on one line and its detail can carry a fact rail. Going from the form to results, the content grows to the right and nothing else shifts. Rows, the ledger, Fix first and tables use its full width; sentences (result summaries, section intros, notices, the headline's subtitle) stop at 72ch (`--measure`) so lines stay readable. In Fix first and in the results, each CVE is one line: its pill and ID keep their size and a long title clips with an ellipsis, so every row lines up. Sections in `main` stack on a grid with a 2.25rem gap. Result rows sit 0.35rem apart, like ledger lines, and priority sections 3rem apart (2.5rem on a phone). Watch and Track draw their first 10 rows and a "Show the other N" button; Act now and Attend always draw in full. The results summary is a four-column ledger (one column per tier) that drops to two columns below 48rem. On a wide screen, Targeted by attackers sets each product on the left and its line on the right. Rows wrap rather than scroll on narrow screens; tallies move from the right edge to their own line. There is no horizontal page scroll at phone width.
 
 ## Elevation & Depth
 
@@ -221,10 +221,16 @@ The results page uses the same tabs below the stack and its findings: Results (F
 - **Background:** Card White.
 - **Shadow Strategy:** none (see Elevation & Depth).
 - **Border:** 1px Hairline, plus a 4px left border in the tier's colour.
-- **Internal Padding:** 1rem for results on a phone, 1.1rem 1.4rem from 56rem up; 0.6rem 0.9rem for changes.
+- **Internal Padding:** 0.5rem 0.75rem for a result row's summary line; its detail 1rem on a phone, 1.1rem 1.4rem from 56rem up; 0.6rem 0.9rem for changes.
 
-### Result card
-Two parts. The **head and rail**: the priority pill, `Risk N`, "Respond within …" in the tier's ink, then the facts as a `<dl>` of muted names and ink values (CVSS, EPSS, LEV, On CISA KEV, Federal due, Match, Version, Replaces), then Advisory and Patch links. The facts are plain text, not boxed badges. A close match says so in amber words, a confirmed version in green. The **body**: the ID (mono, linked), the title, "Matched `item`" in muted small text, the summary, Why, What to do, and who is warning about it. From 56rem up the rail is a 14rem column beside the body, split by a hairline. Below that, the head goes first, the body follows, and the facts wrap into a short block under a hairline. When there's no fixed version, What to do gives Vulnder's step and folds CISA's required action behind a "CISA's required action" summary. The words are unchanged, and the export carries them in full. Each priority section opens with its one-line brief and window, and folds its full criteria behind "What puts a CVE in …".
+### Result row
+Each CVE is a `<details>` row: Card White, a Hairline border, the 4px tier border on the left. Act now rows start open; the other tiers start closed. A closed row keeps its detail in the page, folded, so nothing is hidden. Similar CVEs in the same product fold under their lead row, indented.
+
+The **summary line**: the priority pill (a fixed width, so IDs line up down the list), the ID in mono and linked to its advisory, the title clipped with an ellipsis (in full on hover and in the detail), then the matched item, the reason that decided the priority in the tier's ink, the fix ("Fix: `15.5.24, 16.3.3`" in green, or "No fix yet" muted; nothing for a listed CVE with no versions) and the Older badge when it predates the window. The By component and By team views leave out the matched item, since the group already names it. A chevron at the right says open or closed. From 56rem up it is one line, and a long item name or reason clips before the fix or Older does; below that, the pill and ID go first, the title takes the next line and the rest wraps under it. The summary is at least 2.5rem tall and shows its focus ring inside the border. The ID link opens without toggling the row.
+
+The **detail**, under a hairline, in two parts. The **rail**: `Risk N`, "Respond within …" in the tier's ink and "Used in ransomware", then the facts as a `<dl>` of muted names and ink values (CVSS, EPSS, LEV, On CISA KEV, Federal due, Match, Version, Replaces), then Advisory, Patch and Mitigation guidance links. The facts are plain text, not boxed badges. A close match says so in amber words, a confirmed version in green. The **body**: the full title, "Matched `item`" in muted small text, the summary with Expand, Why (the deciding reason first, then the others, then what was not available), What to do, and who is warning about it. From 56rem up the rail is a 14rem column beside the body, split by a hairline. Below that, the head goes first, the body follows, and the facts wrap into a short block under a hairline. What to do says the standard product-only case in short ("Confirm your version is affected. No fix is listed yet."); the export keeps the full wording. When there's no fixed version, it folds CISA's required action behind a "CISA's required action" summary. The words are unchanged, and the export carries them in full.
+
+Each priority section opens with its one-line brief and window, said there and nowhere else, and folds its full criteria behind "What puts a CVE in …".
 
 ### Inputs / Fields
 - **Style:** Card White, 1px Control Edge border, 4px radius, 0.6rem 0.75rem padding, inherited font, violet caret. The description textarea is at least 9rem tall and resizes vertically.
@@ -248,7 +254,7 @@ Plain Match Violet links aligned right in the header, wrapping under the brand o
 A 3px-radius label filled with the tier colour, 0.8rem bold. Rank squares in Fix first use the same fill with an 800-weight tabular number.
 
 ### Risk Strip
-Four segments sized by the count in each tier, 0.9rem tall and 3px apart. They grow in from the left on load (0.6s, staggered 80ms), and not at all under reduced motion.
+Four segments sized by the count in each tier, 0.9rem tall and 3px apart. They grow in from the left on load (0.6s, staggered 80ms), and not at all under reduced motion. Under it, one tile per tier: the count (800 weight, the tier's ink) and the tier's name, nothing else. A tile with results is a button that jumps to that tier's section; an empty tile is muted text. The tier's meaning and window are said at its section, not on the tile.
 
 ### Loader
 The logo's lens circles its own centre while the right half of the broken shield swings on the foot of its crack, beside a headline and a checklist of steps (pending, spinning, ticked green). Reading a description, the one step with a deadline, shows a ring that turns slowly and fills Fixed Green over the most the request can take, so the end is in sight, with a muted hint below that says when it's running long. It ends in the green tick, or in an Act Red ✗ held for 700ms before the form returns with its error (a blocking problem, per the red extension). Under reduced motion the ring stops turning but still fills. The loader fades in after 150ms so a fast response never flashes it.
@@ -257,7 +263,9 @@ The logo's lens circles its own centre while the right half of the broken shield
 
 ### Do:
 - **Do** keep every page in the same 72rem frame with the 1rem gutter, content at 54rem from its left edge (results use the full frame), and running text within the 72ch measure.
-- **Do** tie each result to its tier with the 4px left border and the tier's `--light` / `--ink` pair.
+- **Do** show each result as one row that opens to its detail, and keep every row in the page: fold detail, never drop a match.
+- **Do** tie each result row to its tier with the 4px left border and the tier's `--light` / `--ink` pair.
+- **Do** say each thing once: a tier's meaning at its section, the share buttons under the headline (the closing section offers only Atom and Export for AI).
 - **Do** set IDs, package names and versions in Atkinson Mono.
 - **Do** define every colour as a token in both the light and dark blocks.
 - **Do** give every animation a `prefers-reduced-motion` fallback.
