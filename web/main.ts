@@ -300,9 +300,9 @@ function renderInput(prefill = '', tab: InputTab = tabFromHash()): void {
       lockControls([stackPanel.submit, stackPanel.drop, cvePanel.submit, cvePanel.drop], () => (stackPanel.update(), cvePanel.update())),
       stackPanel.el,
       cvePanel.el,
-      trustLine(),
-      // One check for both tabs, beneath them: either tab's lookup spends the same hourly allowance.
+      // One check for both tabs, right under the button: either tab's lookup spends the same hourly allowance.
       turnstileBox,
+      trustLine(),
     ),
   );
   select(tab);
@@ -412,10 +412,9 @@ function cveForm(prefill: string): Panel {
     '.csv,.tsv,.nessus,.xml,.json,.txt',
     `Up to ${MAX_SCAN_BYTES / 1_000_000} MB: ${SCAN_FORMATS}`,
     [
-      'Have a scan report? Drop it here or ',
+      'Have a scan report instead? Paste it above, drop it here or ',
       h('label', { for: 'cve-file', class: 'link' }, 'choose a file'),
-      '. ',
-      h('span', { class: 'muted' }, 'Read in your browser: only the CVE IDs go into the link.'),
+      '.',
     ],
     (file) => void onFile(file),
   );
@@ -515,10 +514,9 @@ function stackForm(prefill: string, toCves: () => void): Panel {
     '.json,.txt,.toml,.mod,.xml,.lock,Dockerfile,*',
     `Up to ${MAX_MANIFEST_BYTES / 1_000_000} MB: ${MANIFEST_FORMATS}`,
     [
-      'Have a manifest? Drop it here or ',
+      'Have a manifest instead? Paste it above, drop it here or ',
       h('label', { for: 'file', class: 'link' }, 'choose a file'),
-      '. ',
-      h('span', { class: 'muted' }, 'Lockfiles, SBOMs, MCP configs and more, read in your browser: only package names and versions are sent.'),
+      '.',
     ],
     (file) => void onFile(file),
   );
