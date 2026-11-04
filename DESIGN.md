@@ -168,7 +168,7 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 
 ### Hierarchy
 - **Display** (800, clamp(2.1rem, 6vw, 3.4rem), 1.02): the results headline ("the match"). One per view.
-- **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the tagline on the home page ("Move beyond CVSS." in ink, the rest in Dusk Muted), prose page titles, the loader message. Under Edit and results the tagline drops back to a 1.15rem line under the name, so their own headline stays the one big line.
+- **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the tagline on the home page ("Move beyond just CVSS." in ink, the rest in Dusk Muted), prose page titles, the loader message. Under Edit and results the tagline drops back to a 1.15rem line under the name, so their own headline stays the one big line.
 - **Lead** (800, 1.75rem, 1.1): the Fix first heading, the one section that answers the question. A warning triangle drawn in SVG sits before it, filled with the tier colour of the top row and its "!" in that tier's fill-text colour, like the rank squares. It shows only when the top row is Act now or Attend.
 - **Title** (700, 1.3rem, 1.25): section headings (h2), tier headings, the home form's compose questions ("What do you run?", "Which CVEs do you want to prioritise?").
 - **Body** (400, 1rem, 1.55): everything else, within the 54rem column, with running text held to a 72ch measure (68ch on the prose pages). Small text is 0.875rem.
