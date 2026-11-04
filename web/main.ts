@@ -300,12 +300,38 @@ function renderInput(prefill = '', tab: InputTab = tabFromHash()): void {
       lockControls([stackPanel.submit, stackPanel.drop, cvePanel.submit, cvePanel.drop], () => (stackPanel.update(), cvePanel.update())),
       stackPanel.el,
       cvePanel.el,
+      trustLine(),
       // One check for both tabs, beneath them: either tab's lookup spends the same hourly allowance.
       turnstileBox,
     ),
   );
   select(tab);
   mountTurnstile(turnstileBox);
+}
+
+/** Facts the footer and About already state, under the form. No other claim goes here. */
+function trustLine(): HTMLElement {
+  return h(
+    'p',
+    { class: 'trust small muted' },
+    `No account. ${config?.displayName ?? 'Vulnder'} `,
+    h('a', { href: '#privacy', onclick: (e: Event) => (e.preventDefault(), openPrivacy()) }, 'doesn’t store your stack'),
+    '. ',
+    h('a', { href: 'https://github.com/fullymiddleaged/vulnder', rel: 'noreferrer' }, 'Open source'),
+    '.',
+  );
+}
+
+/**
+ * Opens the footer's privacy details and takes the reader there. The address keeps no #privacy:
+ * a hash change would pop state and route, redrawing the form and losing what was typed.
+ */
+function openPrivacy(): void {
+  const details = document.getElementById('privacy') as HTMLDetailsElement | null;
+  if (!details) return;
+  details.open = true;
+  details.scrollIntoView({ block: 'start' });
+  details.querySelector('summary')?.focus({ preventScroll: true });
 }
 
 interface Panel {
@@ -842,7 +868,8 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
  */
 function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map(), listed: string[] = []): void {
   clear(app);
-  delete document.body.dataset.view;
+  // Keeps the content column, and hides the home page's sample result and big tagline.
+  document.body.dataset.view = 'edit';
   const items = [...new Set(initial)];
   const cves = [...new Set(listed)];
   // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
@@ -2354,9 +2381,14 @@ async function route(): Promise<void> {
   focusMain();
 }
 
-window.addEventListener('popstate', () => void route());
+// Following a #privacy link only opens the footer's details; the form stays as it was.
+window.addEventListener('popstate', () => (location.hash === '#privacy' ? openPrivacy() : void route()));
 
+// A stack link's view is known before anything loads, so the home page's headline and sample never flash over it.
+if (new URLSearchParams(location.search).get('s')) document.body.dataset.view = 'results';
+const privacyLinked = location.hash === '#privacy';
 config = await getConfig().catch(() => null);
 if (config) document.querySelectorAll('[data-name]').forEach((n) => (n.textContent = config!.displayName));
 await route();
+if (privacyLinked) openPrivacy();
 void renderFooter();

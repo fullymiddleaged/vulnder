@@ -75,6 +75,44 @@
     </main>
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
+    <!-- The home form's view only: hidden under Edit and results (body[data-view]). Counts from the production feed on 4 November 2026. -->
+    <section class="sample" aria-labelledby="sample-title">
+      <div class="block">
+        <h2 id="sample-title">What a result looks like</h2>
+        <ol class="fix-list" role="list">
+          <li class="fix-item red">
+            <div class="fix-row">
+              <span class="rank" aria-hidden="true">1</span>
+              <code title="p:fortinet/fortios@7.4.3">fortinet/fortios@7.4.3</code><span class="visually-hidden">, </span>
+              <span class="badge edge">Edge device</span><span class="visually-hidden">, </span>
+              <span class="tally"><span class="pill red">6 act now</span><span class="pill amber">4 attend</span><span class="pill yellow">2 watch</span></span><span class="visually-hidden">, </span>
+              <span class="small muted">0 of 12 with a fix</span><span class="visually-hidden">, </span>
+              <span class="score">Total risk 522</span>
+            </div>
+          </li>
+          <li class="fix-item red">
+            <div class="fix-row">
+              <span class="rank" aria-hidden="true">2</span>
+              <code title="p:microsoft/exchange_server">microsoft/exchange_server</code><span class="visually-hidden">, </span>
+              <span class="tally"><span class="pill red">1 act now</span></span><span class="visually-hidden">, </span>
+              <span class="small muted">0 of 1 with a fix</span><span class="visually-hidden">, </span>
+              <span class="score">Total risk 100</span>
+            </div>
+          </li>
+          <li class="fix-item amber">
+            <div class="fix-row">
+              <span class="rank" aria-hidden="true">3</span>
+              <code title="npm:next@14.2.3"><span class="ecosystem">npm</span>next@14.2.3</code><span class="visually-hidden">, </span>
+              <span class="tally"><span class="pill amber">4 attend</span><span class="pill yellow">1 watch</span></span><span class="visually-hidden">, </span>
+              <span class="small muted">Fixes for all 5 available</span><span class="visually-hidden">, </span>
+              <span class="score">Total risk 85</span>
+            </div>
+          </li>
+        </ol>
+        <p class="small muted">Checked 4 November 2026 against the last 90 days. <a href="/?s=p:fortinet/fortios@7.4.3;edge,npm:next@14.2.3,pypi:fastapi,p:postgresql/postgresql@16,p:microsoft/exchange_server,p:microsoft/windows_10&amp;days=90">See the full example</a></p>
+      </div>
+    </section>
+
     <footer class="site">
       <p id="checks" class="small" hidden></p>
       <!-- The status and ages come from /api/health (web/main.ts, renderFooter); without it the links still stand. -->

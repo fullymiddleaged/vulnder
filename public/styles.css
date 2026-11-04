@@ -97,9 +97,14 @@ header.site, main, footer.site, .status { max-width: var(--column); margin: 0 au
 header.site { padding-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--fg); text-decoration: none; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
 .logo { width: 2.1rem; height: 2.1rem; color: var(--accent); align-self: center; }
-/* What Vulnder does, in one line under the name: the first sentence in ink, the rest muted. */
-.tagline { flex-basis: 100%; color: var(--muted); margin: 0.15rem 0 0; font: inherit; font-size: 1.15rem; line-height: 1.4; text-wrap: balance; }
-.tagline .lead { color: var(--fg); font-weight: 700; }
+/*
+ * What Vulnder does: the home page's headline, the first sentence in ink and the rest muted.
+ * Under Edit and results (body[data-view]) it drops back to a line under the name, so their own headline is the one big line.
+ */
+.tagline { flex-basis: 100%; max-width: var(--content); color: var(--muted); margin: 1.75rem 0 0; font: inherit; font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; text-wrap: balance; }
+.tagline .lead { color: var(--fg); }
+body[data-view] .tagline { max-width: none; margin-top: 0.15rem; font-size: 1.15rem; font-weight: 400; letter-spacing: normal; line-height: 1.4; }
+body[data-view] .tagline .lead { font-weight: 700; }
 /* The form, Edit and prose keep the narrower content width; results fill the frame for the card rail. */
 main > *, footer.site > * { max-width: var(--content); }
 body[data-view='results'] main > * { max-width: none; }
@@ -199,7 +204,14 @@ code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; 
 /* Nothing but identifiers goes in it. */
 #cve-text { font-family: var(--mono); font-size: 0.95rem; }
 .compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
-.compose-label { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.4rem; }
+.compose-label { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin-bottom: 0.2rem; }
+/* Three facts the site states elsewhere, under the form; the privacy link opens the footer's details. */
+.trust { margin: 0; }
+/* What a result looks like: Fix first rows without the fold, under the form and on its view only. */
+.sample { max-width: var(--column); margin: 1rem auto 0; padding: 0 1rem; }
+.sample > * { max-width: var(--content); }
+.sample p { margin: 0.75rem 0 0; }
+body[data-view] .sample, main[aria-busy='true'] ~ .sample { display: none; }
 .compose .row p { margin: 0; }
 .compose button.primary { justify-self: start; }
 .turnstile { min-height: 65px; }
@@ -483,10 +495,11 @@ details[open] > summary .when-open { display: inline; }
 .fix-list { list-style: none; padding: 0; margin: 0.6rem 0 0; display: grid; }
 .fix-item { border-bottom: 1px solid var(--border); }
 .fix-item:first-child { border-top: 1px solid var(--border); }
-.fix-item summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.6rem 0.25rem; cursor: pointer; list-style: none; }
+.fix-item summary, .fix-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.6rem 0.25rem; cursor: pointer; list-style: none; }
+.fix-row { cursor: auto; }
 .fix-item summary:hover { background: color-mix(in srgb, var(--light) 6%, transparent); }
 .fix-item summary::-webkit-details-marker { display: none; }
-.fix-item summary code { font-size: 0.95em; font-weight: 700; }
+.fix-item summary code, .fix-row code { font-size: 0.95em; font-weight: 700; }
 .fix-item .tally { margin-left: auto; display: flex; gap: 0.3rem; flex-wrap: wrap; }
 .expand { color: var(--accent); font-weight: 700; white-space: nowrap; }
 .expand::after { content: ""; display: inline-block; width: 0.4em; height: 0.4em; margin-left: 0.4em; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-0.15em) rotate(45deg); transition: transform 0.15s; }
@@ -558,7 +571,7 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .fix-item .product-name { font-weight: 700; }
 @media (max-width: 36rem) {
   .fix-item .tally { margin-left: 0; }
-  .fix-item summary { padding: 0.85rem 0.25rem; }
+  .fix-item summary, .fix-row { padding: 0.85rem 0.25rem; }
   .results-view { gap: 2.5rem; }
   .tab-panel { gap: 2.5rem; }
   .briefs { padding-left: 0.25rem; }

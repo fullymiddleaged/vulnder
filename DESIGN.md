@@ -168,9 +168,9 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 
 ### Hierarchy
 - **Display** (800, clamp(2.1rem, 6vw, 3.4rem), 1.02): the results headline ("the match"). One per view.
-- **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the compose question on the home page, prose page titles, the loader message.
+- **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the tagline on the home page ("Move beyond CVSS." in ink, the rest in Dusk Muted), prose page titles, the loader message. Under Edit and results the tagline drops back to a 1.15rem line under the name, so their own headline stays the one big line.
 - **Lead** (800, 1.75rem, 1.1): the Fix first heading, the one section that answers the question. A warning triangle drawn in SVG sits before it, filled with the tier colour of the top row and its "!" in that tier's fill-text colour, like the rank squares. It shows only when the top row is Act now or Attend.
-- **Title** (700, 1.3rem, 1.25): section headings (h2), tier headings.
+- **Title** (700, 1.3rem, 1.25): section headings (h2), tier headings, the home form's compose questions ("What do you run?", "Which CVEs do you want to prioritise?").
 - **Body** (400, 1rem, 1.55): everything else, within the 54rem column, with running text held to a 72ch measure (68ch on the prose pages). Small text is 0.875rem.
 - **Label** (700, 0.8rem): priority pills, scores, counts, tags. Counts and scores use tabular numerals.
 - **Mono** (0.9em): CVE and GHSA IDs, package names, versions, code. Stack items show without the prefix the URL needs (`fortinet/fortios`, not `p:fortinet/fortios`); a package's ecosystem goes before its name in 700-weight Dusk Muted sans at 0.8em. The full item is the tooltip. The add-by-hand format hint keeps the prefixes, since that's what people type.
@@ -214,7 +214,7 @@ Quiet and exact: hairline borders, a small radius, one solid primary action per 
 - **Segmented control:** fully rounded options with a Rule border; the selected option inverts to ink on paper.
 
 ### Tabs
-The results page uses the same tabs below the stack and its findings: Results (Fix first, the priority ledger, every CVE) and What changed, each with its count in 400 weight. The home form's two modes, "By stack" and "By CVE list", sit above the headline as quiet tabs, not chips: 700-weight text at 0.95rem in Dusk Muted on a Rule line, 1.5rem apart. The open tab turns ink with a 2px ink underline that replaces the rule beneath it; hover darkens the text and shows a Control Edge underline. Each tab is at least 2.5rem tall. They follow the WAI-ARIA tabs pattern (arrow keys, Home and End), and `/#cves` opens the second. Each tab keeps its own headline ("What do you run?", "Which CVEs do you want to prioritise?"), so the One Big Line Rule holds. The CVE box is set in mono, since only IDs go in it.
+The results page uses the same tabs below the stack and its findings: Results (Fix first, the priority ledger, every CVE) and What changed, each with its count in 400 weight. The home form's two modes, "By stack" and "By CVE list", sit above the headline as quiet tabs, not chips: 700-weight text at 0.95rem in Dusk Muted on a Rule line, 1.5rem apart. The open tab turns ink with a 2px ink underline that replaces the rule beneath it; hover darkens the text and shows a Control Edge underline. Each tab is at least 2.5rem tall. They follow the WAI-ARIA tabs pattern (arrow keys, Home and End), and `/#cves` opens the second. Each tab keeps its own question as a Title ("What do you run?", "Which CVEs do you want to prioritise?"); the tagline above is the page's headline, so the One Big Line Rule holds. The CVE box is set in mono, since only IDs go in it.
 
 ### Cards / Containers
 - **Corner Style:** 4px.
@@ -249,6 +249,9 @@ One line under the headline: "Your stack", a summary ("5 items: 4 exact, 1 close
 
 ### Navigation
 Plain Match Violet links aligned right in the header, wrapping under the brand on narrow screens. The current page is ink-coloured, bold and not underlined.
+
+### Sample result
+Under the home form, "What a result looks like" (a Title) shows the top three Fix first rows of a real example stack, in Fix first's own markup (rank square, item in mono, tallies, fixes, Total risk) but static: no fold, no CVEs listed. A muted line dates the counts ("Checked 4 November 2026 against the last 90 days.") and links the full example. It lives outside `main` and shows on the form's view only: Edit, results and the loader hide it. Above it, under the form, one small muted line states three facts the site already makes: no account, the stack isn't stored (linking the footer's privacy details, which it opens) and open source. Nothing else goes on that line.
 
 ### Priority Pill and Rank
 A 3px-radius label filled with the tier colour, 0.8rem bold. Rank squares in Fix first use the same fill with an 800-weight tabular number.
