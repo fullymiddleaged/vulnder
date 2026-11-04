@@ -715,7 +715,10 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .key.ai { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .key.local { border-style: dashed; }
 .levels { list-style: none; padding: 0; margin: 1.1rem 0; display: grid; gap: 1.1rem; }
-.levels li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
+.levels > li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
+/* Each priority's triggers: a short list of fragments under its name. */
+.prose .levels ul { list-style: disc; padding-left: 1.2rem; margin-top: 0.35rem; }
+.prose .levels ul li { margin: 0.2rem 0; }
 @media (max-width: 36rem) {
   .site-nav { margin-left: 0; }
 }
