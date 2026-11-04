@@ -373,16 +373,17 @@ details[open] > summary .when-open { display: inline; }
 @media (min-width: 56rem) {
   .result > summary { flex-wrap: nowrap; }
   .result .row-id { min-width: 9.5rem; }
-  /* The title keeps a readable share of the line; the reason and fix clip before it does. */
-  .result .row-title { flex-basis: 16rem; min-width: 10rem; }
-  /* Long item names and reasons clip (in full on hover and in the detail); the fix and Older never do. */
-  .row-meta { flex: 0 1 auto; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
-  .row-meta > span:not(.visually-hidden) { overflow: hidden; text-overflow: ellipsis; }
-  .row-item { flex: 0 1 auto; max-width: 15rem; }
-  .row-item code { white-space: nowrap; }
-  .row-meta > span.row-reason { flex: 0 1 auto; min-width: 7rem; max-width: 20rem; }
-  .row-fix { flex: none; max-width: 15rem; }
-  .row-meta .badge { flex: none; }
+  /*
+   * Only the title gives way: it takes what the rest of the line leaves and clips (in full on
+   * hover and in the detail). The item, the reason, the fix and Older are never cut short;
+   * when they don't fit on one line, the last of them (usually Older) drops to a second line.
+   */
+  /* A floor so the title never vanishes: past it, the meta wraps instead of squeezing it to nothing. */
+  .result .row-title { flex: 1 1 0; min-width: 8rem; }
+  .result .row-title:empty { min-width: 0; }
+  /* min-width: auto keeps the meta at least as wide as its widest part, so nothing in it overflows. */
+  .row-meta { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; white-space: nowrap; min-width: auto; }
+  .row-meta > span:not(.visually-hidden) { flex: none; }
 }
 /* Narrow: pill and ID on the first line, the title under them, the rest after it. */
 @media (max-width: 55.99rem) {
