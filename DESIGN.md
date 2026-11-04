@@ -250,6 +250,8 @@ One line under the headline: "Your stack", a summary ("5 items: 4 exact, 1 close
 ### Navigation
 Plain Match Violet links aligned right in the header, wrapping under the brand on narrow screens. The current page is ink-coloured, bold and not underlined.
 
+On the pages the app runs on (home, Edit, results), a freshness line sits under the links, right-aligned, and under the brand on a phone: small Dusk Muted text, "CVE data updated 12 min ago" (the newest of CVE records, GitHub advisories and CISA KEV). When any footer source is behind, it says "Data sources: N of M running behind" in Attend Amber (something to check). Never green. It links to the footer's Data sources and opens them, and stays hidden when health can't be read.
+
 ### Sample result
 Under the home form, "What a result looks like" (a Title) shows the top three Fix first rows of a real example stack, in Fix first's own markup (rank square, item in mono, tallies, fixes, Total risk) but static: no fold, no CVEs listed. A muted line dates the counts ("Checked 4 November 2026 against the last 90 days.") and links the full example. It lives outside `main` and shows on the form's view only: Edit, results and the loader hide it. Above it, under the form, one small muted line states three facts the site already makes: no account, the stack isn't stored (linking the footer's privacy details, which it opens) and open source. Nothing else goes on that line.
 

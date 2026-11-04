@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Change, Result, SupportNotice } from '../web/api';
-import { ago, checksServedText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemLabel, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportHeadline, supportLines, targetedHeadline, reportedHeadline, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, TIER_SHOWN, tierFold, turnstileSize, withItemMarks } from '../web/format';
+import { ago, checksServedText, freshnessText, sourceAge, sourcesStatus, byPriority, changeCounts, countdown, familyName, foldFamilies, lockRemaining, componentGroups, cvssSeverity, describeChange, eventDetail, formatScore, groupChanges, itemLabel, itemMarks, listHeadline, describeCveCount, matchHeadline, ordinal, passNotice, describeLength, examplePlaceholder, pct, preview, RISK, shortSummary, splitShown, stackSummary, supportByItem, supportHeadline, supportLines, targetedHeadline, reportedHeadline, supportPriority, TARGETED_INTRO, targetedByItem, targetedCount, targetedStatus, TIER_SHOWN, tierFold, turnstileSize, withItemMarks } from '../web/format';
 import { parseStack, serializeStack } from '../src/stack/format';
 
 function result(id: string, tier: Result['tier'], match: Result['match'] = 'exact'): Result {
@@ -145,6 +145,31 @@ describe('UI formatting', () => {
     ).toEqual({ text: '· 3 of 3 running behind', behind: 3 });
     expect(sourcesStatus({ cve: { ...ok, health: 'stale' }, kev: ok }, names)).toEqual({ text: '· 1 of 2 running behind', behind: 1 });
     expect(sourcesStatus({ other: ok }, names)).toBeNull();
+  });
+
+  it('says how fresh the CVE data is for the header, from the newest CVE source', () => {
+    const now = Date.parse('2026-10-05T12:00:00Z');
+    const names = ['cve', 'ghsa', 'kev', 'epss'];
+    const at = (lastSuccessAt: string) => ({ health: 'ok' as const, lastSuccessAt });
+    // EPSS is newest of all but isn't CVE intelligence, so the newest of cve/ghsa/kev wins.
+    expect(
+      freshnessText({ cve: at('2026-10-05T11:00:00Z'), ghsa: at('2026-10-05T11:48:00Z'), kev: at('2026-10-05T09:00:00Z'), epss: at('2026-10-05T11:59:00Z') }, names, now),
+    ).toEqual({ text: 'CVE data updated 12 min ago', behind: 0 });
+    expect(freshnessText({ cve: at('2026-10-05T09:00:00Z'), kev: at('2026-10-05T08:00:00Z') }, names, now)).toEqual({ text: 'CVE data updated 3 h ago', behind: 0 });
+  });
+
+  it('says how many sources are behind instead, when any is', () => {
+    const now = Date.parse('2026-10-05T12:00:00Z');
+    const ok = { health: 'ok' as const, lastSuccessAt: '2026-10-05T11:48:00Z' };
+    const names = ['cve', 'ghsa', 'kev', 'epss'];
+    expect(freshnessText({ cve: ok, ghsa: ok, kev: ok, epss: { ...ok, health: 'stale' } }, names, now)).toEqual({ text: 'Data sources: 1 of 4 running behind', behind: 1 });
+    // A source the page doesn't list doesn't count.
+    expect(freshnessText({ cve: ok, other: { ...ok, health: 'error' } }, names, now)).toEqual({ text: 'CVE data updated 12 min ago', behind: 0 });
+  });
+
+  it('says nothing about freshness when health names none of the sources', () => {
+    expect(freshnessText({}, ['cve', 'ghsa', 'kev'])).toBeNull();
+    expect(freshnessText({ other: { health: 'ok', lastSuccessAt: '2026-10-05T11:48:00Z' } }, ['cve'])).toBeNull();
   });
 
   it('writes the checks served, and nothing before the first 1,000', () => {
