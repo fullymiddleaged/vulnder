@@ -218,8 +218,7 @@ body[data-view] .sample, main[aria-busy='true'] ~ .sample { display: none; }
 /* The counter line is the field's caption, so it stays close to it. */
 .compose .row { margin-top: -0.5rem; }
 .compose .row p { margin: 0; }
-/* The button is the width of the Turnstile widget beneath it (300px, the smallest the widget renders at). */
-.compose button.primary { justify-self: start; width: min(300px, 100%); padding: 0.65rem 1.2rem; margin-top: 0.25rem; }
+.compose button.primary { justify-self: start; padding: 0.65rem 1.2rem; margin-top: 0.25rem; }
 .turnstile { min-height: 65px; }
 .turnstile:empty { min-height: 0; }
 .examples { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
