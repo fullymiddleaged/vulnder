@@ -46,6 +46,7 @@ import {
   eventDetail,
   formatScore,
   fullSummary,
+  itemLabel,
   itemMarks,
   describeCveCount,
   describeLength,
@@ -62,14 +63,17 @@ import {
   shortSummary,
   stackSummary,
   supportByItem,
+  supportHeadline,
   supportLines,
   supportPriority,
   REPORTED_INTRO,
+  reportedHeadline,
   reportedResults,
   reportSummary,
   TARGETED_INTRO,
   targetedByItem,
   targetedCount,
+  targetedHeadline,
   targetedStatus,
   tierFold,
   turnstileSize,
@@ -140,6 +144,20 @@ function report(message: string, action?: HTMLElement): void {
 }
 
 /** A cross, drawn rather than typed, for remove buttons. */
+/**
+ * A warning triangle in the tier colour of what tops Fix first, with the "!" in the colour the
+ * tier's fills carry, like the rank squares. Only Act now and Attend are urgent, so the others get none.
+ */
+function urgentMark(p: Priority): SVGElement | null {
+  if (p !== 'act' && p !== 'attend') return null;
+  return svg(
+    'svg',
+    { viewBox: '0 0 24 24', class: `urgent-mark ${RISK[p].light}`, 'aria-hidden': 'true', focusable: 'false' },
+    svg('path', { d: 'M12 3L22 20H2Z', class: 'urgent-sign', 'stroke-width': '2.5', 'stroke-linejoin': 'round' }),
+    svg('path', { d: 'M12 9.5v4.5M12 17.25v.01', class: 'urgent-bang', 'stroke-width': '2.4', 'stroke-linecap': 'round', fill: 'none' }),
+  );
+}
+
 function crossIcon(): SVGElement {
   return svg('svg', { viewBox: '0 0 16 16', width: '16', height: '16', 'aria-hidden': 'true', focusable: 'false' }, svg('path', { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', fill: 'none' }));
 }
@@ -884,12 +902,12 @@ function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotic
         h(
           'li',
           { class: `chip ${close ? 'close' : 'resolved'}` },
-          h('code', {}, name),
+          itemName(name),
           close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
           edgeToggle(i),
           esuToggle(i),
           teamed ? teamPicker(i) : null,
-          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${name}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
+          h('button', { type: 'button', class: 'icon', 'aria-label': `Remove ${itemLabel(name).label}`, onclick: () => (items.splice(i, 1), draw()) }, crossIcon()),
         ),
       );
     });
@@ -1048,8 +1066,8 @@ async function renderResults(stack: string, days: number): Promise<void> {
   say(`${feed.results.length} vulnerabilities found.`);
   document.title = `${config?.displayName ?? 'Vulnder'}: ${feed.summary.exploited} exploited`;
 
-  // The answer first: the headline with ways to share and follow it, the stack it answers for, priorities
-  // at a glance, what to fix first, the week's changes, every result, then share and follow again in full.
+  // The answer first: the headline with ways to share and follow it, the stack it answers for, then tabs:
+  // what to fix first, priorities at a glance and every result, or the week's changes. Then share and follow in full.
   const listOnly = isList(feed.stack);
   const unranked = (feed.listed?.rejected.length ?? 0) + (feed.listed?.notFound.length ?? 0);
   const headline = listOnly
@@ -1068,18 +1086,14 @@ async function renderResults(stack: string, days: number): Promise<void> {
   // What became of the IDs that aren't ranked, before the ranking itself.
   const aboutList = renderListed(feed);
   if (aboutList) app.append(aboutList);
-  // Before the CVEs: out of support outweighs any one of them, and a stack can have it with none.
-  const support = renderSupport(feed);
-  if (support) app.append(support);
-  // Also before the CVEs, and also a finding about the item: it can hold even when no CVE matched.
-  const targeted = renderTargeted(feed);
-  if (targeted) app.append(targeted);
-  // Warnings about CVEs in these results, before the ledger that ranks them.
-  const reported = renderReported(feed);
-  if (reported) app.append(reported);
-  if (feed.results.length > 0) app.append(riskSummary(feed), renderFixFirst(feed));
-  app.append(renderChanges(feed));
+  // Findings about items and warnings about CVEs, one line each above the ranking; each opens to its
+  // full list, since out of support and Targeted can hold for items no CVE matched.
+  const alerts = [renderSupport(feed), renderTargeted(feed), renderReported(feed)].filter((a) => a !== null);
+  if (alerts.length > 0) app.append(h('div', { class: 'alerts' }, alerts));
+  // The ranking and the week's changes are tabs, so the changes don't push the ranking down the page.
+  const ranked = h('div', {});
   if (feed.results.length > 0) {
+    ranked.append(renderFixFirst(feed), riskSummary(feed));
     const view = h('div', { class: 'results-view', id: 'results', tabindex: -1 });
     const groups = componentGroups(feed.fixFirst, feed.results);
     // Only an enterprise stack carries teams; without them, "By team" isn't offered.
@@ -1091,7 +1105,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
       else view.append(...renderByTeam(groups));
     };
     const initial = savedGrouping(teamed);
-    app.append(h('div', { class: 'results-head' }, groupingToggle(draw, initial, teamed), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
+    ranked.append(h('div', { class: 'results-head' }, groupingToggle(draw, initial, teamed), h('a', { href: '/how-it-works#ranking', class: 'small' }, 'How results are ranked')), view);
     draw(initial);
   }
   // Items out of support or losing it show above, not as quietly watched.
@@ -1101,17 +1115,61 @@ async function renderResults(stack: string, days: number): Promise<void> {
     return !n || n.state === 'covered';
   });
   if (watching.length > 0) {
-    app.append(
+    ranked.append(
       h(
         'section',
         { class: 'block', 'aria-labelledby': 'watching-title' },
         h('h2', { id: 'watching-title' }, 'Watching'),
         h('p', { class: 'muted' }, `No admirers in the last ${feed.days} days. The feed will pick up new issues.`),
-        h('ul', { class: 'chips compact' }, watching.map((w) => h('li', { class: 'chip' }, h('code', {}, itemMarks(w).name)))),
+        h('ul', { class: 'chips compact' }, watching.map((w) => h('li', { class: 'chip' }, itemName(itemMarks(w).name)))),
       ),
     );
   }
-  app.append(renderShare(feed));
+  if (ranked.childElementCount === 0) ranked.append(h('p', { class: 'muted' }, 'Nothing to rank.'));
+  const changes = groupChanges(feed.changes, feed.results);
+  app.append(
+    tabbed('Results and changes', [
+      { id: 'ranked', label: 'Results', count: feed.results.length, panel: ranked },
+      { id: 'changes', label: 'What changed', count: changes.length, panel: h('div', {}, renderChanges(changes)) },
+    ]),
+    renderShare(feed),
+  );
+}
+
+/**
+ * WAI-ARIA tabs over panels built up front, the first one open. Arrow keys, Home and End move
+ * between them. Each tab shows its count, so a closed one still says whether it holds anything.
+ */
+function tabbed(label: string, entries: { id: string; label: string; count: number; panel: HTMLElement }[]): HTMLElement {
+  const tabs = entries.map((e) =>
+    h('button', { type: 'button', role: 'tab', id: `tab-${e.id}`, class: 'tab', 'aria-controls': `panel-${e.id}` }, e.label, h('span', { class: 'tab-count' }, e.count)),
+  );
+  let current = 0;
+  const select = (next: number, focus = false) => {
+    current = next;
+    entries.forEach((e, i) => {
+      tabs[i]!.setAttribute('aria-selected', String(i === next));
+      tabs[i]!.tabIndex = i === next ? 0 : -1;
+      e.panel.hidden = i !== next;
+    });
+    if (focus) tabs[next]!.focus();
+  };
+  tabs.forEach((t, i) => t.addEventListener('click', () => select(i)));
+  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': label }, tabs);
+  tablist.addEventListener('keydown', (e) => {
+    const to = { ArrowRight: current + 1, ArrowLeft: current - 1, Home: 0, End: entries.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    select((to + entries.length) % entries.length, true);
+  });
+  for (const e of entries) {
+    e.panel.id = `panel-${e.id}`;
+    e.panel.setAttribute('role', 'tabpanel');
+    e.panel.setAttribute('aria-labelledby', `tab-${e.id}`);
+    e.panel.classList.add('tab-panel');
+  }
+  select(0);
+  return h('div', { class: 'result-tabs' }, tablist, entries.map((e) => e.panel));
 }
 
 /** Short stacks show their items; long ones (a lockfile) fold them away behind the summary. */
@@ -1174,7 +1232,7 @@ function renderStack(feed: Feed, notes: string[]): HTMLElement {
           h(
             'li',
             { class: `chip ${i.close ? 'close' : 'resolved'}` },
-            h('code', {}, identity(i)),
+            itemName(identity(i)),
             i.close ? h('span', { class: 'close-mark small' }, 'Close match') : null,
             isEdge(i) ? edgeBadge() : null,
             i.esu ? h('span', { class: 'team-mark small muted', title: 'You pay for extended security updates' }, 'Has ESU') : null,
@@ -1294,15 +1352,15 @@ function renderListed(feed: Feed): HTMLElement | null {
 function renderSupport(feed: Feed): HTMLElement | null {
   const notices = feed.support ?? [];
   if (notices.length === 0) return null;
-  const out = notices.some((n) => n.state === 'eol');
-  return h(
-    'section',
-    { class: 'block support', 'aria-labelledby': 'support-title' },
-    h('h2', { id: 'support-title' }, out ? 'Out of support' : 'Vendor support'),
+  const title = notices.some((n) => n.state === 'eol') ? 'Out of support' : notices.some((n) => n.state === 'ending') ? 'Support ending' : 'Vendor support';
+  return alertLine(
+    'support',
+    title,
+    supportHeadline(notices),
     h(
       'p',
       { class: 'muted small' },
-      'Past its vendor’s end of support, software gets no more security fixes, so every new bug in it stays open. Out of support ranks with Act now, and support ending within 90 days with Attend, whatever its CVEs. Dates from ',
+      'Every new bug stays open. Out of support ranks with Act now, support ending within 90 days with Attend. Dates from ',
       externalLink('https://endoflife.date', 'endoflife.date'),
       '.',
     ),
@@ -1322,7 +1380,7 @@ function renderNotice(n: SupportNotice): HTMLElement {
     n.source === 'cve' && n.cve
       ? h('p', { class: 'small' }, 'Its vendor said it is no longer supported in ', externalLink(`https://www.cve.org/CVERecord?id=${encodeURIComponent(n.cve)}`, n.cve), '.')
       : null,
-    h('p', { class: 'small muted' }, n.items.length === 1 ? 'Stack item: ' : 'Stack items: ', n.items.flatMap((i, k) => [k > 0 ? ', ' : '', h('code', {}, itemMarks(i).name)])),
+    h('p', { class: 'small muted' }, n.items.length === 1 ? 'Stack item: ' : 'Stack items: ', n.items.flatMap((i, k) => [k > 0 ? ', ' : '', itemName(itemMarks(i).name)])),
   );
 }
 
@@ -1343,10 +1401,10 @@ function supportBadge(state: SupportState): HTMLElement | null {
 function renderTargeted(feed: Feed): HTMLElement | null {
   const notices = feed.targeted ?? [];
   if (notices.length === 0) return null;
-  return h(
-    'section',
-    { class: 'block targeted', 'aria-labelledby': 'targeted-title' },
-    h('h2', { id: 'targeted-title' }, 'Targeted by attackers'),
+  return alertLine(
+    'targeted',
+    'Targeted',
+    targetedHeadline(notices),
     h('p', { class: 'muted small' }, TARGETED_INTRO),
     h('ul', { class: 'targeted-list', role: 'list' }, notices.map((n) => renderTargetedItem(n, feed.results))),
   );
@@ -1360,14 +1418,14 @@ function renderTargetedItem(n: TargetedNotice, results: readonly Result[]): HTML
     { class: 'targeted-item' },
     // A listed CVE's product goes by its name, as its Fix first row does.
     n.label
-      ? h('p', { class: 'row wrap' }, h('strong', { class: 'product-name' }, n.label), h('code', { class: 'small muted' }, names[0]!))
-      : h('p', {}, names.flatMap((name, k) => [k > 0 ? ', ' : '', h('code', {}, name)])),
+      ? h('p', { class: 'row wrap' }, h('strong', { class: 'product-name' }, n.label), itemName(names[0]!, { class: 'small muted' }))
+      : h('p', {}, names.flatMap((name, k) => [k > 0 ? ', ' : '', itemName(name)])),
     h(
       'p',
       { class: 'small' },
-      `CISA added ${targetedCount(n)} to KEV, most recently `,
+      `${targetedCount(n)} on KEV${n.kev.length === 1 ? ': ' : ', latest '}`,
       externalLink(`https://www.cve.org/CVERecord?id=${encodeURIComponent(latest.id)}`, latest.id),
-      ` on ${latest.addedAt}. `,
+      ` (${latest.addedAt}). `,
       targetedStatus(n, results),
     ),
   );
@@ -1381,10 +1439,10 @@ function renderTargetedItem(n: TargetedNotice, results: readonly Result[]): HTML
 function renderReported(feed: Feed): HTMLElement | null {
   const reported = reportedResults(feed.results);
   if (reported.length === 0) return null;
-  return h(
-    'section',
-    { class: 'block reported', 'aria-labelledby': 'reported-title' },
-    h('h2', { id: 'reported-title' }, 'Open-source reports'),
+  return alertLine(
+    'reported',
+    'Open-source reports',
+    reportedHeadline(reported),
     h('p', { class: 'muted small' }, REPORTED_INTRO),
     h(
       'ul',
@@ -1407,6 +1465,25 @@ function renderReported(feed: Feed): HTMLElement | null {
   );
 }
 
+/**
+ * A finding above the ranking as one line: its name and what it amounts to. It opens to the full
+ * list, so nothing is hidden, while the Fix first rows carry the same marks as badges.
+ */
+function alertLine(id: string, title: string, headline: string, ...body: (HTMLElement | null)[]): HTMLElement {
+  return h(
+    'details',
+    { class: `alert ${id}` },
+    h(
+      'summary',
+      {},
+      h('h2', { id: `${id}-title` }, title),
+      h('span', { class: 'alert-text' }, headline),
+      h('span', { class: 'expand small' }, h('span', { class: 'when-closed' }, 'Show'), h('span', { class: 'when-open' }, 'Hide')),
+    ),
+    h('div', { class: 'alert-body' }, body),
+  );
+}
+
 /** "Warned about by" on a card: each source, linked, with its post's title as its own words. */
 function reportsLine(r: Result): HTMLElement | null {
   const reports = r.reports ?? [];
@@ -1426,7 +1503,7 @@ function reportsLine(r: Result): HTMLElement | null {
 function targetedBadge(): HTMLElement {
   return h(
     'span',
-    { class: 'badge targeted', title: 'CISA added CVEs in this product to KEV in the last 90 days. See Targeted by attackers above.' },
+    { class: 'badge targeted', title: 'CISA added CVEs in this product to KEV in the last 90 days. See Targeted above.' },
     'Targeted',
   );
 }
@@ -1517,6 +1594,15 @@ function glossary(): HTMLElement {
   );
 }
 
+/**
+ * A stack item's name as people read it, without the prefix the URL needs (`fortinet/fortios`,
+ * not `p:fortinet/fortios`); a package says its ecosystem first. The full item is its tooltip.
+ */
+function itemName(name: string, attrs: { class?: string } = {}): HTMLElement {
+  const { label, ecosystem } = itemLabel(name);
+  return h('code', { ...attrs, title: label === name ? null : name }, ecosystem ? h('span', { class: 'ecosystem' }, ecosystem) : null, label);
+}
+
 /** A link that opens in a new tab, or plain text when the URL isn't http(s). */
 function externalLink(url: string | null, label: string): HTMLElement | string {
   const href = safeHref(url);
@@ -1537,7 +1623,7 @@ function renderFixFirst(feed: Feed): HTMLElement {
   return h(
     'section',
     { class: 'block fix-first', 'aria-labelledby': 'fix-title' },
-    h('h2', { id: 'fix-title' }, 'Fix first'),
+    h('h2', { id: 'fix-title', class: 'fix-title' }, items[0] ? urgentMark(worstOf(items[0])) : null, 'Fix first'),
     h(
       'p',
       { class: 'muted small' },
@@ -1604,11 +1690,11 @@ function renderFixItem(g: ComponentGroup, shown: Set<string>, targeted = false):
  */
 function groupName(g: ComponentGroup): HTMLElement[] {
   // A listed group: its product's name, else the one CVE it holds.
-  if (g.listed && g.label) return [h('strong', { class: 'product-name' }, g.label), h('code', { class: 'small muted' }, g.component)];
-  if (g.listed && g.component.startsWith('cve:')) return [h('code', {}, `CVE-${g.component.slice(4)}`)];
-  if (g.family) return [h('code', {}, g.family), h('span', { class: 'badge match-close' }, `${g.also.length + 1} close matches`)];
+  if (g.listed && g.label) return [h('strong', { class: 'product-name' }, g.label), itemName(g.component, { class: 'small muted' })];
+  if (g.listed && g.component.startsWith('cve:')) return [itemName(g.component)];
+  if (g.family) return [itemName(g.family), h('span', { class: 'badge match-close' }, `${g.also.length + 1} close matches`)];
   return [
-    h('code', {}, g.component),
+    itemName(g.component),
     g.also.length > 0 ? h('span', { class: 'small muted' }, `+${g.also.length} more`) : null,
     g.close ? h('span', { class: 'badge match-close' }, 'Close match') : null,
   ].filter((e) => e !== null);
@@ -1618,12 +1704,12 @@ function groupName(g: ComponentGroup): HTMLElement[] {
 function sameCves(g: ComponentGroup): HTMLElement | null {
   if (g.also.length === 0) return null;
   if (g.family) {
-    const names = [g.component, ...g.also.map((item) => itemMarks(item).name)].map((n) => h('code', {}, n));
+    const names = [g.component, ...g.also.map((item) => itemMarks(item).name)].map((n) => itemName(n));
     return h('p', { class: 'small muted also' }, 'Covers: ', names.flatMap((n, i) => (i === 0 ? [n] : [', ', n])));
   }
   const names = g.also.map((item) => {
     const { name, close } = itemMarks(item);
-    return [h('code', {}, name), close ? ' (close match)' : ''];
+    return [itemName(name), close ? ' (close match)' : ''];
   });
   return h('p', { class: 'small muted also' }, 'With the same CVEs: ', names.flatMap((n, i) => (i === 0 ? n : [', ', ...n])));
 }
@@ -1878,8 +1964,7 @@ function renderFamilies(families: ReturnType<typeof foldFamilies>): HTMLElement 
 /** How many change cards show before the rest fold away. */
 const CHANGES_SHOWN = 8;
 
-function renderChanges(feed: Feed): HTMLElement {
-  const groups = groupChanges(feed.changes, feed.results);
+function renderChanges(groups: ChangeGroup[]): HTMLElement {
   const section = h(
     'section',
     { class: 'block changes', 'aria-labelledby': 'changes-title' },
@@ -1933,7 +2018,7 @@ function renderChangeGroup(g: ChangeGroup): HTMLElement {
           { class: 'small row wrap' },
           h('span', { class: `pill ${RISK[r.priority].light}` }, RISK[r.priority].label),
           h('span', { class: `badge match-${r.match}` }, r.match === 'exact' ? 'Exact match' : 'Close match'),
-          h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)])),
+          h('span', {}, 'Matched ', r.matched.flatMap((m, i) => [i > 0 ? ', ' : '', itemName(itemMarks(m).name)])),
         )
       : null,
     renderSummary(r?.summary ?? null),
@@ -2038,7 +2123,7 @@ function renderResult(r: Result): HTMLElement {
       r.title ? h('p', { class: 'title' }, r.title) : null,
       // Listed CVEs are left out: the ID above already says it.
       items.length > 0
-        ? h('p', { class: 'matched small muted' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', h('code', {}, itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '')
+        ? h('p', { class: 'matched small muted' }, 'Matched ', items.flatMap((m, i) => [i > 0 ? ', ' : '', itemName(itemMarks(m).name)]), r.matched.length > items.length ? ' and your list' : '')
         : null,
       renderSummary(r.summary),
       renderWhy(r),

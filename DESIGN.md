@@ -169,10 +169,11 @@ The priority scale. Each tier sets a `--light` (fills, left borders, strip segme
 ### Hierarchy
 - **Display** (800, clamp(2.1rem, 6vw, 3.4rem), 1.02): the results headline ("the match"). One per view.
 - **Headline** (800, clamp(1.9rem, 5vw, 2.6rem), 1.1): the compose question on the home page, prose page titles, the loader message.
+- **Lead** (800, 1.75rem, 1.1): the Fix first heading, the one section that answers the question. A warning triangle drawn in SVG sits before it, filled with the tier colour of the top row and its "!" in that tier's fill-text colour, like the rank squares. It shows only when the top row is Act now or Attend.
 - **Title** (700, 1.3rem, 1.25): section headings (h2), tier headings.
 - **Body** (400, 1rem, 1.55): everything else, within the 54rem column, with running text held to a 72ch measure (68ch on the prose pages). Small text is 0.875rem.
 - **Label** (700, 0.8rem): priority pills, scores, counts, tags. Counts and scores use tabular numerals.
-- **Mono** (0.9em): CVE and GHSA IDs, package names, versions, code.
+- **Mono** (0.9em): CVE and GHSA IDs, package names, versions, code. Stack items show without the prefix the URL needs (`fortinet/fortios`, not `p:fortinet/fortios`); a package's ecosystem goes before its name in 700-weight Dusk Muted sans at 0.8em. The full item is the tooltip. The add-by-hand format hint keeps the prefixes, since that's what people type.
 
 ### Named Rules
 **The Mono Means Identifier Rule.** If a string is an ID, a package name or a version, it is set in Atkinson Mono. Prose never is.
@@ -213,7 +214,7 @@ Quiet and exact: hairline borders, a small radius, one solid primary action per 
 - **Segmented control:** fully rounded options with a Rule border; the selected option inverts to ink on paper.
 
 ### Tabs
-The home form's two modes, "By stack" and "By CVE list", sit above the headline as quiet tabs, not chips: 700-weight text at 0.95rem in Dusk Muted on a Rule line, 1.5rem apart. The open tab turns ink with a 2px ink underline that replaces the rule beneath it; hover darkens the text and shows a Control Edge underline. Each tab is at least 2.5rem tall. They follow the WAI-ARIA tabs pattern (arrow keys, Home and End), and `/#cves` opens the second. Each tab keeps its own headline ("What do you run?", "Which CVEs do you want to prioritise?"), so the One Big Line Rule holds. The CVE box is set in mono, since only IDs go in it.
+The results page uses the same tabs below the stack and its findings: Results (Fix first, the priority ledger, every CVE) and What changed, each with its count in 400 weight. The home form's two modes, "By stack" and "By CVE list", sit above the headline as quiet tabs, not chips: 700-weight text at 0.95rem in Dusk Muted on a Rule line, 1.5rem apart. The open tab turns ink with a 2px ink underline that replaces the rule beneath it; hover darkens the text and shows a Control Edge underline. Each tab is at least 2.5rem tall. They follow the WAI-ARIA tabs pattern (arrow keys, Home and End), and `/#cves` opens the second. Each tab keeps its own headline ("What do you run?", "Which CVEs do you want to prioritise?"), so the One Big Line Rule holds. The CVE box is set in mono, since only IDs go in it.
 
 ### Cards / Containers
 - **Corner Style:** 4px.
@@ -233,6 +234,9 @@ Two parts. The **head and rail**: the priority pill, `Risk N`, "Respond within â
 ### Notices
 - **Lookup notes** (couldn't match, given teams, entries left out): a 1px Attend Amber box with a 7% amber tint, in the stack section, staying on the page rather than passing through the status line.
 - **Spent pass:** the same box in Act Red with a 4px left edge and a live countdown.
+
+### Finding lines
+Out of support, Targeted and Open-source reports sit above the tabs as one ruled line each: the name in 800-weight ink, one sentence of what it amounts to ("CISA added CVEs in 3 of your products to KEV in the last 90 days."), and Show at the right. Show opens the full list; nothing is cut, since a finding can name an item no CVE matched. Ink only: the Fix first rows carry the same findings as badges in their tier's colour. On a phone the sentence drops under the name and Show.
 
 ### Results stack line
 One line under the headline: "Your stack", a summary ("5 items: 4 exact, 1 close match"), the time window and Edit stack. The items fold away behind it when there are more than 12. A close match says "Close match" in amber words beside a dashed amber chip, never by the dash alone.

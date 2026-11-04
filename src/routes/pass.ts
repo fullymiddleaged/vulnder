@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { D1BindingStore } from '../ingest/d1-store';
 import { BodyTooLarge, readCapped } from '../lib/body';
 import { clientKey } from '../lib/client';
-import { issuePass, LOCK_COOKIE, lockedStatus, lockedUntil, PASS_COOKIE, PASS_STACKS, PASS_TTL_SECONDS, passStatus, type PassStatus } from '../lib/pass';
+import { issuePass, LOCK_COOKIE, lockedStatus, lockedUntil, PASS_COOKIE, passLimit, PASS_TTL_SECONDS, passStatus, type PassStatus } from '../lib/pass';
 import { TURNSTILE_ACTION, verifyTurnstile } from '../resolve/turnstile';
 import type { AppEnv } from '../types';
 
@@ -25,17 +25,19 @@ const PassBody = z.object({ turnstileToken: z.string().max(2048) });
 export const pass = new Hono<AppEnv>()
   .get('/', async (c) => {
     const now = new Date();
+    const limit = passLimit(c.env.PASS_STACKS);
     const locked = readLock(c, now);
-    if (locked) return c.json({ active: true, ...lockedStatus(locked) }, 200, { 'Cache-Control': 'no-store' });
+    if (locked) return c.json({ active: true, ...lockedStatus(locked, limit) }, 200, { 'Cache-Control': 'no-store' });
     const id = getCookie(c, PASS_COOKIE);
-    const status = id ? await passStatus(new D1BindingStore(c.env.DB), id, now) : null;
-    return c.json({ active: status !== null, ...(status ?? { used: 0, limit: PASS_STACKS, resetsAt: null }) }, 200, { 'Cache-Control': 'no-store' });
+    const status = id ? await passStatus(new D1BindingStore(c.env.DB), id, now, limit) : null;
+    return c.json({ active: status !== null, ...(status ?? { used: 0, limit, resetsAt: null }) }, 200, { 'Cache-Control': 'no-store' });
   })
   .post('/', async (c) => {
     if (Number(c.req.header('content-length') ?? 0) > MAX_PASS_BODY) return c.json({ error: 'request too large' }, 413);
     const now = new Date();
+    const limit = passLimit(c.env.PASS_STACKS);
     const locked = readLock(c, now);
-    if (locked) return passLimited(c, lockedStatus(locked), now);
+    if (locked) return passLimited(c, lockedStatus(locked, limit), now);
     // The same per-IP limit as /api/resolve: both are where a browser proves itself.
     if (c.env.RESOLVE_LIMITER) {
       const { success } = await c.env.RESOLVE_LIMITER.limit({ key: clientKey(c.req.header('cf-connecting-ip') ?? null) });
@@ -52,8 +54,8 @@ export const pass = new Hono<AppEnv>()
     }
     const earned = await earnPass(c, token);
     if (earned instanceof Response) return earned;
-    const status = await passStatus(new D1BindingStore(c.env.DB), earned, now);
-    return c.json({ active: true, ...(status ?? { used: 0, limit: PASS_STACKS, resetsAt: null }) }, 200, { 'Cache-Control': 'no-store' });
+    const status = await passStatus(new D1BindingStore(c.env.DB), earned, now, limit);
+    return c.json({ active: true, ...(status ?? { used: 0, limit, resetsAt: null }) }, 200, { 'Cache-Control': 'no-store' });
   });
 
 /**

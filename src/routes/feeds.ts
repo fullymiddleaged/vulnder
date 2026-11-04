@@ -7,7 +7,7 @@ import { supportText } from '../match/support';
 import { targetedName, targetedText } from '../match/targeted';
 import { getCookie } from 'hono/cookie';
 import { clientKey } from '../lib/client';
-import { isSpent, lockedStatus, PASS_COOKIE, usePass } from '../lib/pass';
+import { isSpent, lockedStatus, PASS_COOKIE, passLimit, usePass } from '../lib/pass';
 import { passLimited, readLock, withLock } from './pass';
 import type { ComponentCache, ComponentData } from '../match/components';
 import { createOsvClient } from '../match/osv';
@@ -102,7 +102,7 @@ async function cached(
   const now = new Date();
   // A locked browser is turned away before anything touches D1 or the cache.
   const locked = readLock(c, now);
-  if (locked) return passLimited(c, lockedStatus(locked), now);
+  if (locked) return passLimited(c, lockedStatus(locked, passLimit(c.env.PASS_STACKS)), now);
 
   const store = new D1BindingStore(c.env.DB);
   // A browser's pass (src/lib/pass.ts) counts new stacks, whether cached or not,
@@ -116,7 +116,7 @@ async function cached(
   const passId = getCookie(c, PASS_COOKIE);
   const secret = c.env.TURNSTILE_SECRET_KEY;
   if (passId && secret) {
-    const use = await usePass(store, passId, req.canonical, secret, now);
+    const use = await usePass(store, passId, req.canonical, secret, now, passLimit(c.env.PASS_STACKS));
     if (use && isSpent(use.status)) lockUntil = use.status.resetsAt;
     if (use?.ok) limitKey = `pass:${passId}`;
     if (use && !use.ok) {

@@ -184,6 +184,18 @@ button.link { border: none; background: none; padding: 0; min-height: auto; font
 .tab[aria-selected='true'] { color: var(--fg); border-bottom-color: var(--fg); }
 .tab:focus-visible { outline-offset: 0; border-radius: 2px; }
 [role='tabpanel'][hidden] { display: none; }
+/* Fix first is the answer, so its heading steps up between the headline and the other sections. */
+.fix-title { display: flex; align-items: center; gap: 0.55rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; margin-bottom: 0.6rem; }
+.urgent-mark { width: 1.6rem; height: 1.6rem; flex: none; }
+.urgent-sign { fill: var(--light); stroke: var(--light); }
+.urgent-bang { stroke: var(--on-light); }
+/* A package's ecosystem, quieter than its name. */
+code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; color: var(--muted); margin-right: 0.4em; }
+.tab-count { margin-left: 0.4rem; font-weight: 400; font-variant-numeric: tabular-nums; }
+/* The results' tabs: the panels space their sections as the page does, and the tab bar's rule stands in for the first one's. */
+.result-tabs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.4rem; }
+.tab-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3rem; }
+.tab-panel > .block:first-child { border-top: none; padding-top: 0; }
 /* Nothing but identifiers goes in it. */
 #cve-text { font-family: var(--mono); font-size: 0.95rem; }
 .compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
@@ -253,7 +265,7 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 .headline h2 { font-size: clamp(min(2.1rem, 11vw), 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 0.6rem; }
 .headline p { margin: 0; font-size: 1.1rem; max-width: var(--measure); }
 .share-bar { margin-top: 1rem; gap: 0.4rem; }
-.risk { display: grid; gap: 1rem; margin-top: -1rem; }
+.risk { display: grid; gap: 1rem; }
 .risk-strip { display: flex; gap: 3px; height: 0.9rem; }
 .risk-strip span { flex-basis: 0; min-width: 0.6rem; background: var(--light); border-radius: 2px; transform-origin: left; animation: grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .risk-strip span:nth-child(2) { animation-delay: 0.08s; }
@@ -297,7 +309,8 @@ select.team-select { min-height: 1.75rem; padding: 0 0.4rem; border-radius: 999p
 .segment span { display: inline-block; border: 1px solid var(--control); border-radius: 999px; padding: 0.25rem 0.85rem; }
 .segment input:checked + span { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 700; }
 .segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
-.results-view { display: grid; gap: 3rem; margin-top: -1rem; }
+/* The grouping toggle heads the list it groups, so it sits closer to it than the panel's gap. */
+.results-view { display: grid; gap: 3rem; margin-top: -1.5rem; }
 .results-view:focus { outline: none; }
 .results-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
 
@@ -445,6 +458,23 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .brief .row.head .title { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .brief .links { gap: 0.3rem 1rem; }
 
+/* Findings above the ranking: one ruled line each, opening to the full list. Ink only: the rows below carry the tier colour. */
+.alerts { display: grid; }
+.alert { border-bottom: 1px solid var(--border); }
+.alert:first-child { border-top: 1px solid var(--border); }
+/* Narrow: name and Show on one row, the line under them. Wide: all three on one row. */
+.alert summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title more" "text text"; align-items: baseline; gap: 0.15rem 0.75rem; padding: 0.7rem 0.25rem; cursor: pointer; list-style: none; }
+@media (min-width: 48rem) {
+  .alert summary { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "title text more"; }
+}
+.alert summary::-webkit-details-marker { display: none; }
+.alert summary:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.alert h2 { grid-area: title; font-size: 1rem; font-weight: 800; margin: 0; }
+.alert-text { grid-area: text; }
+.alert .expand { grid-area: more; }
+.alert-body { padding: 0 0.25rem 1rem; }
+.alert-body > p.muted { margin-top: 0; }
+
 /* Out of support: one row per finding, ruled in its priority's colour like a fix-first row. */
 .support-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
 .support-item { border-left: 3px solid var(--light); padding: 0.3rem 0 0.3rem 0.75rem; overflow-wrap: anywhere; }
@@ -453,12 +483,13 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
 .badge.support.eol { color: var(--exploited); }
 .badge.support.ending { color: var(--likely); }
 /* Targeted by attackers: evidence about the product, not a priority, so no tier colour and no edge. */
-.targeted-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 1rem; }
+.targeted-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 0.7rem; }
 .targeted-item { overflow-wrap: anywhere; }
+.targeted-item + .targeted-item { border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.targeted-item > p:first-child code:not(.small) { font-weight: 700; }
 .targeted-item p { margin: 0.2rem 0; }
 /* Wide: one row per product, its name on the left and what CISA added on the right. */
 @media (min-width: 48rem) {
-  .targeted-list { gap: 0.6rem; }
   .targeted-item { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); column-gap: 1.25rem; align-items: baseline; }
   .targeted-item p { margin: 0; }
 }
@@ -486,6 +517,7 @@ details[open] > summary .expand::after { transform: translateY(0.05em) rotate(-1
   .fix-item .tally { margin-left: 0; }
   .fix-item summary { padding: 0.85rem 0.25rem; }
   .results-view { gap: 2.5rem; }
+  .tab-panel { gap: 2.5rem; }
   .briefs { padding-left: 0.25rem; }
 }
 /* A phone with a large font setting gets this narrow: unwrapped labels would push the page wider and Chrome would zoom out. */

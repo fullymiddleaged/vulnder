@@ -162,7 +162,7 @@ describe('exportMarkdown', () => {
     });
     expect(withSupport.indexOf('## Out of support')).toBeLessThan(withSupport.indexOf('## Fix first'));
     expect(withSupport).toContain(
-      '- **Windows Server 2012 R2** (Act now): Out of support since 2023-10-10: it gets no more security updates. Upgrade to a supported release urgently. Paid extended security updates run until 2026-10-13. If you have them, add ;esu to the item in the stack. Dates: endoflife.date. Stack: `p:microsoft/windows_server_2012_r2`',
+      '- **Windows Server 2012 R2** (Act now): Out of support since 2023-10-10. Upgrade to a supported release urgently. Paid extended security updates run until 2026-10-13. If you have them, add ;esu to the item in the stack. Dates: endoflife.date. Stack: `p:microsoft/windows_server_2012_r2`',
     );
     expect(withSupport).toContain('1. `npm:express@4.18.2`: 1 Act now; out of support; total risk 92');
     expect(exportMarkdown(feed)).not.toContain('## Out of support');
@@ -175,7 +175,7 @@ describe('exportMarkdown', () => {
       watching: ['pypi:django', 'p:trendnet/tew_827dru'],
       support: [{ state: 'eol', name: 'TRENDnet TEW-827DRU', date: null, esuUntil: null, esu: false, edge: true, source: 'cve', cve: 'CVE-2026-0009', items: ['p:trendnet/tew_827dru'] }],
     });
-    expect(md).toContain('- **TRENDnet TEW-827DRU** (Act now, edge device): Out of support: it gets no more security updates.');
+    expect(md).toContain('- **TRENDnet TEW-827DRU** (Act now, edge device): Out of support. Upgrade to a supported release urgently.');
     expect(md).toContain('Source: CVE-2026-0009, whose vendor marks the product unsupported.');
     expect(md).toContain('Still watched: `pypi:django`\n');
   });
@@ -186,8 +186,10 @@ describe('exportMarkdown', () => {
       targeted: [{ items: ['npm:express@4.18.2'], kev: [{ id: 'CVE-2026-0001', addedAt: '2026-10-02' }] }],
     });
     expect(md.indexOf('## Targeted by attackers')).toBeLessThan(md.indexOf('## Fix first'));
+    // The export has no one-line summary to open, so the section says it first.
+    expect(md).toContain('CISA added CVEs in 1 of your products to KEV in the last 90 days. 1 in 3 products');
     expect(md).toContain(
-      '- `npm:express@4.18.2`: CISA added one of its CVEs to KEV (CVE-2026-0001), most recently CVE-2026-0001 on 2026-10-02. It affects your stack: see Act now below.',
+      '- `npm:express@4.18.2`: CISA added 1 CVE to KEV (CVE-2026-0001), most recently CVE-2026-0001 on 2026-10-02. In Act now.',
     );
     expect(md).toContain('1. `npm:express@4.18.2`: 1 Act now; targeted (see above); total risk 92');
     expect(md).not.toContain('2. `?p:f5/nginx`: 1 Watch; targeted');
@@ -217,7 +219,7 @@ describe('exportMarkdown', () => {
       targeted: [{ items: ['p:ivanti/connect_secure'], kev: [{ id: 'CVE-2026-0101', addedAt: '2026-10-01' }], listed: true, label: 'Ivanti Connect Secure' }],
     });
     expect(md).toContain(
-      '- **Ivanti Connect Secure** (`p:ivanti/connect_secure`): CISA added one of its CVEs to KEV (CVE-2026-0101), most recently CVE-2026-0101 on 2026-10-01. It isn’t in your list, but the product is a target.',
+      '- **Ivanti Connect Secure** (`p:ivanti/connect_secure`): CISA added 1 CVE to KEV (CVE-2026-0101), most recently CVE-2026-0101 on 2026-10-01. Not in your list.',
     );
   });
 

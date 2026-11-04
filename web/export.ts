@@ -15,11 +15,13 @@ import {
   supportLines,
   supportPriority,
   REPORTED_INTRO,
+  reportedHeadline,
   reportedResults,
   reportSummary,
   TARGETED_INTRO,
   targetedByItem,
   targetedCount,
+  targetedHeadline,
   targetedStatus,
   type ComponentGroup,
 } from './format';
@@ -230,7 +232,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder', sources?: Health['s
 
   const targeted = feed.targeted ?? [];
   if (targeted.length > 0) {
-    out.push('', '## Targeted by attackers', '', TARGETED_INTRO, '');
+    out.push('', '## Targeted by attackers', '', `${targetedHeadline(targeted)} ${TARGETED_INTRO}`, '');
     for (const t of targeted) {
       const latest = t.kev[0]!;
       out.push(
@@ -240,7 +242,7 @@ export function exportMarkdown(feed: Feed, name = 'Vulnder', sources?: Health['s
   }
   const reported = reportedResults(feed.results);
   if (reported.length > 0) {
-    out.push('', '## Open-source reports', '', REPORTED_INTRO, '');
+    out.push('', '## Open-source reports', '', `${reportedHeadline(reported)} ${REPORTED_INTRO}`, '');
     for (const r of reported) out.push(`- ${r.id} (${RISK[r.priority].label})${r.title ? `: ${mdText(r.title)}` : ''}. ${mdText(reportSummary(r))}.`);
   }
   const targetedItems = targetedByItem(targeted);

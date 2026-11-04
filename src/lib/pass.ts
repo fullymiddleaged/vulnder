@@ -1,9 +1,10 @@
 import { stmt, type Statement, type Store } from '../ingest/store';
+import { limitFromVar } from './quota';
 
 /**
  * Feed passes: what one browser may look up. A pass is issued after a
  * Turnstile check (POST /api/resolve, or POST /api/pass for a CVE list) and carried in an HttpOnly cookie. Each
- * hour, starting from its first use, it may load PASS_STACKS different stacks;
+ * hour, starting from its first use, it may load passLimit() different stacks;
  * until the last of them, the same stack again, or over another window, is
  * free. Once all are used the pass is locked until the hour is over: nothing
  * loads, not even the stacks it has opened. Requests without a pass (feed
@@ -19,7 +20,17 @@ export const PASS_COOKIE = 'vulnder_pass';
 /** When a spent pass unlocks, in epoch ms. Unsigned: forging one only locks yourself out. */
 export const LOCK_COOKIE = 'vulnder_lock';
 export const PASS_STACKS = 2;
+/** The most a deployment may raise PASS_STACKS to. */
+const MAX_PASS_STACKS = 100;
 export const PASS_WINDOW_MS = 3_600_000;
+
+/**
+ * The stacks a pass may load each hour: the PASS_STACKS variable (local development sets 10
+ * in .dev.vars), at most 100 since each one is stored, or PASS_STACKS when it's unset or invalid.
+ */
+export function passLimit(value: string | undefined): number {
+  return Math.min(limitFromVar(value, PASS_STACKS), MAX_PASS_STACKS);
+}
 /** How long a pass lives, as a cookie and as a row. */
 export const PASS_TTL_SECONDS = 86_400;
 
@@ -53,20 +64,20 @@ export async function issuePass(store: Store, now: Date): Promise<string> {
 }
 
 /** The pass's allowance now, or null for an unknown or expired pass. */
-export async function passStatus(store: Store, id: string, now: Date): Promise<PassStatus | null> {
+export async function passStatus(store: Store, id: string, now: Date, limit = PASS_STACKS): Promise<PassStatus | null> {
   const row = await load(store, id, now);
-  return row ? current(row, now).status : null;
+  return row ? current(row, now, limit).status : null;
 }
 
 /**
  * Counts `canonical` against the pass. Null for an unknown or expired pass;
  * otherwise whether the stack may load, and the allowance after it.
  */
-export async function usePass(store: Store, id: string, canonical: string, secret: string, now: Date, attempt = 0): Promise<PassUse | null> {
+export async function usePass(store: Store, id: string, canonical: string, secret: string, now: Date, limit = PASS_STACKS, attempt = 0): Promise<PassUse | null> {
   const row = await load(store, id, now);
   if (!row) return null;
-  const { stacks, windowStart, status } = current(row, now);
-  if (stacks.length >= PASS_STACKS || attempt >= 3) return { ok: false, status };
+  const { stacks, windowStart, status } = current(row, now, limit);
+  if (stacks.length >= limit || attempt >= 3) return { ok: false, status };
   const hash = await stackHash(secret, id, canonical);
   if (stacks.includes(hash)) return { ok: true, status };
 
@@ -74,8 +85,8 @@ export async function usePass(store: Store, id: string, canonical: string, secre
   const next = [...stacks, hash];
   const updated = await store.all(UPDATE_PASS, [start, JSON.stringify(next), id, row.stacks]);
   // Another request changed the pass first: count again from what it wrote.
-  if (updated.length === 0) return usePass(store, id, canonical, secret, now, attempt + 1);
-  return { ok: true, status: { used: next.length, limit: PASS_STACKS, resetsAt: resetAt(start) } };
+  if (updated.length === 0) return usePass(store, id, canonical, secret, now, limit, attempt + 1);
+  return { ok: true, status: { used: next.length, limit, resetsAt: resetAt(start) } };
 }
 
 /** Whether a pass has used every stack in its current hour. */
@@ -94,8 +105,8 @@ export function lockedUntil(value: string | undefined, now: Date): string | null
 }
 
 /** The status a locked browser reports, read from its lock cookie alone. */
-export function lockedStatus(resetsAt: string): PassStatus {
-  return { used: PASS_STACKS, limit: PASS_STACKS, resetsAt };
+export function lockedStatus(resetsAt: string, limit = PASS_STACKS): PassStatus {
+  return { used: limit, limit, resetsAt };
 }
 
 /** Daily maintenance: drop passes past their lifetime. */
@@ -110,11 +121,11 @@ async function load(store: Store, id: string, now: Date): Promise<PassRow | null
 }
 
 /** The stored window, or a fresh one once its hour is over. */
-function current(row: PassRow, now: Date): { stacks: string[]; windowStart: string | null; status: PassStatus } {
+function current(row: PassRow, now: Date, limit: number): { stacks: string[]; windowStart: string | null; status: PassStatus } {
   const expired = row.window_start !== null && now.getTime() >= Date.parse(row.window_start) + PASS_WINDOW_MS;
   const windowStart = expired ? null : row.window_start;
   const stacks = expired ? [] : parseStacks(row.stacks);
-  return { stacks, windowStart, status: { used: stacks.length, limit: PASS_STACKS, resetsAt: windowStart ? resetAt(windowStart) : null } };
+  return { stacks, windowStart, status: { used: stacks.length, limit, resetsAt: windowStart ? resetAt(windowStart) : null } };
 }
 
 function resetAt(windowStart: string): string {

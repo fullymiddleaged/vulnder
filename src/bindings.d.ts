@@ -19,3 +19,13 @@ declare namespace Cloudflare {
 interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
+
+declare namespace Cloudflare {
+  interface Env {
+    /** Optional. Different stacks a browser's pass may load each hour, 1 to 100; unset means 2. Local development sets 10. */
+    PASS_STACKS?: string;
+  }
+}
+interface Env {
+  PASS_STACKS?: string;
+}
