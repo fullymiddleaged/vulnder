@@ -300,12 +300,38 @@ function renderInput(prefill = '', tab: InputTab = tabFromHash()): void {
       lockControls([stackPanel.submit, stackPanel.drop, cvePanel.submit, cvePanel.drop], () => (stackPanel.update(), cvePanel.update())),
       stackPanel.el,
       cvePanel.el,
-      // One check for both tabs, beneath them: either tab's lookup spends the same hourly allowance.
+      // One check for both tabs, right under the button: either tab's lookup spends the same hourly allowance.
       turnstileBox,
+      trustLine(),
     ),
   );
   select(tab);
   mountTurnstile(turnstileBox);
+}
+
+/** Facts the footer and About already state, under the form. No other claim goes here. */
+function trustLine(): HTMLElement {
+  return h(
+    'p',
+    { class: 'trust small muted' },
+    `No account. ${config?.displayName ?? 'Vulnder'} `,
+    h('a', { href: '#privacy', onclick: (e: Event) => (e.preventDefault(), openPrivacy()) }, 'doesn’t store your stack'),
+    '. ',
+    h('a', { href: 'https://github.com/fullymiddleaged/vulnder', rel: 'noreferrer' }, 'Open source'),
+    '.',
+  );
+}
+
+/**
+ * Opens the footer's privacy details and takes the reader there. The address keeps no #privacy:
+ * a hash change would pop state and route, redrawing the form and losing what was typed.
+ */
+function openPrivacy(): void {
+  const details = document.getElementById('privacy') as HTMLDetailsElement | null;
+  if (!details) return;
+  details.open = true;
+  details.scrollIntoView({ block: 'start' });
+  details.querySelector('summary')?.focus({ preventScroll: true });
 }
 
 interface Panel {
@@ -386,10 +412,9 @@ function cveForm(prefill: string): Panel {
     '.csv,.tsv,.nessus,.xml,.json,.txt',
     `Up to ${MAX_SCAN_BYTES / 1_000_000} MB: ${SCAN_FORMATS}`,
     [
-      'Have a scan report? Drop it here or ',
+      'Have a scan report instead? Paste it above, drop it here or ',
       h('label', { for: 'cve-file', class: 'link' }, 'choose a file'),
-      '. ',
-      h('span', { class: 'muted' }, 'Read in your browser: only the CVE IDs go into the link.'),
+      '.',
     ],
     (file) => void onFile(file),
   );
@@ -489,10 +514,9 @@ function stackForm(prefill: string, toCves: () => void): Panel {
     '.json,.txt,.toml,.mod,.xml,.lock,Dockerfile,*',
     `Up to ${MAX_MANIFEST_BYTES / 1_000_000} MB: ${MANIFEST_FORMATS}`,
     [
-      'Have a manifest? Drop it here or ',
+      'Have a manifest instead? Paste it above, drop it here or ',
       h('label', { for: 'file', class: 'link' }, 'choose a file'),
-      '. ',
-      h('span', { class: 'muted' }, 'Lockfiles, SBOMs, MCP configs and more, read in your browser: only package names and versions are sent.'),
+      '.',
     ],
     (file) => void onFile(file),
   );
@@ -842,7 +866,8 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
  */
 function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map(), listed: string[] = []): void {
   clear(app);
-  delete document.body.dataset.view;
+  // Keeps the content column, and hides the home page's sample result and big tagline.
+  document.body.dataset.view = 'edit';
   const items = [...new Set(initial)];
   const cves = [...new Set(listed)];
   // Teams belong to enterprise stacks: once a stack has them, every item gets a team picker.
@@ -2354,9 +2379,14 @@ async function route(): Promise<void> {
   focusMain();
 }
 
-window.addEventListener('popstate', () => void route());
+// Following a #privacy link only opens the footer's details; the form stays as it was.
+window.addEventListener('popstate', () => (location.hash === '#privacy' ? openPrivacy() : void route()));
 
+// A stack link's view is known before anything loads, so the home page's headline and sample never flash over it.
+if (new URLSearchParams(location.search).get('s')) document.body.dataset.view = 'results';
+const privacyLinked = location.hash === '#privacy';
 config = await getConfig().catch(() => null);
 if (config) document.querySelectorAll('[data-name]').forEach((n) => (n.textContent = config!.displayName));
 await route();
+if (privacyLinked) openPrivacy();
 void renderFooter();
