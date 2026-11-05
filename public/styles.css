@@ -638,6 +638,11 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 /* About and How it works: static pages of prose. */
 .site-nav { margin-left: auto; display: flex; gap: 0.25rem 1rem; flex-wrap: wrap; }
 .site-nav a[aria-current='page'] { color: var(--fg); font-weight: 700; text-decoration: none; }
+/* How fresh the CVE data is: a quiet line under the nav, amber only when a source is behind (something to check). */
+.freshness { flex-basis: 100%; text-align: right; margin: 0; }
+.freshness a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 0.2em; }
+.freshness a:hover { text-decoration-color: currentColor; }
+.freshness a.stale { color: var(--likely); }
 .footer-nav { display: flex; gap: 0.4rem 1rem; flex-wrap: wrap; }
 /* The list wraps between sources; a source only breaks itself on a screen too narrow for it. */
 /* Footer: one line says whether the data is current; the ledger behind it lists each source and its age. */
@@ -791,6 +796,7 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose .levels ul li { margin: 0.2rem 0; }
 @media (max-width: 36rem) {
   .site-nav { margin-left: 0; }
+  .freshness { text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {

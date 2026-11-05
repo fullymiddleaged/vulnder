@@ -36,6 +36,7 @@ import {
   checksServedText,
   sourceAge,
   sourcesStatus,
+  freshnessText,
   byPriority,
   foldFamilies,
   CHANGE_LABEL,
@@ -315,7 +316,7 @@ function trustLine(): HTMLElement {
     'p',
     { class: 'trust small muted' },
     `No account. ${config?.displayName ?? 'Vulnder'} `,
-    h('a', { href: '#privacy', onclick: (e: Event) => (e.preventDefault(), openPrivacy()) }, 'doesn’t store your stack'),
+    h('a', { href: '#privacy', onclick: (e: Event) => (e.preventDefault(), openDetails('privacy')) }, 'doesn’t store your stack'),
     '. ',
     h('a', { href: 'https://github.com/fullymiddleaged/vulnder', rel: 'noreferrer' }, 'Open source'),
     '.',
@@ -323,11 +324,11 @@ function trustLine(): HTMLElement {
 }
 
 /**
- * Opens the footer's privacy details and takes the reader there. The address keeps no #privacy:
- * a hash change would pop state and route, redrawing the form and losing what was typed.
+ * Opens one of the footer's details (#privacy, #sources) and takes the reader there. The address
+ * keeps no hash: a hash change would pop state and route, redrawing the form and losing what was typed.
  */
-function openPrivacy(): void {
-  const details = document.getElementById('privacy') as HTMLDetailsElement | null;
+function openDetails(id: 'privacy' | 'sources'): void {
+  const details = document.getElementById(id) as HTMLDetailsElement | null;
   if (!details) return;
   details.open = true;
   details.scrollIntoView({ block: 'start' });
@@ -2342,6 +2343,26 @@ async function renderFooter(): Promise<void> {
     statusEl.textContent = status.text;
     statusEl.classList.toggle('stale', status.behind > 0);
   }
+  renderFreshness(freshnessText(health.sources, names));
+}
+
+/** The header's line on how fresh the CVE data is, linking to the footer's Data sources. */
+function renderFreshness(fresh: { text: string; behind: number } | null): void {
+  const el = document.getElementById('freshness');
+  if (!el || !fresh) return;
+  el.replaceChildren(
+    h(
+      'a',
+      {
+        href: '#sources',
+        class: fresh.behind > 0 ? 'stale' : null,
+        title: `${config?.displayName ?? 'Vulnder'} refreshes CVE records, advisories and CISA KEV every hour; see Data sources for each`,
+        onclick: (e: Event) => (e.preventDefault(), openDetails('sources')),
+      },
+      fresh.text,
+    ),
+  );
+  el.hidden = false;
 }
 
 const canonical = document.querySelector('link[rel="canonical"]');
@@ -2379,14 +2400,21 @@ async function route(): Promise<void> {
   focusMain();
 }
 
-// Following a #privacy link only opens the footer's details; the form stays as it was.
-window.addEventListener('popstate', () => (location.hash === '#privacy' ? openPrivacy() : void route()));
+/** The footer details a #hash link opens, rather than routing. */
+const footerHash = (): 'privacy' | 'sources' | null => (location.hash === '#privacy' ? 'privacy' : location.hash === '#sources' ? 'sources' : null);
+
+// Following a #privacy or #sources link only opens the footer's details; the form stays as it was.
+window.addEventListener('popstate', () => {
+  const id = footerHash();
+  if (id) openDetails(id);
+  else void route();
+});
 
 // A stack link's view is known before anything loads, so the home page's headline and sample never flash over it.
 if (new URLSearchParams(location.search).get('s')) document.body.dataset.view = 'results';
-const privacyLinked = location.hash === '#privacy';
+const linkedDetails = footerHash();
 config = await getConfig().catch(() => null);
 if (config) document.querySelectorAll('[data-name]').forEach((n) => (n.textContent = config!.displayName));
 await route();
-if (privacyLinked) openPrivacy();
+if (linkedDetails) openDetails(linkedDetails);
 void renderFooter();

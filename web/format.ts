@@ -108,6 +108,28 @@ export function sourcesStatus(sources: Health['sources'], names: readonly string
   return { text: behind === 0 ? '· all up to date' : `· ${behind} of ${listed.length} running behind`, behind };
 }
 
+/** The sources that carry CVE intelligence, by the footer's data-source keys. */
+const CVE_SOURCES = ['cve', 'ghsa', 'kev'];
+
+/**
+ * The header's freshness line: when every listed source is fresh, how long ago the newest CVE
+ * intelligence came in (CVE records, advisories, KEV); otherwise how many sources are behind.
+ * Null when health names none of them, or no CVE source has updated yet.
+ */
+export function freshnessText(sources: Health['sources'], names: readonly string[], now = Date.now()): { text: string; behind: number } | null {
+  const listed = names.flatMap((n) => (sources[n] ? [sources[n]] : []));
+  if (listed.length === 0) return null;
+  const behind = listed.filter((s) => s.health !== 'ok').length;
+  if (behind > 0) return { text: `Data sources: ${behind} of ${listed.length} running behind`, behind };
+  const times = CVE_SOURCES.flatMap((n) => {
+    const at = names.includes(n) ? sources[n]?.lastSuccessAt : null;
+    return at ? [at] : [];
+  });
+  if (times.length === 0) return null;
+  const newest = times.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b));
+  return { text: `CVE data updated ${ago(newest, now)}`, behind: 0 };
+}
+
 /** The footer shows the running total from here; below it, a small number reads as an empty site. */
 const CHECKS_SHOWN_FROM = 1000;
 
