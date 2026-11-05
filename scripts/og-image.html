@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Source of the link preview image, public/brand/og-image.png (1200 × 630).
+  Render it from the repository root with Chrome headless:
+    chrome --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --force-device-scale-factor=1 --window-size=1200,630 --screenshot=public/brand/og-image.png scripts/og-image.html
+  (pass the HTML file as an absolute file:/// URL if your Chrome needs one). Keep the tagline in step with public/index.html.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: 'Atkinson Next'; src: url('../public/fonts/atkinson-next.woff2') format('woff2'); font-weight: 100 900; }
+  @font-face { font-family: 'Atkinson Mono'; src: url('../public/fonts/atkinson-mono.woff2') format('woff2'); font-weight: 100 900; }
+  html, body { margin: 0; padding: 0; }
+  body { width: 1200px; height: 630px; overflow: hidden; background: #f5f3f8; color: #1b1724; font-family: 'Atkinson Next', system-ui, sans-serif; position: relative; }
+  .brand { position: absolute; left: 100px; top: 92px; display: flex; align-items: center; gap: 36px; color: #5e2ca5; }
+  .brand svg { width: 124px; height: 124px; }
+  .brand span { font-size: 104px; font-weight: 800; letter-spacing: -0.035em; color: #1b1724; line-height: 1; }
+  .tagline { position: absolute; left: 100px; top: 262px; width: 1000px; font-size: 54px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.16; margin: 0; }
+  .url { position: absolute; left: 100px; top: 496px; font-family: 'Atkinson Mono', monospace; font-size: 30px; color: #1b1724; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; background: #5e2ca5; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <g fill="currentColor">
+        <path fill-rule="evenodd" d="M20 3a17 17 0 1 0 0.01 0ZM20 8.5a11.5 11.5 0 1 1-0.01 0Z" />
+        <path d="M31.5 35.5l4-4 10 10a2.8 2.8 0 0 1-4 4Z" />
+        <path d="M18.34 11.74L12.23 13.9L12.23 19.36C12.23 23.73 15.05 26.79 18.74 28.71L19.38 24.58L17.35 21.42L19.83 18.11L17.68 15.37Z" />
+        <path d="M22.06 11.8L28.25 14.88L27.58 20.3C27.07 24.49 24.1 27.14 20.39 28.62L21.57 24.46L20.16 21.54L23.11 18.47L21.04 15.05Z" />
+      </g>
+    </svg>
+    <span>Vulnder</span>
+  </div>
+  <p class="tagline">Move beyond just CVSS.<br />Match and rank CVEs by what<br />actually needs fixing first.</p>
+  <div class="url">vulnder.com</div>
+  <div class="bar"></div>
+</body>
+</html>
