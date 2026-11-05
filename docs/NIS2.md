@@ -2,7 +2,7 @@
 
 Vulnder can be one of the ways an EU organisation monitors and handles vulnerabilities under NIS2, and an early warning for manufacturers under the Cyber Resilience Act (CRA). It's free and needs no account. Your own AI agent can run the routine and keep the record; Vulnder keeps no copy of your stack or its results.
 
-This maps Vulnder's features to the texts. It isn't legal advice, and using Vulnder doesn't make anyone compliant. The same content is on the site at [vulnder.com/compliance](https://vulnder.com/compliance).
+This isn't legal advice. Vulnder can help with the vulnerability-handling parts of these rules, as one piece of a wider approach. The same content is on the site at [vulnder.com/compliance](https://vulnder.com/compliance).
 
 ## Who the detailed rules cover
 

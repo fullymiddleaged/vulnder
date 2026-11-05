@@ -4,15 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="description" content="Why Vulnder exists: CVE volume doubled in 2026, NVD stopped scoring most of them, and AI is turning disclosed bugs into exploits faster. Vulnder shows which CVEs affect what you run and which are being exploited." />
-    <title>About Vulnder: CVE triage for the AI era</title>
+    <meta name="description" content="Vulnder is a free, open-source CVE feed: describe what you run and it lists the CVEs that affect it, in the order to fix them, with the reason for each." />
+    <title>About Vulnder: free CVE prioritisation for what you run</title>
     <!-- Self-hosting under another name? Change vulnder.com here and in robots.txt, sitemap.xml and llms.txt. -->
     <link rel="canonical" href="https://vulnder.com/about" />
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="Vulnder" />
     <meta property="og:url" content="https://vulnder.com/about" />
-    <meta property="og:title" content="About Vulnder: CVE triage for the AI era" />
-    <meta property="og:description" content="CVE volume has doubled, NIST scores fewer of them, and exploits arrive faster. Why I built a free feed that shows only what affects your stack, ranked by real-world exploitation." />
+    <meta property="og:title" content="About Vulnder: free CVE prioritisation for what you run" />
+    <meta property="og:description" content="Describe what you run and Vulnder lists the CVEs that affect it, in the order to fix them, with the reason for each. Free, open source, no account." />
     <meta property="og:image" content="https://vulnder.com/brand/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -21,6 +21,54 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/atkinson-next.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is CISA KEV?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The US Cybersecurity and Infrastructure Security Agency's catalog of CVEs it has evidence are being exploited. Vulnder puts every CVE on it in Act now, whatever its CVSS."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is EPSS better than CVSS?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "EPSS is a predicted probability that a CVE will be exploited in the next 30 days; CVSS rates how severe it could be. Vulnder ranks EPSS above CVSS, and evidence of exploitation above both."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Act now mean?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "It's the top priority: respond within 24 hours to a CVE in CISA KEV or reported by CISA as actively exploited, and within 3 days to one that looks about to be, such as a critical bug with a high EPSS."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Vulnder scan my systems?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. It only knows what you give it: a lockfile gives exact versions, and a description gives matches for you to confirm."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is my stack stored?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Vulnder doesn't store your stack, your files or your CVE lists, and files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site."
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -49,73 +97,78 @@
       <h1>About Vulnder</h1>
       <p class="byline small muted">Built by <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond</a></p>
       <p class="lede">
-        The latest CVEs for your stack, aggregated and prioritised. Free and open source.
-      </p>
-      <p>
-        I built Vulnder because there are now too many CVEs to triage by hand, and most of them don't affect what you run.
-        Too many tools mark everything critical and pass a huge task list downstream, which only adds to the noise.
-      </p>
-      <p>
-        Tell Vulnder what you run: describe it in a sentence, drop in a lockfile or SBOM, or paste the CVE IDs from a scanner report.
-        It checks them against the latest CVE records, security advisories and exploitation data, then lists the CVEs that affect you, most urgent first, with the reason for each.
-        No account needed.
+        I built Vulnder as a free, open-source CVE feed you can use without an account.
+        Describe what you run in a sentence, or drop in a lockfile, SBOM or scanner report, and it lists the CVEs that affect it in the order to fix them, with the reason for each.
       </p>
 
       <section class="block" aria-labelledby="why">
-        <h2 id="why">Why sorting by CVSS no longer works</h2>
-        <ul>
-          <li>48,185 CVEs were published in 2025.<a href="#s1"><sup>1</sup></a> The monthly count doubled during 2026, from 5,045 in January to 10,740 in August.<a href="#s2"><sup>2</sup></a></li>
-          <li>Since April 2026, NIST has enriched known-exploited, government and critical software first.<a href="#s3"><sup>3</sup></a> The CVE programme nearly lost its funding in 2025.<a href="#s4"><sup>4</sup></a></li>
-          <li>Half of the vulnerabilities in Google's 2026 study led to remote code execution, against about a quarter of all CVEs.<a href="#s2"><sup>2</sup></a></li>
-          <li>23% of vulnerabilities newly exploited in the first half of 2026 were exploited on or before the day their CVE was published.<a href="#s5"><sup>5</sup></a></li>
-        </ul>
+        <h2 id="why">Why I built it</h2>
         <p>
-          CVSS measures how severe a bug could be. It doesn't say whether anyone is exploiting it, or whether you run the affected software.
+          In 2025, 48,185 CVEs were published, 20.6% more than in 2024,<a href="#s1"><sup>1</sup></a> and 2026 is moving faster still.<a href="#s2"><sup>2</sup></a>
+          Part of that is bookkeeping, now that the Linux kernel assigns its own CVEs.<a href="#s3"><sup>3</sup></a>
+          Part is AI: Google finds that AI-assisted research turns up more remote code execution bugs, and thinks attackers may be using the same tools to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
+          Exploitation is faster too. Mandiant puts the mean time to exploit in 2025 at minus seven days,<a href="#s4"><sup>4</sup></a> VulnCheck found 23% of the CVEs newly exploited in the first half of 2026 were hit on or before the day they were published,<a href="#s5"><sup>5</sup></a> and NIST now enriches known-exploited and critical software first, with the rest not scheduled for immediate enrichment.<a href="#s6"><sup>6</sup></a>
         </p>
-      </section>
-
-      <section class="block" aria-labelledby="eu">
-        <h2 id="eu">In the EU?</h2>
         <p>
-          NIS2 expects the organisations it covers to monitor and handle vulnerabilities, and the Cyber Resilience Act has manufacturers report actively exploited vulnerabilities in their products.
-          The <a href="/compliance">compliance page</a> sets out what Vulnder does for each point, and what stays with you.
+          Most CVEs get a CVSS score from 0 to 10.
+          It rates how much damage a bug could do if someone used it: whether it can be reached over the network, whether it needs a login, how much of the system it hands over.
+          That's a measure of potential. A 9.8 can sit unused for years while a 6.5 is being used in ransomware this week, and the score says nothing about which is which.
+        </p>
+        <p>
+          Those numbers land on security and systems teams.
+          Nearly 70% of security leaders told HackerOne that findings arrive faster than their teams can fix them,<a href="#s8"><sup>8</sup></a> scanners hand them every CVE that touches the estate with most of it marked critical, and Verizon puts the median time to fully patch at 43 days, up from 32.<a href="#s7"><sup>7</sup></a>
+          I've been on those teams, and I built Vulnder because a short list, ranked for the software we ran, would have helped.
+        </p>
+        <p>
+          Vulnder starts from what you run. Describe your stack and it shows the CVEs that could apply to it, for you to confirm; a broad name like "Cisco switches" brings in close matches, marked as close.
+          Paste the CVE IDs from a scanner report instead and it ranks the ones you already know affect you.
+          Either way, the list is in the order to fix them.
         </p>
       </section>
 
       <section class="block" aria-labelledby="ranking">
-        <h2 id="ranking">How results are ranked</h2>
+        <h2 id="ranking">How it ranks CVEs</h2>
+        <ul>
+          <li><strong>Act now</strong> is for CVEs being exploited now or about to be: respond within 24 hours to 3 days.</li>
+          <li><strong>Attend</strong> is for those likely to be exploited soon: within 7 days.</li>
+          <li><strong>Watch</strong> is serious but less pressing: within 30 days.</li>
+          <li><strong>Track</strong> affects your stack, but nothing is urgent: your next routine update.</li>
+        </ul>
         <p>
-          Evidence of exploitation outranks the predicted probability of exploitation (EPSS, NIST LEV), and both outrank severity (CVSS).
-          Each CVE gets one of four priorities:
-        </p>
-        <table class="prose-table priorities">
-          <thead>
-            <tr><th scope="col">Priority</th><th scope="col">Respond</th><th scope="col">Main triggers</th></tr>
-          </thead>
-          <tbody>
-            <tr><th scope="row">Act now</th><td>Within 24 hours, or 3 days before exploitation is seen</td><td>In CISA KEV or actively exploited. Before that: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, an edge device an attacker can take over automatically, or a critical bug trusted security teams are warning about.</td></tr>
-            <tr><th scope="row">Attend</th><td>Within 7 days</td><td>EPSS 10%+, NIST LEV 20%+, CVSS 9.0+, a Metasploit exploit module, or a similar CVE in the product exploited.</td></tr>
-            <tr><th scope="row">Watch</th><td>Within 30 days</td><td>CVSS 8.0+, public proof-of-concept code, or rated automatable by CISA.</td></tr>
-            <tr><th scope="row">Track</th><td>Next routine update</td><td>Affects your stack; nothing above applies.</td></tr>
-          </tbody>
-        </table>
-        <p>
-          Each result lists the signals that set its priority and any data that is missing. A CVE with no score is still shown.
-          EPSS jumps appear under What changed and in the Atom feed. <a href="/how-it-works#ranking">Full ranking rules</a>
+          Evidence of exploitation, such as a listing in CISA KEV, outranks a predicted probability of exploitation (EPSS, NIST LEV), and that outranks severity (CVSS).
+          A model picks product names out of what you type; plain code does the matching and ranking. The <a href="/how-it-works#ranking">full rules</a> are on How it works.
         </p>
       </section>
 
-      <section class="block" aria-labelledby="principles">
-        <h2 id="principles">Design choices</h2>
-        <table class="prose-table keyed">
-          <tbody>
-            <tr><th scope="row">No account</th><td>The stack is encoded in the URL, so results can be bookmarked or shared. The same link gives an Atom feed, a README badge and, for scripts, a JSON feed.</td></tr>
-            <tr><th scope="row">Private</th><td>Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. Vulnder doesn't store your stack, your files or your CVE lists; files and CVE lists are read in your browser. <a href="/how-it-works#privacy">Privacy details</a></td></tr>
-            <tr><th scope="row">Nothing hidden</th><td>Every match is shown. Close matches for broad names are labelled as close.</td></tr>
-            <tr><th scope="row">AI extracts, code ranks</th><td>A model turns free text into stack items. Code does the matching and ranking. <a href="/how-it-works#ai">Where AI is used</a></td></tr>
-            <tr><th scope="row">Open source</th><td>Apache 2.0. Self-host it on Cloudflare Workers. <a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">Source on GitHub</a></td></tr>
-          </tbody>
-        </table>
+      <section class="block" aria-labelledby="keeps">
+        <h2 id="keeps">What it keeps</h2>
+        <p>
+          Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site.
+          Files and CVE lists are read in your browser, and Vulnder doesn't store them or your stack (<a href="/how-it-works#privacy">privacy details</a>).
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="sharing">
+        <h2 id="sharing">Sharing and running your own</h2>
+        <p>
+          Your stack lives in the page link, so results can be bookmarked or shared, and the same link gives an Atom feed, a README badge and a JSON feed.
+          Vulnder is open source under Apache 2.0, and you can run your own copy on Cloudflare Workers (<a href="https://github.com/fullymiddleaged/vulnder" rel="noreferrer">source on GitHub</a>).
+          In the EU, the <a href="/compliance">compliance page</a> sets out what Vulnder does towards NIS2 and the Cyber Resilience Act.
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="faq">
+        <h2 id="faq">Questions</h2>
+        <h3 class="sub">What is CISA KEV?</h3>
+        <p>The US Cybersecurity and Infrastructure Security Agency's catalog of CVEs it has evidence are being exploited. Vulnder puts every CVE on it in Act now, whatever its CVSS.</p>
+        <h3 class="sub">Is EPSS better than CVSS?</h3>
+        <p>EPSS is a predicted probability that a CVE will be exploited in the next 30 days; CVSS rates how severe it could be. Vulnder ranks EPSS above CVSS, and evidence of exploitation above both.</p>
+        <h3 class="sub">What does Act now mean?</h3>
+        <p>It's the top priority: respond within 24 hours to a CVE in CISA KEV or reported by CISA as actively exploited, and within 3 days to one that looks about to be, such as a critical bug with a high EPSS.</p>
+        <h3 class="sub">Does Vulnder scan my systems?</h3>
+        <p>No. It only knows what you give it: a lockfile gives exact versions, and a description gives matches for you to confirm.</p>
+        <h3 class="sub">Is my stack stored?</h3>
+        <p>Vulnder doesn't store your stack, your files or your CVE lists, and files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site.</p>
       </section>
 
       <section class="block" aria-labelledby="contact">
@@ -133,10 +186,12 @@
         <ol class="sources small">
           <li id="s1"><a href="https://jerrygamblin.com/2026/01/01/2025-cve-data-review/" rel="noreferrer">Jerry Gamblin, 2025 CVE Data Review</a> (1 January 2026)</li>
           <li id="s2"><a href="https://cloud.google.com/blog/topics/threat-intelligence/vulnerability-discovery-and-exploitation-trends-in-the-ai-era" rel="noreferrer">Google Threat Intelligence Group, Vulnerability Discovery and Exploitation Trends in the AI Era</a> (1 October 2026)</li>
-          <li id="s3"><a href="https://www.nist.gov/news-events/news/2026/04/nist-updates-nvd-operations-address-record-cve-growth" rel="noreferrer">NIST, NIST Updates NVD Operations to Address Record CVE Growth</a> (April 2026)</li>
-          <li id="s4"><a href="https://therecord.media/cisa-extends-cve-program-contract-with-mitre" rel="noreferrer">The Record, CISA extends CVE program contract with MITRE</a> (April 2025)</li>
+          <li id="s3"><a href="https://lwn.net/Articles/1049963/" rel="noreferrer">LWN.net, on Greg Kroah-Hartman's post about the kernel as a CVE Numbering Authority</a> (10 December 2025)</li>
+          <li id="s4"><a href="https://cloud.google.com/blog/topics/threat-intelligence/m-trends-2026/" rel="noreferrer">Mandiant, M-Trends 2026</a> (24 March 2026)</li>
           <li id="s5"><a href="https://www.vulncheck.com/blog/state-of-exploitation-1h-2026" rel="noreferrer">VulnCheck, State of Exploitation 1H 2026</a> (28 July 2026)</li>
-        </ol>
+          <li id="s6"><a href="https://www.nist.gov/news-events/news/2026/04/nist-updates-nvd-operations-address-record-cve-growth" rel="noreferrer">NIST, NIST Updates NVD Operations to Address Record CVE Growth</a> (15 April 2026)</li>
+          <li id="s7"><a href="https://tenable.com/blog/key-findings-from-the-verizon-dbir-2026" rel="noreferrer">Tenable, Key findings from the Verizon DBIR 2026</a> (19 May 2026; Verizon's figures as Tenable reports them)</li>
+          <li id="s8"><a href="https://www.hackerone.com/blog/exposure-management-find-to-fix-gap-2026" rel="noreferrer">HackerOne, The Exposure Debt Benchmark: What the 2026 Data Says About the Find-to-Fix Gap</a> (14 October 2026)</li>        </ol>
       </section>
     </main>
 
