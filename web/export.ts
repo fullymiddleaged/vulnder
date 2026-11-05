@@ -71,7 +71,7 @@ export function remediationParts(r: Result): { steps: string[]; cisa: { lead: st
   const steps: string[] = [];
   let cisa: { lead: string; action: string } | null = null;
   if (r.match === 'close') steps.push('Confirm you run this product: it is a close match for a vaguely named item.');
-  if (r.confidence === 'product_match') steps.push('Confirm the installed version is affected: only the product matched, not the version.');
+  if (r.confidence === 'product_match') steps.push(CONFIRM_VERSION);
   if (r.fixedVersions.length > 0) steps.push(`Upgrade to a fixed version (${r.fixedVersions.join(', ')}) or later on the same release line.`);
   // Listed: the list said where it is, not which version runs, so the advisory names the fix.
   else if (r.confidence === 'listed') {
@@ -82,11 +82,29 @@ export function remediationParts(r: Result): { steps: string[]; cisa: { lead: st
   }
   else if (r.mitigation) {
     if (r.mitigation.action) {
-      steps.push('No fixed version is known yet.');
+      steps.push(NO_FIX_YET);
       cisa = { lead: "CISA's required action", action: r.mitigation.action };
     } else steps.push('No fixed version is known yet. Check the advisory for a workaround, or limit who can reach it (WAF rule, access list) until a fix ships.');
   } else steps.push('No fixed version is listed. Check the advisory for a fix or workaround.');
   return { steps, cisa };
+}
+
+const CONFIRM_VERSION = 'Confirm the installed version is affected: only the product matched, not the version.';
+const NO_FIX_YET = 'No fixed version is known yet.';
+
+/**
+ * The steps as the results page words them. The standard case, a product-only
+ * match with no fix yet, says the same two sentences on most rows, so the page
+ * shortens them to "Confirm your version is affected. No fix is listed yet."
+ * (the fact rail already says the version isn't confirmed). Anything else,
+ * including every case with a fixed version, is unchanged. The export keeps the full words.
+ */
+export function pageSteps(steps: readonly string[]): string[] {
+  const n = steps.length;
+  if (n >= 2 && steps[n - 2] === CONFIRM_VERSION && steps[n - 1] === NO_FIX_YET) {
+    return [...steps.slice(0, n - 2), 'Confirm your version is affected. No fix is listed yet.'];
+  }
+  return [...steps];
 }
 
 const KIND: Record<Reason['kind'], string> = { evidence: 'evidence', prediction: 'prediction', severity: 'severity', context: 'context' };
