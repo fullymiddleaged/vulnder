@@ -119,7 +119,7 @@ The density is that of a tool, not a landing page. One column (54rem) carries ev
 Atkinson Hyperlegible was chosen because it tells 0/O and 1/l/I apart on pages full of CVE IDs and version strings. Fonts are self-hosted: the CSP allows no third-party fonts, and a font CDN would see every visitor.
 
 **Key Characteristics:**
-- Flat, ruled sections on tinted paper; containers only for individual results and changes. The prose pages (About, How it works) separate sections with space instead, since their tables carry hairlines of their own.
+- Flat, ruled sections on tinted paper; containers only for individual results and changes. The prose pages (About, How it works) divide their sections with the same hairline rules, with extra room above each heading.
 - Traffic-light colour reserved for priority; Match Violet for action, links and brand.
 - Heavy, tightly tracked headlines over calm body text.
 - Mono for every identifier.

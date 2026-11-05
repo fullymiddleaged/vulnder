@@ -4,15 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="description" content="How Vulnder turns a description of your stack into a ranked list of CVEs: the hourly data pipeline, where AI is used and where code decides, how priorities work, and how to hand results to an AI assistant." />
-    <title>How Vulnder works: from your stack to ranked CVEs</title>
+    <meta name="description" content="How Vulnder ranks the CVEs that affect your stack: CISA KEV first, then the predicted probability from EPSS and NIST LEV, then CVSS severity, with every rule and reason set out." />
+    <title>How Vulnder ranks CVEs: KEV, EPSS and CVSS explained</title>
     <!-- Self-hosting under another name? Change vulnder.com here and in robots.txt, sitemap.xml and llms.txt. -->
     <link rel="canonical" href="https://vulnder.com/how-it-works" />
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="Vulnder" />
     <meta property="og:url" content="https://vulnder.com/how-it-works" />
-    <meta property="og:title" content="How Vulnder works: from your stack to ranked CVEs" />
-    <meta property="og:description" content="The pipeline behind Vulnder: hourly CVE, KEV and EPSS data, AI that only reads and judges, and code that ranks every match with its reasons." />
+    <meta property="og:title" content="How Vulnder ranks CVEs: KEV, EPSS and CVSS explained" />
+    <meta property="og:description" content="How Vulnder collects CVE, KEV and EPSS data every hour, where it uses AI, and the rules it uses to rank the CVEs that affect your stack." />
     <meta property="og:image" content="https://vulnder.com/brand/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -48,8 +48,19 @@
     <main id="main" class="prose" tabindex="-1">
       <h1>How Vulnder works</h1>
       <p class="lede">
-        Vulnder collects vulnerability data every hour. On each request it turns your input into stack items, matches them to CVEs and ranks the results.
+        Vulnder collects vulnerability data every hour. When you ask, it turns what you gave it into stack items, matches them to CVEs and ranks the results.
       </p>
+      <nav class="contents" aria-labelledby="contents-title">
+        <h2 id="contents-title" class="contents-title">On this page</h2>
+        <ol>
+          <li><a href="#pipeline">The pipeline</a></li>
+          <li><a href="#ai">Where AI is used</a></li>
+          <li><a href="#ranking">How results are ranked</a></li>
+          <li><a href="#agents">Use it with an AI assistant</a></li>
+          <li><a href="#privacy">Privacy</a></li>
+          <li><a href="#limits">Limits</a></li>
+        </ol>
+      </nav>
 
       <section class="block" aria-labelledby="pipeline">
         <h2 id="pipeline">The pipeline</h2>
@@ -169,45 +180,45 @@
         </figure>
 
         <div class="lane">
-          <h3>Every hour: collect</h3>
+          <h3>What it collects every hour</h3>
           <ol class="pipeline">
             <li>
               <strong>Fetch</strong>
-              <p>Hourly: CVE records with CISA's Vulnrichment assessments, GitHub advisories (packages and fixed versions) and CISA KEV. Daily: FIRST's EPSS scores, end-of-life dates, and the Metasploit and Nuclei indexes. Also hourly: write-ups from Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK, read from their RSS feeds.</p>
+              <p>Every hour it fetches CVE records with CISA's Vulnrichment assessments, GitHub advisories, CISA KEV, and write-ups from Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK. Once a day it fetches FIRST's EPSS scores, end-of-life dates, and the Metasploit and Nuclei indexes.</p>
             </li>
             <li>
               <strong>Merge and record changes</strong>
-              <p>One record per vulnerability. New CVEs, KEV additions, EPSS jumps and released fixes become events for What changed and the Atom feed.</p>
+              <p>Each vulnerability gets one record. New CVEs, KEV additions, EPSS jumps and released fixes become events for What changed and the Atom feed.</p>
             </li>
             <li class="ai">
               <strong>Group similar CVEs</strong> <span class="tag">AI</span>
-              <p>Each new CVE title is embedded once, so near-duplicates within a product can be grouped. The model sees CVE text only; code sets the threshold.</p>
+              <p>Each new CVE title is embedded once, so near-duplicates in a product can be grouped. The model sees CVE text only, and code sets the threshold.</p>
             </li>
             <li>
               <strong>Retain</strong>
-              <p>CVEs published or changed in the last 90 days, so an old CVE added to KEV today, or newly reported by CISA as actively exploited, still shows. A CVE CISA reports exploited, or one likely to be exploited, is kept and shown for a year at any severity. CVSS 7.0+ CVEs are kept for a year too, but show only inside the window you pick. A slim index of every CVE ID ranks pasted CVE lists of any age.</p>
+              <p>It keeps CVEs from the last 90 days, and some older ones (see What's kept, under <a href="#limits">Limits</a>).</p>
             </li>
           </ol>
         </div>
 
         <div class="lane">
-          <h3>When you ask: match and rank</h3>
+          <h3>What happens when you ask</h3>
           <ol class="pipeline">
             <li class="ai">
               <strong>Screen</strong> <span class="tag">AI</span>
-              <p>Text that reads like instructions to an AI is refused: first by a phrase check, then by Jev, TypeSafe's decision model.</p>
+              <p>A phrase check, then Jev (TypeSafe's decision model), refuses text that reads like instructions to an AI.</p>
             </li>
             <li class="ai">
               <strong>Extract names</strong> <span class="tag">AI</span>
-              <p>A model lists the components you named. Code drops any name that isn't in your text, whether invented or planted.</p>
+              <p>A model lists the components you named, and code drops any name that isn't in your text, whether invented or planted.</p>
             </li>
             <li>
               <strong>Resolve</strong>
-              <p>Names become catalog products. A broad name like "Cisco switches" becomes several close matches, marked <code>?</code>. Lockfiles and SBOMs start here, parsed in your browser. CVE lists go straight to Match.</p>
+              <p>Names become catalog products, and a broad name like "Cisco switches" becomes several close matches, marked <code>?</code>. Lockfiles and SBOMs are parsed in your browser and start here; CVE lists go straight to Match.</p>
             </li>
             <li class="ai">
               <strong>Judge fit and teams</strong> <span class="tag">AI</span>
-              <p>If your scale or hosting is clear, Jev rates each close match, so a home lab sees small-business gear first. For enterprise stacks it also names the team that owns each component. Code decides what to do with its answers.</p>
+              <p>Where your scale or hosting is clear, Jev rates each close match so that a home lab sees small-business gear first, and on enterprise stacks it names the team that owns each component. Code decides what to do with its answers.</p>
             </li>
             <li>
               <strong>Match</strong>
@@ -224,7 +235,7 @@
       <section class="block" aria-labelledby="ai">
         <h2 id="ai">Where AI is used</h2>
         <p>
-          Models read text and make judgement calls. Code decides what you see, because a rule can be tested and a model's ranking can't.
+          Vulnder uses models to read text and make a few judgement calls, and plain code for every decision about what you see.
         </p>
         <table class="prose-table keyed">
           <tbody>
@@ -244,31 +255,54 @@
           A low CVSS never holds the first two back: attackers chain lower-severity bugs into serious attacks.
         </p>
         <ul class="levels">
-          <li class="red"><span class="light"></span><span><strong>Act now:</strong> in CISA's KEV catalog or reported by CISA as actively exploited, at any severity, within 24 hours. Before exploitation is seen: EPSS 50%+, a critical bug with EPSS 10%+ or NIST LEV 20%+, an edge device (VPN, firewall, gateway) an attacker can take over automatically, or a critical bug trusted security teams are warning about (see Written up, below), within 3 days. Exploited CVEs come first.</span></li>
-          <li class="amber"><span class="light"></span><span><strong>Attend:</strong> EPSS 10%+ or NIST LEV 20%+ at any severity, a similar CVE in the product exploited, a Metasploit exploit module, CVSS 9.0+, public exploit code for a bug that is automatable or gives full control, an edge-device bug that is automatable or gives full control, or CVSS 8.0+ public for 60 days. Within 7 days.</span></li>
-          <li class="yellow"><span class="light"></span><span><strong>Watch:</strong> CVSS 8.0+, a proof-of-concept or other public exploit code, rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it), any bug CISA has assessed on an edge device, or CVSS 7.0+ public for 60 days. Within 30 days.</span></li>
-          <li class="grey"><span class="light"></span><span><strong>Track:</strong> affects your stack and nothing above applies. Next routine update.</span></li>
+          <li class="red"><span class="light"></span><div><strong>Act now</strong>, within 24 hours for the first trigger and 3 days for the rest. Exploited CVEs come first.
+            <ul>
+              <li>in CISA's KEV catalog, or reported by CISA as actively exploited, at any severity</li>
+              <li>EPSS 50%+</li>
+              <li>a critical bug with EPSS 10%+ or NIST LEV 20%+</li>
+              <li>an edge device (VPN, firewall, gateway) an attacker can take over automatically</li>
+              <li>a critical bug trusted security teams are warning about (see Written up, below)</li>
+            </ul></div></li>
+          <li class="amber"><span class="light"></span><div><strong>Attend</strong>, within 7 days.
+            <ul>
+              <li>EPSS 10%+ or NIST LEV 20%+, at any severity</li>
+              <li>a similar CVE in the same product exploited</li>
+              <li>a Metasploit exploit module</li>
+              <li>CVSS 9.0+</li>
+              <li>public exploit code for a bug that is automatable or gives full control</li>
+              <li>an edge-device bug that is automatable or gives full control</li>
+              <li>CVSS 8.0+ and public for 60 days</li>
+            </ul></div></li>
+          <li class="yellow"><span class="light"></span><div><strong>Watch</strong>, within 30 days.
+            <ul>
+              <li>CVSS 8.0+</li>
+              <li>a proof-of-concept or other public exploit code</li>
+              <li>rated automatable by CISA (or a Nuclei scanner template where CISA hasn't rated it)</li>
+              <li>any bug CISA has assessed on an edge device</li>
+              <li>CVSS 7.0+ and public for 60 days</li>
+            </ul></div></li>
+          <li class="grey"><span class="light"></span><div><strong>Track</strong>, at your next routine update. It affects your stack and nothing above applies.</div></li>
         </ul>
         <table class="prose-table keyed">
           <tbody>
-            <tr><th scope="row">Score</th><td>A 0–100 heuristic that orders results within a priority, from threat, impact, reachability and ransomware use. Not a probability.</td></tr>
-            <tr><th scope="row">Older CVEs</th><td>CVEs from the last year that CISA reports exploited or that are likely to be exploited (EPSS 10%+ or NIST LEV 20%+), at any severity, and CVSS 9.9+ CVEs show whatever window you pick.</td></tr>
+            <tr><th scope="row">Score</th><td>A 0–100 heuristic that orders results within a priority, from threat, impact, reachability and ransomware use. It isn't a probability.</td></tr>
+            <tr><th scope="row">Older CVEs</th><td>Whatever window you pick, results include CVEs from the last year that CISA reports exploited, that are likely to be exploited (EPSS 10%+ or NIST LEV 20%+) at any severity, or that have CVSS 9.9+.</td></tr>
             <tr><th scope="row">Overdue</th><td>A high-severity CVE still unfixed 60 days after publication moves up one priority. It never changes the score or reaches Act now.</td></tr>
             <tr><th scope="row">Edge devices</th><td>Treated as internet-facing, ranked ahead of similar results, and given CISA BOD 26-04 deadlines, which can raise a priority but never lower one. VPNs, firewalls and gateways are ticked by default; change them under Edit stack.</td></tr>
-            <tr><th scope="row">Out of support</th><td>Software past its vendor's end of support ranks with Act now; support ending within 90 days ranks with Attend. This is a finding on the component and doesn't change its CVEs' priorities.</td></tr>
-            <tr><th scope="row">Targeted by attackers</th><td>An item with any CVE CISA added to KEV in the last 90 days gets a notice, whatever version those CVEs affect. In 2025–26, about a third of products with a KEV add got another within 90 days, so patch its next advisory within days. Like out of support, it doesn't change any CVE's priority.</td></tr>
-            <tr id="reported"><th scope="row">Written up</th><td>Every hour Vulnder reads the RSS feeds of Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK for the CVEs they name. A critical CVE (CVSS 9.0+) that two of them write up, or that one calls critical or urgent, goes to Act now for 30 days, whatever its EPSS: EPSS and CISA's assessment take days to catch up with a new CVE. Any write-up ranks a result ahead of similar ones, and the result links to it. A write-up isn't evidence of exploitation, even when it says so: only CISA KEV and CISA's own reports are.</td></tr>
+            <tr><th scope="row">Out of support</th><td>Software past its vendor's end of support ranks with Act now, and support ending within 90 days ranks with Attend. It's a finding on the component and doesn't change its CVEs' priorities.</td></tr>
+            <tr><th scope="row">Targeted by attackers</th><td>An item with any CVE that CISA added to KEV in the last 90 days gets a notice, whatever version those CVEs affect; like out of support, it doesn't change any CVE's priority. In 2025–26 about a third of products with a KEV addition got another within 90 days, so patch its next advisory within days.</td></tr>
+            <tr id="reported"><th scope="row">Written up</th><td>A critical CVE (CVSS 9.0+) that two of Huntress, Rapid7, watchTowr, CERT-EU and NCSC UK write up, or that one calls critical or urgent, goes to Act now for 30 days whatever its EPSS, since EPSS and CISA's assessment take days to catch up; any write-up from them ranks a result ahead of similar ones, and the result links to it. A write-up isn't evidence of exploitation, even when it says so: only CISA KEV and CISA's own reports are.</td></tr>
             <tr><th scope="row">Reasons</th><td>Each result names what decided it and what data is missing. A result with little data reads as unknown, not safe.</td></tr>
           </tbody>
         </table>
         <p>
-          Response times are guidance, not deadlines. Full rules: <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/RANKING.md" rel="noreferrer">RANKING.md</a>.
+          Response times are guidance, not deadlines. <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/RANKING.md" rel="noreferrer">RANKING.md</a> has the complete rules and the reasoning behind them.
         </p>
       </section>
 
       <section class="block" aria-labelledby="agents">
         <h2 id="agents">Use it with an AI assistant</h2>
-        <p>Vulnder runs an MCP server, so a coding agent or chat assistant can rank CVEs for you while it works. There's no account or key to set up.</p>
+        <p>Vulnder runs an MCP server that a coding agent or chat assistant can use to rank CVEs while it works, with no account or key to set up.</p>
         <ol class="guide">
           <li>
             <h3>Connect your AI agent to Vulnder</h3>
@@ -315,7 +349,7 @@
           </li>
         </ol>
         <p>
-          Agents have a rate limit of their own: new lookups are limited per address, and repeat lookups are free. Connectors in claude.ai and other hosted assistants call from the provider's servers, so their users share that limit. If you hit it, connect from a local agent such as Claude Code, or run your own copy.
+          Agents have their own rate limit on new lookups, counted per address; repeat lookups don't count. Connectors in claude.ai and other hosted assistants call from the provider's servers, so their users share one limit. If you hit it, connect from a local agent such as Claude Code, or run your own copy.
         </p>
         <h3 class="sub">Other ways in</h3>
         <table class="prose-table keyed">
@@ -354,6 +388,7 @@
         <table class="prose-table keyed">
           <tbody>
             <tr><th scope="row">No scanning</th><td>Vulnder knows only what you give it. A lockfile gives exact versions; a description gives matches to confirm.</td></tr>
+            <tr><th scope="row">What's kept</th><td>Vulnder keeps CVEs published or changed in the last 90 days, plus a year of those CISA reports exploited, those likely to be exploited and those with CVSS 7.0+ (the last show only inside your window). A slim index of every CVE ID lets it rank a pasted CVE list of any age.</td></tr>
             <tr><th scope="row">Time window</th><td>Stack results cover the last 7, 30 (default) or 90 days, plus the older CVEs above. A pasted CVE list is ranked whatever its age.</td></tr>
             <tr><th scope="row">Coverage</th><td>Packages from npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, Hex and pub, and products named in CVE records. Anything else shows as unrecognised. In an MCP config, only servers started from a package or container image can be checked.</td></tr>
             <tr><th scope="row">New CVEs</th><td>Many arrive without a score. Results show which data is missing.</td></tr>

@@ -638,11 +638,19 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .prose .lede { font-size: 1.15rem; margin-bottom: 1.5rem; }
 /* Sits under the h1 as part of the title, not as the first paragraph. */
 .prose .byline { margin-top: -0.5rem; margin-bottom: 1.25rem; }
-/* Room between sections and a short measure, so the pages read as a few calm blocks, not a wall. */
-.prose section { margin-top: 3.5rem; }
-/* Prose pages separate sections with space, not a rule: their tables already carry hairlines, and two sets of lines read as clutter. */
-.prose .block { border-top: 0; padding-top: 0; }
+/* Each section starts with a hairline rule, as on the rest of the site, with room above its heading so the pages read as a few calm blocks. */
+.prose section { margin-top: 2.5rem; }
+.prose .block { border-top: 1px solid var(--rule); padding-top: 2rem; }
 .prose h2 { margin-bottom: 0.9rem; }
+/* After a jump from the contents, keep the section's rule in view above its heading. */
+.prose .block > h2[id] { scroll-margin-top: 3rem; }
+/* How it works: a quiet contents line under the lede, links on one wrapping line split by middle dots. */
+.contents { margin: 0; }
+.prose .contents-title { font-size: 0.875rem; font-weight: 700; color: var(--muted); margin: 0 0 0.3rem; letter-spacing: 0; }
+.contents ol { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.2rem; font-size: 0.95rem; }
+.prose .contents li { margin: 0; }
+/* The dot trails each item, so a wrapped line never starts with one. */
+.contents li:not(:last-child)::after { content: '\00B7'; color: var(--muted); margin-left: 0.5rem; }
 .prose p, .prose li { max-width: 68ch; }
 .prose p { margin: 0; }
 .prose p + p, .prose p + ul, .prose ul + p, .prose ul + .notice, .prose p + ol, .prose ol + p, .prose p + table, .prose table + p { margin-top: 1.1rem; }
@@ -759,7 +767,10 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .key.ai { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .key.local { border-style: dashed; }
 .levels { list-style: none; padding: 0; margin: 1.1rem 0; display: grid; gap: 1.1rem; }
-.levels li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
+.levels > li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
+/* Each priority's triggers: a short list of fragments under its name. */
+.prose .levels ul { list-style: disc; padding-left: 1.2rem; margin-top: 0.35rem; }
+.prose .levels ul li { margin: 0.2rem 0; }
 @media (max-width: 36rem) {
   .site-nav { margin-left: 0; }
 }
