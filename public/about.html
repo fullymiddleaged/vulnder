@@ -47,7 +47,7 @@
             "name": "What does Act now mean?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "It's the top priority: respond within 24 hours to a CVE in CISA KEV or reported by CISA as actively exploited, and within 3 days to one that looks about to be, such as a critical bug with a high EPSS."
+              "text": "It's the highest priority: aim to respond within 24 hours to a CVE in CISA KEV or reported by CISA as actively exploited, and within 3 days to one that looks about to be, such as a critical bug with a high EPSS."
             }
           },
           {
@@ -55,7 +55,7 @@
             "name": "Does Vulnder scan my systems?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. It only knows what you give it: a lockfile gives exact versions, and a description gives matches for you to confirm."
+              "text": "No. It only knows what you provide via the stack description form, a package manifest, or a list of CVE IDs."
             }
           },
           {
@@ -63,7 +63,7 @@
             "name": "Is my stack stored?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Vulnder doesn't store your stack, your files or your CVE lists, and files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site."
+              "text": "Vulnder doesn't store your data in a DB. Only free-text entries describing your stack are logged by Cloudflare's AI Gateway for the account running this worker. If this is an issue, you're welcome to host this yourself instead."
             }
           }
         ]
@@ -97,7 +97,7 @@
       <h1>About Vulnder</h1>
       <p class="byline small muted">Built by <a href="https://www.linkedin.com/in/pete-salmond/" rel="noreferrer">Pete Salmond</a></p>
       <p class="lede">
-        I built Vulnder as a free, open-source CVE feed you can use without an account.
+        I built Vulnder as a free and open-source CVE feed aggregation and ranking tool anyone can use.
         Describe what you run in a sentence, or drop in a lockfile, SBOM or scanner report, and it lists the CVEs that affect it in the order to fix them, with the reason for each.
       </p>
 
@@ -105,39 +105,34 @@
         <h2 id="why">Why I built it</h2>
         <p>
           In 2025, 48,185 CVEs were published, 20.6% more than in 2024,<a href="#s1"><sup>1</sup></a> and 2026 is moving faster still.<a href="#s2"><sup>2</sup></a>
-          Part of that is bookkeeping, now that the Linux kernel assigns its own CVEs.<a href="#s3"><sup>3</sup></a>
-          Part is AI: Google finds that AI-assisted research turns up more remote code execution bugs, and thinks attackers may be using the same tools to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
-          Exploitation is faster too. Mandiant puts the mean time to exploit in 2025 at minus seven days,<a href="#s4"><sup>4</sup></a> VulnCheck found 23% of the CVEs newly exploited in the first half of 2026 were hit on or before the day they were published,<a href="#s5"><sup>5</sup></a> and NIST now enriches known-exploited and critical software first, with the rest not scheduled for immediate enrichment.<a href="#s6"><sup>6</sup></a>
+          Part of that is automation, now that the Linux kernel assigns its own CVEs.<a href="#s3"><sup>3</sup></a>
+          A more critical reason is AI: Google finds that AI-assisted defenders and attackers turns up more remote code execution bugs, and the same tools are used to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
+          Exploitation is faster too. Mandiant puts the mean time to exploit in 2025 at minus seven days,<a href="#s4"><sup>4</sup></a> VulnCheck found 23% of the CVEs newly exploited in the first half of 2026 were hit by the day they were published,<a href="#s5"><sup>5</sup></a> and NIST now enriches known-exploited and critical software first, with the rest not scheduled for immediate enrichment.<a href="#s6"><sup>6</sup></a>
         </p>
         <p>
           Most CVEs get a CVSS score from 0 to 10.
           It rates how much damage a bug could do if someone used it: whether it can be reached over the network, whether it needs a login, how much of the system it hands over.
-          That's a measure of potential. A 9.8 can sit unused for years while a 6.5 is being used in ransomware this week, and the score says nothing about which is which.
+          It's a measure of potential, and in previous years the higher number perhaps meant something. But now with AI and chained exploits, a lower CVSS could be the more pressing issue.
         </p>
         <p>
-          Those numbers land on security and systems teams.
+          These rapidly expanding CVE numbers are swamping security and systems teams.
           Nearly 70% of security leaders told HackerOne that findings arrive faster than their teams can fix them,<a href="#s8"><sup>8</sup></a> scanners hand them every CVE that touches the estate with most of it marked critical, and Verizon puts the median time to fully patch at 43 days, up from 32.<a href="#s7"><sup>7</sup></a>
-          I've been on those teams, and I built Vulnder because a short list, ranked for the software we ran, would have helped.
-        </p>
-        <p>
-          Vulnder starts from what you run. Describe your stack and it shows the CVEs that could apply to it, for you to confirm; a broad name like "Cisco switches" brings in close matches, marked as close.
-          Paste the CVE IDs from a scanner report instead and it ranks the ones you already know affect you.
-          Either way, the list is in the order to fix them.
+          I've been on those teams, and know that pain, so I built Vulnder to help solve this.
         </p>
       </section>
 
       <section class="block" aria-labelledby="ranking">
         <h2 id="ranking">How it ranks CVEs</h2>
+        <p>
+          Evidence of exploitation wins alongside critical CVE alerts from trusted RSS feeds. Predicted probability of exploitation (EPSS, NIST LEV), comes next, and this outranks severity (CVSS).
+          It's worth knowing that any CVSS 9.0 CVE or above will always be in Attend. The <a href="/how-it-works#ranking">full rules</a> are on How it works.
+        </p>
         <ul>
           <li><strong>Act now</strong> is for CVEs being exploited now or about to be: respond within 24 hours to 3 days.</li>
           <li><strong>Attend</strong> is for those likely to be exploited soon: within 7 days.</li>
           <li><strong>Watch</strong> is serious but less pressing: within 30 days.</li>
           <li><strong>Track</strong> affects your stack, but nothing is urgent: your next routine update.</li>
         </ul>
-        <p>
-          Evidence of exploitation, such as a listing in CISA KEV, outranks a predicted probability of exploitation (EPSS, NIST LEV), and that outranks severity (CVSS).
-          A model picks product names out of what you type; plain code does the matching and ranking. The <a href="/how-it-works#ranking">full rules</a> are on How it works.
-        </p>
       </section>
 
       <section class="block" aria-labelledby="keeps">

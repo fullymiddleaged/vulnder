@@ -70,8 +70,8 @@
           <svg class="arch" viewBox="0 0 420 488" role="img" aria-labelledby="arch-title arch-desc">
             <title id="arch-title">Vulnder's architecture</title>
             <desc id="arch-desc">
-              Two lanes meet in the Worker. Every hour, CVE records, GitHub advisories, CISA KEV and EPSS are ingested, similar CVEs are grouped with embeddings,
-              and the result is stored in D1. On request, your words are screened by Jev, component names are extracted by Gemma 4, resolved against the catalog
+              The Worker does two things. Every hour, CVE records, GitHub advisories, CISA KEV and EPSS are all ingested, similar CVEs are grouped with embeddings,
+              and the result is stored in D1. On request, stack wording is screened by Jev, component names are extracted by Gemma 4, resolved against the catalog
               in D1, and judged by Jev for fit and, on enterprise stacks, for which team owns each component, giving a stack link. A lockfile skips those AI steps and goes straight to the stack link.
               The Worker matches the stack against D1, with version checks from OSV, ranks the results, lifting edge devices within their priority, and serves the results page
               (grouped by team where the stack has teams, with Export for AI), the Atom and JSON feeds and the badge.
@@ -235,7 +235,7 @@
       <section class="block" aria-labelledby="ai">
         <h2 id="ai">Where AI is used</h2>
         <p>
-          Vulnder uses models to read text and make a few judgement calls, and plain code for every decision about what you see.
+          Vulnder uses models only to read text and make a few judgement calls. For ranking and logic it uses pure code for every decision for consistency.
         </p>
         <table class="prose-table keyed">
           <tbody>
