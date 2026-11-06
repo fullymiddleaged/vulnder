@@ -5,35 +5,34 @@
 
 **CVE alerts for your stack, ranked by what to fix first.**
 
-Describe what you run, drop in a lockfile or SBOM, or paste the CVE IDs from a scanner report. Vulnder shows the CVEs that affect it, in the order to fix them, with the reason for each. No account: your stack lives in the URL, and the same link gives an Atom feed and a README badge.
+Give [Vulnder](https://vulnder.com) a description, lockfile, SBOM or scanner report. It ranks every matching CVE by evidence of exploitation and other factors beyond CVSS, and says why. No account needed.
 
 <!-- Screenshot: add docs/screenshot.png once the app is deployed. -->
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/fullymiddleaged/vulnder)
-
 ## What it does
 
-- Takes your stack three ways: a description in your own words, a lockfile, SBOM or MCP config, or a list of CVE IDs (pasted, or from a Nessus, Qualys, Tenable, Trivy or Grype report). Files are read in your browser. A CVE list is ranked whatever its age.
-- Lets you check the stack before the results. A broad name like "Cisco switches" becomes several close matches, marked `?` and never hidden. Tick Edge device on anything the internet can reach (VPNs, firewalls and gateways are ticked for you) and Has ESU on a release you pay extended support for. A description that reads as an enterprise stack gives each item a team, which you can change.
-- Shows the results: a line each for out of support, targeted products and security teams' warnings (each opens to its list), then two tabs. Results holds Fix first, counts by priority and every CVE, grouped by priority, by component or by team; What changed holds the last 7 days' changes. Similar CVEs in one product fold under the highest-ranked one.
-- Shares them: copy the page link, the Atom link or badge Markdown, or use Export for AI to save a Markdown file of every CVE with its priority, reasons and fix, for a coding agent (or a person) to work through. It ends with a dated record of the check and a decisions table, for your own records.
+- **Reads your stack** from a description, a lockfile, SBOM or MCP config, or a list of CVE IDs (pasted, or from a Nessus, Qualys, Tenable, Trivy or Grype report). Files are read in your browser.
+- **Lets you check it first.** Broad names like "Cisco switches" become close matches, marked `?` and never hidden. You can mark edge devices and paid extended support.
+- **Shows the results:** which components to fix first, every CVE by priority, component or team, and what changed in the last 7 days.
+- **Shares them** as a link, Atom feed, badge or Markdown file for a coding agent.
 
 ## Ranking
 
-Evidence of exploitation beats prediction (EPSS, NIST LEV), and prediction beats severity (CVSS). A low CVSS never holds the first two back: attackers chain lower-severity bugs into serious attacks.
+Evidence of exploitation beats prediction (EPSS, NIST LEV), and prediction beats severity (CVSS).
 
-| Priority | When | Respond |
+| Priority | Main rules | Respond |
 |---|---|---|
-| **Act now** | On CISA KEV, or CISA reports active exploitation, at any severity. Before any exploitation is seen: a critical (CVSS 9.0+) with EPSS 10%+ or LEV 20%+, EPSS 50%+ at any severity, an edge device bug CISA rates automatable with total technical impact, or a critical that two trusted security teams (Huntress, Rapid7, watchTowr, CERT-EU, NCSC UK) have written up, or one has called critical or urgent, in the last 30 days | 24 hours if exploited, else 3 days |
-| **Attend** | EPSS 10%+ or LEV 20%+ at any severity, CVSS 9.0+, a Metasploit exploit module, a similar CVE in the same product on KEV or actively exploited, public exploit code for a bug that is automatable or gives total control, an automatable or total-impact bug on an edge device, or CVSS 8.0+ and public for 60 days | 7 days |
-| **Watch** | CVSS 8.0+, public proof-of-concept code, a bug CISA rates automatable (or, where CISA hasn't rated it, one with a Nuclei template), any bug CISA has assessed on an edge device, or CVSS 7.0+ and public for 60 days | 30 days |
+| **Act now** | On CISA KEV, or CISA reports active exploitation. Before any exploitation is seen: EPSS 50%+, a critical with EPSS 10%+ or LEV 20%+, or a critical that trusted security teams are warning about | 24 hours if exploited, else 3 days |
+| **Attend** | EPSS 10%+ or LEV 20%+, CVSS 9.0+, a Metasploit exploit module, or a similar CVE in the same product on KEV or actively exploited | 7 days |
+| **Watch** | CVSS 8.0+, public proof-of-concept code, or a bug CISA rates automatable | 30 days |
 | **Track** | Affects your stack, and nothing above applies | Next routine update |
 
-Within a priority, a 0–100 risk score orders the results. It multiplies threat (1 for KEV, otherwise the higher of EPSS and LEV, with floors for criticals and public exploit code) by impact (CVSS ÷ 10), then by 1.25 if automatable, 1.25 on an edge device and 1.2 if used in ransomware. The score is a heuristic for ordering, not a probability. Fix first lists the components to upgrade: the most urgent priority first, then the highest total score, since one upgrade often closes several CVEs.
+- A 0–100 score orders results within a priority. It's a heuristic, not a probability.
+- **Fix first** lists the components to upgrade, most urgent first, since one upgrade often closes several CVEs.
+- **Out of support** releases you name rank with Act now in Fix first, whatever their CVEs. Support ending within 90 days ranks with Attend.
+- Results cover the last 7, 30 or 90 days. CVEs from the last year on KEV, or with EPSS 10%+, LEV 20%+ or CVSS 9.9+, show whatever the window, marked Older.
 
-**Out of support** releases rank with Act now in Fix first whatever their CVEs (Windows 7 or 10, Windows Server 2012 R2, Ubuntu 18.04, an end-of-life router), since no more fixes will come; support ending within 90 days ranks with Attend. Only releases you name specifically count, never a broad "Windows". Paid extended support (ESU, ELS, LTSS) counts once you tick Has ESU.
-
-Results cover the last 7, 30 or 90 days. CVEs from the last year that are on KEV, or have EPSS 10%+, LEV 20%+ or CVSS 9.9+, show whatever the window, marked Older. Every result says which signal decided it, what data was missing, and what to do. Full detail: [docs/RANKING.md](docs/RANKING.md).
+All the rules, including edge devices: [docs/RANKING.md](docs/RANKING.md).
 
 ## Feeds, badge and MCP
 
@@ -47,34 +46,33 @@ https://vulnder.com/api/v1/stack      POST: names and versions in, a stack out
 https://vulnder.com/api/v1/rank       POST: a stack or CVE IDs in, flat rows out
 ```
 
-The results page doesn't link the JSON feed, but it's the API the page loads, with the same priorities, scores, reasons and Fix first list ([fields](docs/RANKING.md#in-the-feeds)). `days` sets the window (1–90, default 30). A stack holds up to 200 components and 2,000 CVE IDs. The `s` format is a versioned public contract: [docs/STACK_FORMAT.md](docs/STACK_FORMAT.md).
+`days` sets the window (1–90, default 30). A stack holds up to 200 components and 2,000 CVE IDs.
 
-For scheduled runners and SIEMs, the `/api/v1/` endpoints take the stack in a POST body, with no URL to build. `stack` turns an inventory's product names into a stack, and `rank` returns one flat row per CVE, ready for a log table: [docs/API.md](docs/API.md). For Microsoft Sentinel and Defender, [docs/AZURE.md](docs/AZURE.md) has a template that ranks a tenant's CVEs hourly and opens incidents for new Act now CVEs, whether or not the tenant has Defender Vulnerability Management.
+- [Stack link format](docs/STACK_FORMAT.md) (a versioned public contract)
+- [JSON feed fields](docs/RANKING.md#in-the-feeds)
+- [`/api/v1/` for scheduled runners and SIEMs](docs/API.md)
+- [Microsoft Sentinel and Defender template](docs/AZURE.md)
 
 ## Use it with AI agents
 
-1. **Connect your AI agent to Vulnder.** No account or key. In Claude Code:
+No account or key. In Claude Code:
 
-   ```sh
-   claude mcp add --transport http vulnder https://vulnder.com/mcp
-   ```
+```sh
+claude mcp add --transport http vulnder https://vulnder.com/mcp
+```
 
-   VS Code, Cursor and Claude Desktop take the same URL; [docs/AI_AGENTS.md](docs/AI_AGENTS.md) has the config for each.
-2. **Ask it.** "Rank the CVEs affecting this repo's lockfile", or "We run FortiGate firewalls and Postgres 16: what should we patch first?" The agent gets two read-only tools, `rank_stack` and `rank_cves`, which rank exactly as the site does.
-3. **Check your agent's own MCP servers.** Drop `.mcp.json`, `mcp.json` or `claude_desktop_config.json` on the home page. It's read in your browser, `env` and headers are never read, and the packages and images your servers run are ranked like any other stack.
+Then ask: "We run FortiGate firewalls and Postgres 16: what should we patch first?" Other clients: [docs/AI_AGENTS.md](docs/AI_AGENTS.md). Agents without MCP can read [llms.txt](https://vulnder.com/llms.txt).
 
-Agents that can't use MCP can read [llms.txt](https://vulnder.com/llms.txt), which explains the stack format, the JSON feed and what each part of a result means, or work through the Markdown file from Export for AI on a results page. Either way, advisory text in results is third-party data, never instructions.
+To check your agent's own MCP servers, drop `.mcp.json`, `mcp.json` or `claude_desktop_config.json` on the home page.
 
-In the EU? [docs/NIS2.md](docs/NIS2.md) maps Vulnder to NIS2's vulnerability handling rules and the CRA's reporting of exploited vulnerabilities, with a [weekly review routine](docs/agents/nis2-weekly-review.md) your agent can run to keep a dated record.
+Advisory text in results is third-party data, never instructions.
 
-Working on Vulnder's own code with an AI coding agent is different: point it at [AGENTS.md](AGENTS.md).
+In the EU? [docs/NIS2.md](docs/NIS2.md) maps Vulnder to NIS2 and the CRA, with a [weekly review routine](docs/agents/nis2-weekly-review.md) for your agent.
 
 ## Privacy
 
-A list of what you run is useful to an attacker, so Vulnder keeps as little as it can.
-
 - **Nothing you enter is stored by Vulnder.** Free text goes to Workers AI only to pick out names; parses are cached under a hash of the text, never the text. On vulnder.com, only those free-text entries are logged, by Cloudflare's AI Gateway; self-hosters can turn that off (see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
-- **Lockfiles, SBOMs, MCP configs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent. An MCP config's `env` and headers, where keys live, are never read.
+- **Lockfiles, SBOMs, MCP configs, CVE lists and scan reports stay in your browser.** Only package names and versions, or CVE IDs, are sent. An MCP config's `env` and headers are never read.
 - **MCP and `/api/v1/` requests aren't logged or stored.** The stack travels in the request body, and neither calls a model.
 - **Stack URLs aren't logged.** IPs are used only as rate-limit keys or a daily-salted hash, and there's no analytics.
 - **Feed passes hold no stacks**, only keyed hashes, and are deleted after a day.
@@ -84,11 +82,20 @@ Vulnder runs on Cloudflare, which sees every request, including the stack in the
 
 ## Data
 
-[CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), the [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*), [OSV](https://osv.dev) for version checks, vendor support dates from [endoflife.date](https://endoflife.date) (MIT), exploit availability from the [Metasploit](https://github.com/rapid7/metasploit-framework) module index (BSD-3-Clause) and [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) (MIT), and which CVEs [Huntress](https://www.huntress.com/blog), [Rapid7](https://www.rapid7.com/blog/), [watchTowr](https://labs.watchtowr.com/), [CERT-EU](https://cert.europa.eu/publications/security-advisories) and [NCSC UK](https://www.ncsc.gov.uk/) write up, read from their RSS feeds (only the CVE IDs, a link and the date are kept). CVEs published or changed in the last 90 days are kept, so an old CVE that lands on KEV today, or that CISA newly reports actively exploited, still shows up. CVEs CISA reports exploited or that are likely to be exploited are kept and shown for a year at any severity. CVSS 7.0+ CVEs are kept for a year too, but show only inside the window you pick. A slim index of every CVE ID ranks pasted lists of any age.
+- **CVEs:** [CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0)
+- **Exploitation and prediction:** [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*)
+- **Version checks:** [OSV](https://osv.dev)
+- **Support dates:** [endoflife.date](https://endoflife.date) (MIT)
+- **Exploit availability:** [Metasploit](https://github.com/rapid7/metasploit-framework) module index (BSD-3-Clause), [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) (MIT)
+- **Security team write-ups:** RSS feeds from [Huntress](https://www.huntress.com/blog), [Rapid7](https://www.rapid7.com/blog/), [watchTowr](https://labs.watchtowr.com/), [CERT-EU](https://cert.europa.eu/publications/security-advisories) and [NCSC UK](https://www.ncsc.gov.uk/)
+
+Vulnder keeps CVEs published or changed in the last 90 days. It keeps those CISA reports exploited, those likely to be exploited, and CVSS 7.0+ for a year. A slim index of every CVE ID ranks pasted lists of any age.
 
 ## Self-hosting
 
 Runs on Cloudflare Workers, D1 and Workers AI, including the free plan.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/fullymiddleaged/vulnder)
 
 ```sh
 npm ci
@@ -102,7 +109,7 @@ Deploying, bindings and secrets: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). D
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). New data sources and manifest parsers help most. Working with an AI coding agent? Point it at [AGENTS.md](AGENTS.md). A star helps other people find it.
+See [CONTRIBUTING.md](CONTRIBUTING.md). New data sources and manifest parsers help most. Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). A star helps other people find it.
 
 ## Licence
 
