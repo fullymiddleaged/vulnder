@@ -3,9 +3,9 @@
 [![CI](https://github.com/fullymiddleaged/vulnder/actions/workflows/ci.yml/badge.svg)](https://github.com/fullymiddleaged/vulnder/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/fullymiddleaged/vulnder/badge)](https://scorecard.dev/viewer/?uri=github.com/fullymiddleaged/vulnder)
 
-**CVE alerts for your stack, ranked by what to fix first.**
+**CVE alerts for your hardware and software, ranked by what to fix first.**
 
-Give [Vulnder](https://vulnder.com) a description, lockfile, SBOM or scanner report. It ranks every matching CVE by evidence of exploitation and other factors beyond CVSS, and says why. No account needed.
+This is a Cloudflare Worker and D1 database designed to help with the sheer number of CVEs generated today. Give it a description of your stack, a lockfile, or an SBOM or scanner report. It then ranks every matching CVE by evidence of exploitation and other factors beyond CVSS, and says why. No account needed. Or fork this repo and host yourself on your own worker.
 
 <!-- Screenshot: add docs/screenshot.png once the app is deployed. -->
 
