@@ -63,7 +63,7 @@
             "name": "Is my stack stored?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Vulnder doesn't store your data in a DB. Only free-text entries describing your stack are logged by Cloudflare's AI Gateway for the account running this worker. If this is an issue, you're welcome to host this yourself instead."
+              "text": "Vulnder doesn't store your stack, your files or your CVE lists; files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. If that's a concern, you can host Vulnder yourself."
             }
           }
         ]
@@ -106,7 +106,7 @@
         <p>
           In 2025, 48,185 CVEs were published, 20.6% more than in 2024,<a href="#s1"><sup>1</sup></a> and 2026 is moving faster still.<a href="#s2"><sup>2</sup></a>
           Part of that is automation, now that the Linux kernel assigns its own CVEs.<a href="#s3"><sup>3</sup></a>
-          A more critical reason is AI: Google finds that AI-assisted defenders and attackers turns up more remote code execution bugs, and the same tools are used to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
+          A more critical reason is AI: Google finds that AI-assisted defenders and attackers turn up more remote code execution bugs, and the same tools are used to turn patches into exploits.<a href="#s2"><sup>2</sup></a>
           Exploitation is faster too. Mandiant puts the mean time to exploit in 2025 at minus seven days,<a href="#s4"><sup>4</sup></a> VulnCheck found 23% of the CVEs newly exploited in the first half of 2026 were hit by the day they were published,<a href="#s5"><sup>5</sup></a> and NIST now enriches known-exploited and critical software first, with the rest not scheduled for immediate enrichment.<a href="#s6"><sup>6</sup></a>
         </p>
         <p>
@@ -163,7 +163,7 @@
         <h3 class="sub">Does Vulnder scan my systems?</h3>
         <p>No. It only knows what you give it: a lockfile gives exact versions, and a description gives matches for you to confirm.</p>
         <h3 class="sub">Is my stack stored?</h3>
-        <p>Vulnder doesn't store your stack, your files or your CVE lists, and files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site.</p>
+        <p>Vulnder doesn't store your stack, your files or your CVE lists, and files and CVE lists are read in your browser. Only free-text entries describing your stack are logged, by Cloudflare's AI Gateway in the account that runs this site. If that's a concern, you can host Vulnder yourself.</p>
       </section>
 
       <section class="block" aria-labelledby="contact">
