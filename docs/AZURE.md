@@ -47,7 +47,7 @@ az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/
   --body "{\"principalId\":\"$MI\",\"resourceId\":\"$GRAPH\",\"appRoleId\":\"$ROLE\"}"
 ```
 
-Runs before the grant fail at the Graph call and write nothing. Rows can take a few minutes to appear in a new table.
+Runs before the grant fail at the Graph call and write nothing. The first run starts as soon as the Logic App exists and can fail to send its rows while the new role assignment spreads; the next hour's run sends them. Rows can take a few minutes to appear in a new table.
 
 Who can see and change it:
 
@@ -70,7 +70,7 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 ## Notes per mode
 
 - **`defender`** sends Defender's distinct CVE IDs, up to 2,000 per call, in as many calls as needed. Vulnder ranks each listed CVE whatever its age, so nothing Defender found is left out.
-- **`intune`** reads every page of `detectedApps` (up to 8,000 entries a run) and sends four fields per app. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run to `stack`, for example `p:microsoft/windows_11_24h2`.
+- **`intune`** reads every page of `detectedApps` and sends four fields for the 4,000 entries on most devices, which keeps the request under Vulnder's 1 MB limit. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run to `stack`, for example `p:microsoft/windows_11_24h2`.
 - **`stack`** suits edge devices and appliances, which Defender and Intune can't see. Mark internet-facing ones `;edge` so they get the edge-device deadlines. If you also run `defender` or `intune`, pass the stack to that deployment instead of deploying twice.
 
 ## Privacy and cost
