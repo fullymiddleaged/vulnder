@@ -137,7 +137,8 @@ describe('Azure data collection rule', () => {
   it('names no let binding after a KQL keyword', () => {
     // Log Analytics refused `let latest = ...` ("Query could not be parsed at 'latest'") on a real workspace.
     const keywords = ['latest', 'title', 'source', 'match', 'project', 'summarize', 'where', 'extend', 'join', 'range', 'set', 'print'];
-    for (const [file, kql] of [['latest.kql', latest], ['defender-devices.kql', defenderDevices], ['new-act.kql', newAct], ['daily-patch-list.kql', dailyPatchList]]) {
+    const queries: [string, string][] = [['latest.kql', latest], ['defender-devices.kql', defenderDevices], ['new-act.kql', newAct], ['daily-patch-list.kql', dailyPatchList]];
+    for (const [file, kql] of queries) {
       for (const [, name] of kql.matchAll(/^let (\w+)\s*=/gm)) expect(keywords, `${file}: let ${name}`).not.toContain(name);
     }
   });
