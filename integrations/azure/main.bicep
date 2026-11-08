@@ -201,6 +201,7 @@ resource newActRule 'Microsoft.SecurityInsights/alertRules@2025-09-01' = if (sen
       Cve: 'Cve'
       Reasons: 'Reasons'
       RespondWithinHours: 'RespondWithinHours'
+      KevDueDate: 'KevDueDate'
       FixedVersions: 'FixedVersions'
       Matched: 'Matched'
     }
