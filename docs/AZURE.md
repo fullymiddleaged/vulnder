@@ -80,6 +80,8 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 - Ingestion is a few hundred rows an hour. Logic App cost is a few dozen actions a run, more in mode `intune` (two per page of apps).
 - Consumption Logic Apps share their region's outbound IPs, and Vulnder's limits are per IP. Hourly runs are well inside them. If you're refused anyway, `/api/v1/` returns 429 and the Logic App retries.
 
-## Not tested here
+## What's been tested
 
-The template compiles and passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed). `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. It hasn't been deployed from this repository's CI. Before relying on it, deploy it to a test resource group and check that a run succeeds and rows arrive. Report problems as issues.
+Mode `stack` has been deployed to a real subscription (Australia East, November 2026). The Logic App ranked the stack, the rows reached `Vulnder_CL` with every field the API sent, and `latest.kql`, `daily-patch-list.kql` and `new-act.kql` ran on them. Not yet tested on a real tenant: modes `defender` and `intune` (they need the licences and the Graph grant), the analytics rule (`sentinelRules=true`), and `defender-devices.kql`.
+
+The template also passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed), and `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. Neither can catch everything Azure refuses at deploy time, so deploy changes to a test resource group before relying on them. Report problems as issues.

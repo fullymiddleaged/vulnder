@@ -4,6 +4,7 @@ import workflowText from '../integrations/azure/workflow.json?raw';
 import newAct from '../integrations/azure/kql/new-act.kql?raw';
 import latest from '../integrations/azure/kql/latest.kql?raw';
 import defenderDevices from '../integrations/azure/kql/defender-devices.kql?raw';
+import dailyPatchList from '../integrations/azure/kql/daily-patch-list.kql?raw';
 import type { MatchedVuln } from '../src/match/match';
 import { toRow } from '../src/routes/api';
 
@@ -110,6 +111,14 @@ describe('Azure data collection rule', () => {
     expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode', 'sourceName'].sort());
   });
 
+  it('brackets the field names the transform parser rejects bare', () => {
+    // Azure refused `CveTitle = title` with "mismatched input ','" on a real deployment.
+    for (const field of ['title', 'match']) {
+      expect(transform, field).toContain(`= [\\'${field}\\']`);
+      expect(transform, field).not.toMatch(new RegExp(`= ${field}\\b`));
+    }
+  });
+
   it("doesn't name a field source, the transform's input table", () => {
     expect(declared).not.toContain('source');
     expect(transform).not.toMatch(/\[\\'source\\'\]/);
@@ -125,10 +134,19 @@ describe('Azure data collection rule', () => {
     for (const reserved of ['id', 'Title', 'Type', 'TenantId', 'UniqueId', '_ResourceId', '_SubscriptionId']) expect(columns).not.toContain(reserved);
   });
 
+  it('names no let binding after a KQL keyword', () => {
+    // Log Analytics refused `let latest = ...` ("Query could not be parsed at 'latest'") on a real workspace.
+    const keywords = ['latest', 'title', 'source', 'match', 'project', 'summarize', 'where', 'extend', 'join', 'range', 'set', 'print'];
+    const queries: [string, string][] = [['latest.kql', latest], ['defender-devices.kql', defenderDevices], ['new-act.kql', newAct], ['daily-patch-list.kql', dailyPatchList]];
+    for (const [file, kql] of queries) {
+      for (const [, name] of kql.matchAll(/^let (\w+)\s*=/gm)) expect(keywords, `${file}: let ${name}`).not.toContain(name);
+    }
+  });
+
   it("reads every deployment's latest run, not only the newest run in the table", () => {
     for (const [file, kql] of [['latest.kql', latest], ['defender-devices.kql', defenderDevices]]) {
       expect(kql, file).toMatch(/summarize arg_max\(TimeGenerated, RunId\) by Source/);
-      expect(kql, file).toMatch(/RunId in \(latest\)/);
+      expect(kql, file).toMatch(/RunId in \(latestRuns\)/);
       expect(kql, file).toMatch(/summarize arg_max\(level\(Priority\) \* 1000 \+ Score, \*\).* by Cve/);
     }
   });
