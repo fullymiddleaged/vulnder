@@ -261,7 +261,7 @@
             "Four_fields": {
               "type": "Select",
               "inputs": {
-                "from": "@take(variables('apps'), 8000)",
+                "from": "@take(reverse(sort(variables('apps'), 'deviceCount')), 4000)",
                 "select": {
                   "displayName": "@item()?['displayName']",
                   "version": "@item()?['version']",
@@ -443,7 +443,7 @@
       "type": "Select",
       "inputs": {
         "from": "@variables('rows')",
-        "select": "@addProperty(addProperty(addProperty(addProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'source', parameters('source'))"
+        "select": "@setProperty(setProperty(setProperty(setProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'sourceName', parameters('source'))"
       },
       "runAfter": {
         "If_stack": [
@@ -469,9 +469,9 @@
         ]
       },
       "actions": {
-        "For_each_500_rows": {
+        "For_each_200_rows": {
           "type": "Foreach",
-          "foreach": "@chunk(body('Tag_rows'), 500)",
+          "foreach": "@chunk(body('Tag_rows'), 200)",
           "runtimeConfiguration": {
             "concurrency": {
               "repetitions": 1
@@ -487,7 +487,7 @@
                 "headers": {
                   "Content-Type": "application/json"
                 },
-                "body": "@items('For_each_500_rows')",
+                "body": "@items('For_each_200_rows')",
                 "authentication": {
                   "type": "ManagedServiceIdentity",
                   "audience": "https://monitor.azure.com"

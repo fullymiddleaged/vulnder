@@ -107,7 +107,12 @@ describe('Azure data collection rule', () => {
   const transform = /transformKql: '(.*)'/.exec(bicep)?.[1] ?? '';
 
   it('declares every field a rank row has, plus what the workflow adds', () => {
-    expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode', 'source'].sort());
+    expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode', 'sourceName'].sort());
+  });
+
+  it("doesn't name a field source, the transform's input table", () => {
+    expect(declared).not.toContain('source');
+    expect(transform).not.toMatch(/\[\\'source\\'\]/);
   });
 
   it('maps every declared field to a table column, and every column comes from the transform', () => {
@@ -129,7 +134,46 @@ describe('Azure data collection rule', () => {
   });
 
   it('alerts only from columns the table has', () => {
-    const used = [...newAct.replace(/^\/\/.*$/gm, '').matchAll(/\b([A-Z][A-Za-z]+)\b/g)].map((m) => m[1]!).filter((w) => !['Vulnder_CL', 'FirstAct'].includes(w));
+    const used = [...newAct.replace(/^\/\/.*$/gm, '').matchAll(/\b([A-Z][A-Za-z]+)\b/g)].map((m) => m[1]!).filter((w) => !['Vulnder_CL', 'FirstAct', 'Ingested'].includes(w));
     for (const col of new Set(used)) expect(columns, col).toContain(col);
+  });
+
+  it('alerts by ingestion time, so a run that lands late still alerts once', () => {
+    const query = newAct.replace(/^\/\/.*$/gm, '');
+    expect(query).toMatch(/Ingested = ingestion_time\(\)/);
+    expect(query).toMatch(/FirstAct = min\(Ingested\)/);
+    expect(query).toMatch(/where FirstAct > ago\(1h\)/);
+  });
+
+  it('creates the analytics rule after the table its query reads', () => {
+    const rule = /resource newActRule [\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
+    expect(rule).toMatch(/dependsOn: \[table\]/);
+  });
+});
+
+describe('Azure request sizes', () => {
+  const actions = workflow.actions as Record<string, Json>;
+  const json = (a: unknown) => JSON.stringify(a);
+
+  it('sends Log Analytics at most 200 rows a call, inside its 1 MB limit', () => {
+    const send = actions.If_any_rows as { actions: Record<string, { foreach: string }> };
+    const size = Number(/chunk\(body\('Tag_rows'\), (\d+)\)/.exec(send.actions.For_each_200_rows!.foreach)?.[1]);
+    // A rank row with long reasons, fixes and links is about 2 KB.
+    expect(size * 2_000).toBeLessThan(1_000_000);
+  });
+
+  it("sends the Intune apps on most devices first, few enough for the API's 1 MB body", () => {
+    const intune = (actions.Switch_on_mode as { cases: Record<string, { actions: Record<string, Json> }> }).cases.Intune!.actions;
+    const from = (intune.Four_fields!.inputs as { from: string }).from;
+    expect(from).toContain("reverse(sort(variables('apps'), 'deviceCount'))");
+    const kept = Number(/, (\d+)\)$/.exec(from)?.[1]);
+    // Four fields of a typical app entry come to about 150 bytes, 250 with long names.
+    expect(kept * 250).toBeLessThanOrEqual(1_000_000);
+  });
+
+  it('tags rows with setProperty, which overwrites, not addProperty, which fails on a field the API already has', () => {
+    const tag = json(actions.Tag_rows);
+    expect(tag).not.toContain('addProperty');
+    for (const field of ['timeGenerated', 'runId', 'mode', 'sourceName']) expect(tag).toContain(`'${field}'`);
   });
 });

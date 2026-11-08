@@ -96,7 +96,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
           { name: 'timeGenerated', type: 'string' }
           { name: 'runId', type: 'string' }
           { name: 'mode', type: 'string' }
-          { name: 'source', type: 'string' }
+          { name: 'sourceName', type: 'string' }
           { name: 'cve', type: 'string' }
           { name: 'title', type: 'string' }
           { name: 'priority', type: 'string' }
@@ -132,9 +132,9 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
         streams: [streamName]
         destinations: ['workspace']
         outputStream: 'Custom-${tableName}'
-        // Title is a reserved column name, hence CveTitle. The field source is
-        // bracketed because the input table is also called source.
-        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = [\'source\'], Cve = cve, CveTitle = title, Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
+        // Title is a reserved column name, hence CveTitle. The workflow's field
+        // is sourceName, not source, which is the name of the input table here.
+        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = title, Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
       }
     ]
   }
@@ -212,6 +212,9 @@ resource newActRule 'Microsoft.SecurityInsights/alertRules@2025-09-01' = if (sen
       }
     }
   }
+  // Sentinel runs the query when the rule is created and refuses it if
+  // Vulnder_CL doesn't exist yet.
+  dependsOn: [table]
 }
 
 @description('The Logic App\'s managed identity. Grant it Graph permissions for mode "defender" or "intune" (docs/AZURE.md).')

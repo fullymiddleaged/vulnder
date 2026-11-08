@@ -138,6 +138,7 @@ Notable changes to Vulnder. Stack URLs, the JSON feed fields and the Atom feed s
 
 ### Fixed
 
+- **The Sentinel and Defender template is sturdier.** With `sentinelRules=true`, the analytics rule is created after the `Vulnder_CL` table, so Sentinel no longer refuses it on a first deployment. "Vulnder: new Act now CVE" goes by when rows reached the table, so a run that lands a few minutes late still alerts instead of being missed. The Logic App sends Log Analytics 200 rows a call instead of 500, and in mode `intune` sends the 4,000 apps on most devices instead of the first 8,000, so neither request can pass its 1 MB limit. Redeploy the template to pick these up.
 - **Phones open each page at the top.** Loading the home page or results, and switching between them, scrolled past the logo and tagline to the form or headline. Pages now open at the top, and screen readers still land on the main content.
 - **A stack link can't change meaning when it's shared.** A package item ending in a stray `@` after another `@` (`npm:a@b@c@`) is now rejected as invalid. Before, it was read as a package named `a@b@c` and written back as `npm:a@b@c`, which reads as `a@b` at version `c`. A single trailing `@` (`npm:express@`) still means no version.
 - **A double click sends one lookup.** On the CVE list tab, a second click or drop while the first was still being checked could send it again and add a duplicate entry to the browser's history. One lookup now runs at a time, from either tab.
