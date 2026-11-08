@@ -110,6 +110,14 @@ describe('Azure data collection rule', () => {
     expect(declared.sort()).toEqual([...Object.keys(toRow(sample)), 'timeGenerated', 'runId', 'mode', 'sourceName'].sort());
   });
 
+  it('brackets the field names the transform parser rejects bare', () => {
+    // Azure refused `CveTitle = title` with "mismatched input ','" on a real deployment.
+    for (const field of ['title', 'match']) {
+      expect(transform, field).toContain(`= [\\'${field}\\']`);
+      expect(transform, field).not.toMatch(new RegExp(`= ${field}\\b`));
+    }
+  });
+
   it("doesn't name a field source, the transform's input table", () => {
     expect(declared).not.toContain('source');
     expect(transform).not.toMatch(/\[\\'source\\'\]/);

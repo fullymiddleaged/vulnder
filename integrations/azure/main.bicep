@@ -132,9 +132,11 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
         streams: [streamName]
         destinations: ['workspace']
         outputStream: 'Custom-${tableName}'
-        // Title is a reserved column name, hence CveTitle. The workflow's field
-        // is sourceName, not source, which is the name of the input table here.
-        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = title, Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
+        // Title is a reserved column name, hence CveTitle. The transform parser
+        // rejects the field names title and match bare (title is a render
+        // keyword), so they're bracketed. The workflow's field is sourceName,
+        // not source, which is the name of the input table here.
+        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = [\'title\'], Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
       }
     ]
   }
