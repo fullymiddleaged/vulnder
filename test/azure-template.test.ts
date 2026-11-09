@@ -269,6 +269,8 @@ describe('Deploy to Azure', () => {
     const inGroup = "contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))";
     expect((element('workspaceName').constraints as { allowedValues: string }).allowedValues).toContain(`filter(basics('workspaces').value, (w) => ${inGroup})`);
     expect(element('noWorkspace').visible).toContain(inGroup);
+    // The warning waits until a group is chosen.
+    expect(element('noWorkspace').visible).toMatch(/^\[and\(greater\(length\(resourceGroup\(\)\.name\), 0\), /);
   });
 
   it("puts the resources in the chosen workspace's region", () => {

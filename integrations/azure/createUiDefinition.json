@@ -38,7 +38,7 @@
       {
         "name": "noWorkspace",
         "type": "Microsoft.Common.InfoBox",
-        "visible": "[empty(filter(basics('workspaces').value, (w) => contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))))]",
+        "visible": "[and(greater(length(resourceGroup().name), 0), empty(filter(basics('workspaces').value, (w) => contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/'))))))]",
         "options": {
           "icon": "Warning",
           "text": "No Log Analytics workspace in this resource group. Choose the resource group your workspace is in."
