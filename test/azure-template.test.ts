@@ -169,6 +169,14 @@ describe('Azure data collection rule', () => {
     expect(query).toMatch(/where FirstAct > ago\(1h\)/);
   });
 
+  it("puts the CISA due date in the alert's details, from columns the query projects", () => {
+    const details = /customDetails: \{([^}]*)\}/.exec(bicep)?.[1] ?? '';
+    const columns = [...details.matchAll(/(\w+): '(\w+)'/g)].map((m) => m[2]!);
+    expect(columns).toContain('KevDueDate');
+    const projected = /\| project (.*)$/m.exec(newAct.replace(/^\/\/.*$/gm, ''))?.[1]?.split(/,\s*/) ?? [];
+    for (const col of columns) expect(projected, col).toContain(col);
+  });
+
   it('creates the analytics rule after the table its query reads', () => {
     const rule = /resource newActRule [\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
     expect(rule).toMatch(/dependsOn: \[table\]/);

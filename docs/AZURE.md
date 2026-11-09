@@ -17,7 +17,7 @@ Every mode writes the same rows, so the same rules and queries work for every te
 - **`Vulnder_CL`**, a custom table in your workspace, with one row per CVE per run: priority, score, reasons, KEV and CISA exploitation evidence, EPSS, CVSS, matched items, fixed versions and mitigation. Columns are listed in [main.bicep](../integrations/azure/main.bicep).
 - **A data collection rule** of kind `Direct`, which takes the rows through the Logs Ingestion API. It needs no data collection endpoint.
 - **A Logic App** (Consumption) with a system-assigned managed identity and the Monitoring Metrics Publisher role on that rule. Nothing is stored as a secret.
-- **With `sentinelRules=true`**, the analytics rule "Vulnder: new Act now CVE". It opens one incident per CVE the first hour it is Act now ([new-act.kql](../integrations/azure/kql/new-act.kql)).
+- **With `sentinelRules=true`**, which needs Sentinel already on the workspace, the analytics rule "Vulnder: new Act now CVE". It opens one incident per CVE the first hour it is Act now ([new-act.kql](../integrations/azure/kql/new-act.kql)).
 
 ## Deploy
 
@@ -66,7 +66,7 @@ To run more than one mode, or keep a team's stack apart from the rest, deploy ag
 
 ## Alerting the SOC and the patching teams
 
-- **SOC: new Act now CVEs**, from the analytics rule, hourly. A CVE alerts once, the first hour it is Act now: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert carries Vulnder's reasons, the CISA due date where there is one, and the fixed versions. The first run alerts on every CVE already at Act now.
+- **SOC: new Act now CVEs**, from the analytics rule, hourly. A CVE alerts once, the first hour it is Act now: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert carries Vulnder's reasons, the CISA due date where there is one, and the fixed versions. Deployed together with the Logic App, the rule's first run alerts on every CVE already at Act now. Turned on later, it alerts only on CVEs that become Act now from then on.
 - **Patching: a daily list**, from [daily-patch-list.kql](../integrations/azure/kql/daily-patch-list.kql). It lists CVEs now at Act now or Attend that are new or rose in priority since the week before, with what to upgrade to. Run it as a scheduled query or a workbook, or have a Logic App post it to Teams.
 - **Which devices**, in mode `defender`, from [defender-devices.kql](../integrations/azure/kql/defender-devices.kql) in the Defender portal's Advanced hunting, with Sentinel connected. It joins Vulnder's priorities to `DeviceTvmSoftwareVulnerabilities` and shows each CVE's devices and the update to install.
 - **The current picture**, from [latest.kql](../integrations/azure/kql/latest.kql): every CVE in each deployment's latest run, most urgent first, with the deployments that found it in `Sources`.
@@ -90,7 +90,7 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 
 ## What's been tested
 
-Mode `stack` has been deployed to a real subscription (Australia East, November 2026). The Logic App ranked the stack, the rows reached `Vulnder_CL` with every field the API sent, and `latest.kql`, `daily-patch-list.kql` and `new-act.kql` ran on them. Not yet tested on a real tenant: modes `defender` and `intune` (they need the licences and the Graph grant), the analytics rule (`sentinelRules=true`), and `defender-devices.kql`.
+Mode `stack` has been deployed to a real subscription (Australia East, November 2026), twice into one workspace under different names. The Logic Apps ranked their stacks, the rows reached `Vulnder_CL` with every field the API sent and the right `Source`, and `latest.kql`, `daily-patch-list.kql` and `new-act.kql` ran on them. With `sentinelRules=true`, the analytics rule opened one incident for each CVE that was new at Act now, and none for CVEs already in the table. Not yet tested on a real tenant: modes `defender` and `intune` (they need the licences and the Graph grant), and `defender-devices.kql`.
 
 The template also passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed), and `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. Neither can catch everything Azure refuses at deploy time, so deploy changes to a test resource group before relying on them. Report problems as issues.
 
