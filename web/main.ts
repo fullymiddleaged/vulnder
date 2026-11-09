@@ -867,7 +867,7 @@ async function sendStack(body: { text: string } | { candidates: import('../src/r
  */
 function renderEdit(initial: string[], support: ReadonlyMap<string, SupportNotice> = new Map(), listed: string[] = []): void {
   clear(app);
-  // Keeps the content column, and hides the home page's sample result and big tagline.
+  // Keeps the content column, and hides the home page's integrations and big tagline.
   document.body.dataset.view = 'edit';
   const items = [...new Set(initial)];
   const cves = [...new Set(listed)];
@@ -2410,7 +2410,7 @@ window.addEventListener('popstate', () => {
   else void route();
 });
 
-// A stack link's view is known before anything loads, so the home page's headline and sample never flash over it.
+// A stack link's view is known before anything loads, so the home page's headline and integrations never flash over it.
 if (new URLSearchParams(location.search).get('s')) document.body.dataset.view = 'results';
 const linkedDetails = footerHash();
 config = await getConfig().catch(() => null);

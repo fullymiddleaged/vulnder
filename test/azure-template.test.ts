@@ -9,6 +9,8 @@ import armText from '../integrations/azure/azuredeploy.json?raw';
 import uiText from '../integrations/azure/createUiDefinition.json?raw';
 import azureDoc from '../docs/AZURE.md?raw';
 import readme from '../README.md?raw';
+import home from '../public/index.html?raw';
+import howItWorks from '../public/how-it-works.html?raw';
 import type { MatchedVuln } from '../src/match/match';
 import { toRow } from '../src/routes/api';
 
@@ -255,9 +257,20 @@ describe('Deploy to Azure', () => {
     expect(ui.parameters.outputs.location).toMatch(/equals\(w\.name, basics\('workspaceName'\)\)\)\)\.location\]$/);
   });
 
-  it('links the button in the README and AZURE.md to the committed template and form on main', () => {
+  it('links the button on the home page, in the README and in AZURE.md to the committed template and form on main', () => {
     const raw = 'https://raw.githubusercontent.com/fullymiddleaged/vulnder/main/integrations/azure/';
     const expected = `https://portal.azure.com/#create/Microsoft.Template/uri/${encodeURIComponent(`${raw}azuredeploy.json`)}/createUIDefinitionUri/${encodeURIComponent(`${raw}createUiDefinition.json`)}`;
     for (const [file, text] of [['README.md', readme], ['docs/AZURE.md', azureDoc]]) expect(text, file).toContain(`(${expected})`);
+    const pages: [string, string][] = [['index.html', home], ['how-it-works.html', howItWorks]];
+    for (const [file, page] of pages) {
+      const at = page.indexOf(`<a class="button" href="${expected}">`);
+      expect(at, file).toBeGreaterThan(0);
+      expect(page.slice(at, page.indexOf('</a>', at)), file).toMatch(/<\/svg>Deploy to Azure$/);
+    }
+  });
+
+  it('links the home page row to the section on How it works', () => {
+    expect(home).toContain('href="/how-it-works#sentinel"');
+    expect(howItWorks).toContain('<h2 id="sentinel">');
   });
 });

@@ -57,6 +57,7 @@
           <li><a href="#ai">Where AI is used</a></li>
           <li><a href="#ranking">How results are ranked</a></li>
           <li><a href="#agents">Use it with an AI assistant</a></li>
+          <li><a href="#sentinel">Microsoft Sentinel and Defender</a></li>
           <li><a href="#privacy">Privacy</a></li>
           <li><a href="#limits">Limits</a></li>
         </ol>
@@ -366,6 +367,28 @@
         <p class="notice">
           Pasting an export into a hosted AI shares your stack with that provider, and a list of what you run is useful to attackers. Check their data policy first.
         </p>
+      </section>
+
+      <section class="block" aria-labelledby="sentinel">
+        <h2 id="sentinel">Microsoft Sentinel and Defender</h2>
+        <p>
+          A template deploys an hourly Logic App into your own Azure subscription. It sends Vulnder what your tenant runs, writes one row per CVE to a <code>Vulnder_CL</code> table in your Log Analytics workspace, and can open a Sentinel incident when a CVE becomes Act now.
+          It runs under a managed identity, with no keys or secrets to store.
+        </p>
+        <h3 class="sub">Where the list comes from</h3>
+        <table class="prose-table keyed">
+          <tbody>
+            <tr><th scope="row">Defender</th><td>With Defender Vulnerability Management, the CVEs Defender has found on your devices. Vulnder gets the CVE IDs and ranks every one, whatever its age.</td></tr>
+            <tr><th scope="row">Intune</th><td>The apps Intune has discovered on your devices. Vulnder gets app names, versions, publishers and device counts, and matches them to CVE records.</td></tr>
+            <tr><th scope="row">Stack</th><td>Products and versions you list once, such as firewalls, VPN gateways and the Windows releases you run. Add one to either mode above for what Defender and Intune can't see.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Device names, users and IP addresses stay in your tenant. Queries that come with the template give patching teams a daily list of what's new or rose in priority and, in Defender mode, the devices each CVE is on.
+          Stack mode and the Sentinel rule have been tested on a real subscription; Defender and Intune modes haven't yet been run on a licensed tenant.
+        </p>
+        <p><a class="button" href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json"><svg class="azure-mark" viewBox="16.5 5.7 23.2 22" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="m 24.1781,6.18242 v 0 0 h 7 c 0.6,0 1.2,0.4 1.4,1 l 6.1,18 c 0.3,1 -0.4,2 -1.4,2 h -6.9 v 0 c 0,0 -0.1,0 -0.1,0 v 0 c -0.3,0 -0.6,-0.1 -0.9,-0.3 l -4.6,-3.4 -0.9,2.7 c -0.2,0.6 -0.8,1 -1.4,1 h -4.4 c -1,0 -1.7,-1 -1.4,-2 l 6,-18 c 0.3,-0.6 0.8,-1 1.5,-1 z m -2.6,13.7 8.4,6.2 c 0.1,0.1 0.2,0.1 0.3,0.1 v 0 c 0.3,0 0.6,-0.3 0.5,-0.7 l -3.4,-10 -1.3,3.3 -0.1,0.4 h -0.3 -5 z m 15.7,6.3 h -5.6 c 0.1,-0.3 0.1,-0.6 0,-1 l -6,-18 v 0 h 5.6 c 0.2,0 0.4,0.1 0.5,0.3 l 6.1,18 c 0,0.4 -0.3,0.7 -0.6,0.7 z"/></svg>Deploy to Azure</a></p>
+        <p>Setup, the Microsoft Graph permission each mode needs, and the queries: <a href="https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md" rel="noreferrer">AZURE.md</a>.</p>
       </section>
 
       <section class="block" aria-labelledby="privacy">

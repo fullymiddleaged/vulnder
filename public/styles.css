@@ -210,11 +210,39 @@ code .ecosystem { font-family: var(--sans); font-size: 0.8em; font-weight: 700; 
 .compose-label { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin-bottom: 0.2rem; }
 /* Three facts the site states elsewhere, under the form; the privacy link opens the footer's details. */
 .trust { margin: 0; }
-/* What a result looks like: Fix first rows without the fold, under the form and on its view only. */
-.sample { max-width: var(--column); margin: 1rem auto 0; padding: 0 1rem; }
-.sample > * { max-width: var(--content); }
-.sample p { margin: 0.75rem 0 0; }
-body[data-view] .sample, main[aria-busy='true'] ~ .sample { display: none; }
+/* Supported integrations, under the form and on its view only: one ruled line each, like the findings above results. Narrow: name and action, the sentence under them. */
+.integrations { max-width: var(--column); margin: 2.25rem auto 0; padding: 0 1rem; }
+.integrations > * { max-width: var(--content); }
+body[data-view] .integrations, main[aria-busy='true'] ~ .integrations { display: none; }
+.integration-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.integration { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name action" "text text"; align-items: center; gap: 0.25rem 1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+.integration:first-child { border-top: 1px solid var(--border); }
+.integration h3 { grid-area: name; font-size: 1rem; font-weight: 800; margin: 0; }
+.integration p { grid-area: text; margin: 0; max-width: var(--measure); }
+.integration > a:last-child { grid-area: action; justify-self: end; white-space: nowrap; }
+@media (min-width: 48rem) {
+  .integration { grid-template-columns: 15rem minmax(0, 1fr) auto; grid-template-areas: "name text action"; }
+}
+/* A link that starts something elsewhere, drawn as a secondary button. */
+/*
+ * From 72rem up, the home form's view puts the integrations in the frame's free right-hand side, beside the form,
+ * so the form keeps its column and nothing moves when results load. Elsewhere .home has no box.
+ */
+.home { display: contents; }
+@media (min-width: 72rem) {
+  body:not([data-view]) .home { display: grid; grid-template-columns: var(--content) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 2.5rem; max-width: var(--column); margin: 0 auto; padding: 0 1rem; align-items: start; }
+  body:not([data-view]) .home > main, body:not([data-view]) .home > .status { grid-column: 1; max-width: none; margin-inline: 0; padding: 0; }
+  body:not([data-view]) .integrations { grid-column: 2; grid-row: 1 / span 2; max-width: none; margin: 2.5rem 0 0; padding: 0; }
+  body:not([data-view]) .integrations > * { max-width: none; }
+  .integrations .block { border-top: none; padding-top: 0; }
+  .integration { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "text" "action"; gap: 0.3rem; padding: 0.9rem 0; }
+  .integration p { font-size: 0.875rem; }
+  .integration > a:last-child { justify-self: start; margin-top: 0.2rem; }
+}
+a.button { display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0.45rem 0.85rem; background: var(--card); color: var(--fg); border: 1px solid var(--control); border-radius: var(--radius); font-weight: 700; text-decoration: none; }
+a.button:hover { border-color: var(--accent); }
+/* Azure's own blue, in both themes: it names the platform, not a priority. */
+.azure-mark { width: 1.3em; height: 1.25em; margin-right: 0.5rem; fill: #0078d4; flex: none; }
 /* The counter line is the field's caption, so it stays close to it. */
 .compose .row { margin-top: -0.5rem; }
 .compose .row p { margin: 0; }
