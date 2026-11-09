@@ -285,7 +285,18 @@ describe('Deploy to Azure', () => {
     expect(picker.type).toBe('Microsoft.Solutions.ResourceSelector');
     expect(picker.resourceType).toBe('Microsoft.OperationalInsights/workspaces');
     expect(picker.options.filter.subscription).toBe('onBasics');
-    expect(ui.parameters.outputs.workspaceName).toBe("[basics('workspace').name]");
+  });
+
+  it("reads the workspace from the picker's resource ID only, and warns until one is picked", () => {
+    // The picker's name and location came through empty in the portal ("The name '/Vulnder_CL' ...").
+    for (const [param, value] of Object.entries(ui.parameters.outputs)) expect(value, param).not.toMatch(/basics\('workspace'\)\.(name|location)/);
+    expect(ui.parameters.outputs.workspaceName).toBe("[last(split(basics('workspace').id, '/'))]");
+    const id = '/subscriptions/61cc0d6b/resourceGroups/vulnder-test/providers/Microsoft.OperationalInsights/workspaces/vulnder-test-ws';
+    expect(id.split('/').at(-1)).toBe('vulnder-test-ws');
+    expect(element('noWorkspace').visible).toBe("[empty(basics('workspace').id)]");
+    // Log Analytics workspace names are 4 to 63 characters; an empty one fails clearly, not as '/Vulnder_CL'.
+    expect(bicep).toMatch(/@minLength\(4\)\nparam workspaceName string/);
+    expect((arm.parameters.workspaceName as ArmParameter & { minLength?: number }).minLength).toBe(4);
   });
 
   it("passes the workspace's resource group, read from its resource ID", () => {
