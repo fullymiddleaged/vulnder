@@ -7,9 +7,13 @@
 // workspace, which can be in another group (workspace.bicep).
 // Setup and the Graph permissions to grant afterwards: docs/AZURE.md.
 
-@description('An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel).')
+@description('A Log Analytics workspace (the Sentinel workspace, if you use Sentinel). It must exist, unless createWorkspace is true.')
 @minLength(4)
+@maxLength(63)
 param workspaceName string
+
+@description('Create the workspace, in workspaceResourceGroup and the region in location (default: the resource group\'s), with Sentinel on it if sentinelRules is true.')
+param createWorkspace bool = false
 
 @description('The workspace\'s resource group, if it isn\'t the one you deploy to.')
 param workspaceResourceGroup string = resourceGroup().name
@@ -40,6 +44,17 @@ param name string = 'vulnder'
 
 var tableName = 'Vulnder_CL'
 
+// For anyone without a workspace: make one, with Sentinel on it if the rule is wanted.
+module newWorkspace 'new-workspace.bicep' = if (createWorkspace) {
+  name: '${name}-new-workspace'
+  scope: resourceGroup(workspaceResourceGroup)
+  params: {
+    workspaceName: workspaceName
+    location: empty(location) ? resourceGroup().location : location
+    sentinel: sentinelRules
+  }
+}
+
 // The table and the Sentinel rule go on the workspace, in its own resource group.
 module onWorkspace 'workspace.bicep' = {
   name: '${name}-workspace'
@@ -49,6 +64,7 @@ module onWorkspace 'workspace.bicep' = {
     tableName: tableName
     sentinelRules: sentinelRules
   }
+  dependsOn: [newWorkspace]
 }
 
 // The Logic App, its data collection rule and its role, in the workspace's
