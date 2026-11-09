@@ -5,12 +5,13 @@
     "_generator": {
       "name": "bicep",
       "version": "0.48.1.52935",
-      "templateHash": "5113411497916903983"
+      "templateHash": "8140592115882080500"
     }
   },
   "parameters": {
     "workspaceName": {
       "type": "string",
+      "minLength": 4,
       "metadata": {
         "description": "An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel)."
       }

@@ -8,6 +8,7 @@
 // Setup and the Graph permissions to grant afterwards: docs/AZURE.md.
 
 @description('An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel).')
+@minLength(4)
 param workspaceName string
 
 @description('The workspace\'s resource group, if it isn\'t the one you deploy to.')

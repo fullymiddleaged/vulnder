@@ -30,6 +30,16 @@
         }
       },
       {
+        "name": "noWorkspace",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": "[empty(basics('workspace').id)]",
+        "options": {
+          "icon": "Warning",
+          "text": "Pick the Log Analytics workspace above. Without one the deployment fails. If the list is empty or the workspace isn't in it, deploy from the command line instead.",
+          "uri": "https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md#deploy"
+        }
+      },
+      {
         "name": "mode",
         "type": "Microsoft.Common.DropDown",
         "label": "Where the CVEs come from",
@@ -134,7 +144,7 @@
       }
     ],
     "outputs": {
-      "workspaceName": "[basics('workspace').name]",
+      "workspaceName": "[last(split(basics('workspace').id, '/'))]",
       "workspaceResourceGroup": "[first(skip(split(basics('workspace').id, '/'), 4))]",
       "mode": "[basics('mode')]",
       "stack": "[basics('stack')]",
