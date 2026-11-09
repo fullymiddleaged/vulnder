@@ -99,3 +99,4 @@ resource newActRule 'Microsoft.SecurityInsights/alertRules@2025-09-01' = if (sen
 }
 
 output workspaceId string = workspace.id
+output location string = workspace.location

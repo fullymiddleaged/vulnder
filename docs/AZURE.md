@@ -35,7 +35,7 @@ az deployment group create -g <resource-group> \
   -p workspaceName=<workspace> mode=intune sentinelRules=true
 ```
 
-This puts the resources in the resource group's region; pass `location=...` for another. If the workspace is in another resource group, deploy to the group you want the Logic App in and pass `workspaceResourceGroup=<workspace-resource-group>`.
+This puts the Logic App and its data collection rule in the workspace's region; pass `location=...` for another. If the workspace is in another resource group, deploy to the group you want the Logic App in and pass `workspaceResourceGroup=<workspace-resource-group>`.
 
 For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge`.
 
