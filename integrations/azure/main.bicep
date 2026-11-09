@@ -2,11 +2,16 @@
 // a tenant's CVEs with Vulnder and writes one row per CVE to Vulnder_CL.
 // Everything runs in your subscription under a managed identity; Vulnder
 // gets CVE IDs, or product names and versions, and never a credential.
-// Deploy into the resource group of an existing Log Analytics workspace.
+// The Logic App and its data collection rule go in the resource group you
+// deploy to; the table and Sentinel rule go on an existing workspace, which
+// can be in another group (workspace.bicep).
 // Setup and the Graph permissions to grant afterwards: docs/AZURE.md.
 
-@description('An existing Log Analytics workspace in this resource group (the Sentinel workspace, if you use Sentinel).')
+@description('An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel).')
 param workspaceName string
+
+@description('The workspace\'s resource group, if it isn\'t the one you deploy to.')
+param workspaceResourceGroup string = resourceGroup().name
 
 @description('defender: rank the CVEs Defender Vulnerability Management finds. intune: build the stack from Intune discovered apps. stack: rank a fixed stack.')
 @allowed(['defender', 'intune', 'stack'])
@@ -36,50 +41,14 @@ var tableName = 'Vulnder_CL'
 // Monitoring Metrics Publisher, which the Logs Ingestion API requires on the DCR.
 var metricsPublisher = '3913510d-42f4-4e42-8a64-420c390055eb'
 
-resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' existing = {
-  name: workspaceName
-}
-
-// One row per CVE per run. Reasons, Matched and FixedVersions are string arrays.
-resource table 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
-  parent: workspace
-  name: tableName
-  properties: {
-    plan: 'Analytics'
-    schema: {
-      name: tableName
-      description: 'CVEs ranked by Vulnder, one row per CVE per run.'
-      columns: [
-        { name: 'TimeGenerated', type: 'dateTime' }
-        { name: 'RunId', type: 'string' }
-        { name: 'Mode', type: 'string' }
-        { name: 'Source', type: 'string' }
-        { name: 'Cve', type: 'string' }
-        { name: 'CveTitle', type: 'string' }
-        { name: 'Priority', type: 'string' }
-        { name: 'Score', type: 'real' }
-        { name: 'RespondWithinHours', type: 'int' }
-        { name: 'Reasons', type: 'dynamic' }
-        { name: 'Exploited', type: 'boolean' }
-        { name: 'KevAddedAt', type: 'dateTime' }
-        { name: 'KevDueDate', type: 'dateTime' }
-        { name: 'KnownRansomware', type: 'boolean' }
-        { name: 'SsvcExploitation', type: 'string' }
-        { name: 'Epss', type: 'real' }
-        { name: 'EpssPercentile', type: 'real' }
-        { name: 'Cvss', type: 'real' }
-        { name: 'PublishedAt', type: 'dateTime' }
-        { name: 'BeforeWindow', type: 'boolean' }
-        { name: 'Matched', type: 'dynamic' }
-        { name: 'MatchType', type: 'string' }
-        { name: 'Confidence', type: 'string' }
-        { name: 'FixedVersions', type: 'dynamic' }
-        { name: 'Mitigation', type: 'string' }
-        { name: 'Advisory', type: 'string' }
-        { name: 'Patch', type: 'string' }
-        { name: 'ExploitRef', type: 'string' }
-      ]
-    }
+// The table and the Sentinel rule go on the workspace, in its own resource group.
+module onWorkspace 'workspace.bicep' = {
+  name: '${name}-workspace'
+  scope: resourceGroup(workspaceResourceGroup)
+  params: {
+    workspaceName: workspaceName
+    tableName: tableName
+    sentinelRules: sentinelRules
   }
 }
 
@@ -125,7 +94,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
       }
     }
     destinations: {
-      logAnalytics: [{ name: 'workspace', workspaceResourceId: workspace.id }]
+      logAnalytics: [{ name: 'workspace', workspaceResourceId: onWorkspace.outputs.workspaceId }]
     }
     dataFlows: [
       {
@@ -140,7 +109,6 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
       }
     ]
   }
-  dependsOn: [table]
 }
 
 // The DCR's own ingestion endpoint (kind Direct), so no DCE is needed.
@@ -173,51 +141,6 @@ resource canPublish 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalId: logicApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
-}
-
-// Incidents for the SOC: a CVE that is Act now in the latest run and wasn't in the run before.
-resource newActRule 'Microsoft.SecurityInsights/alertRules@2025-09-01' = if (sentinelRules) {
-  scope: workspace
-  name: guid(workspace.id, 'vulnder-new-act')
-  kind: 'Scheduled'
-  properties: {
-    displayName: 'Vulnder: new Act now CVE'
-    description: 'A CVE affecting this tenant became Act now in Vulnder: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert lists Vulnder\'s reasons and the fixed versions.'
-    enabled: true
-    severity: 'High'
-    query: loadTextContent('kql/new-act.kql')
-    queryFrequency: 'PT1H'
-    queryPeriod: 'P2D'
-    triggerOperator: 'GreaterThan'
-    triggerThreshold: 0
-    suppressionEnabled: false
-    suppressionDuration: 'PT1H'
-    eventGroupingSettings: { aggregationKind: 'AlertPerResult' }
-    alertDetailsOverride: {
-      alertDisplayNameFormat: 'Vulnder: {{Cve}} is Act now'
-      alertDescriptionFormat: '{{CveTitle}}'
-    }
-    customDetails: {
-      Cve: 'Cve'
-      Reasons: 'Reasons'
-      RespondWithinHours: 'RespondWithinHours'
-      KevDueDate: 'KevDueDate'
-      FixedVersions: 'FixedVersions'
-      Matched: 'Matched'
-    }
-    incidentConfiguration: {
-      createIncident: true
-      groupingConfiguration: {
-        enabled: false
-        reopenClosedIncident: false
-        lookbackDuration: 'PT5H'
-        matchingMethod: 'AllEntities'
-      }
-    }
-  }
-  // Sentinel runs the query when the rule is created and refuses it if
-  // Vulnder_CL doesn't exist yet.
-  dependsOn: [table]
 }
 
 @description('The Logic App\'s managed identity. Grant it Graph permissions for mode "defender" or "intune" (docs/AZURE.md).')

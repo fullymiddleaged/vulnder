@@ -5,14 +5,21 @@
     "_generator": {
       "name": "bicep",
       "version": "0.48.1.52935",
-      "templateHash": "5846855898953068305"
+      "templateHash": "17384287633711173226"
     }
   },
   "parameters": {
     "workspaceName": {
       "type": "string",
       "metadata": {
-        "description": "An existing Log Analytics workspace in this resource group (the Sentinel workspace, if you use Sentinel)."
+        "description": "An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel)."
+      }
+    },
+    "workspaceResourceGroup": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]",
+      "metadata": {
+        "description": "The workspace's resource group, if it isn't the one you deploy to."
       }
     },
     "mode": {
@@ -576,138 +583,11 @@
       },
       "outputs": {}
     },
-    "$fxv#1": "// CVEs that became Act now in the last hour: Act now in a Vulnder run that\n// reached the table within the hour, and in no run in the two days before.\n// Each CVE alerts once, at the first run that has it at Act now, however the\n// rule's schedule lines up with the Logic App's. It goes by ingestion time,\n// not TimeGenerated, so rows that arrive late are still counted, once.\n// Runs hourly as the \"Vulnder: new Act now CVE\" analytics rule (main.bicep\n// with sentinelRules=true).\nVulnder_CL\n| where TimeGenerated > ago(2d) and Priority == \"act\"\n| extend Ingested = ingestion_time()\n| summarize FirstAct = min(Ingested), arg_max(TimeGenerated, *) by Cve\n| where FirstAct > ago(1h)\n| project TimeGenerated, Cve, CveTitle, Priority, Reasons, Exploited, KevAddedAt, KevDueDate, KnownRansomware, SsvcExploitation, RespondWithinHours, Matched, FixedVersions, Mitigation, Advisory\n",
     "streamName": "Custom-VulnderRows",
     "tableName": "Vulnder_CL",
     "metricsPublisher": "3913510d-42f4-4e42-8a64-420c390055eb"
   },
   "resources": [
-    {
-      "type": "Microsoft.OperationalInsights/workspaces/tables",
-      "apiVersion": "2025-02-01",
-      "name": "[format('{0}/{1}', parameters('workspaceName'), variables('tableName'))]",
-      "properties": {
-        "plan": "Analytics",
-        "schema": {
-          "name": "[variables('tableName')]",
-          "description": "CVEs ranked by Vulnder, one row per CVE per run.",
-          "columns": [
-            {
-              "name": "TimeGenerated",
-              "type": "dateTime"
-            },
-            {
-              "name": "RunId",
-              "type": "string"
-            },
-            {
-              "name": "Mode",
-              "type": "string"
-            },
-            {
-              "name": "Source",
-              "type": "string"
-            },
-            {
-              "name": "Cve",
-              "type": "string"
-            },
-            {
-              "name": "CveTitle",
-              "type": "string"
-            },
-            {
-              "name": "Priority",
-              "type": "string"
-            },
-            {
-              "name": "Score",
-              "type": "real"
-            },
-            {
-              "name": "RespondWithinHours",
-              "type": "int"
-            },
-            {
-              "name": "Reasons",
-              "type": "dynamic"
-            },
-            {
-              "name": "Exploited",
-              "type": "boolean"
-            },
-            {
-              "name": "KevAddedAt",
-              "type": "dateTime"
-            },
-            {
-              "name": "KevDueDate",
-              "type": "dateTime"
-            },
-            {
-              "name": "KnownRansomware",
-              "type": "boolean"
-            },
-            {
-              "name": "SsvcExploitation",
-              "type": "string"
-            },
-            {
-              "name": "Epss",
-              "type": "real"
-            },
-            {
-              "name": "EpssPercentile",
-              "type": "real"
-            },
-            {
-              "name": "Cvss",
-              "type": "real"
-            },
-            {
-              "name": "PublishedAt",
-              "type": "dateTime"
-            },
-            {
-              "name": "BeforeWindow",
-              "type": "boolean"
-            },
-            {
-              "name": "Matched",
-              "type": "dynamic"
-            },
-            {
-              "name": "MatchType",
-              "type": "string"
-            },
-            {
-              "name": "Confidence",
-              "type": "string"
-            },
-            {
-              "name": "FixedVersions",
-              "type": "dynamic"
-            },
-            {
-              "name": "Mitigation",
-              "type": "string"
-            },
-            {
-              "name": "Advisory",
-              "type": "string"
-            },
-            {
-              "name": "Patch",
-              "type": "string"
-            },
-            {
-              "name": "ExploitRef",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    },
     {
       "type": "Microsoft.Insights/dataCollectionRules",
       "apiVersion": "2024-03-11",
@@ -837,7 +717,7 @@
           "logAnalytics": [
             {
               "name": "workspace",
-              "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              "workspaceResourceId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name'))), '2025-04-01').outputs.workspaceId.value]"
             }
           ]
         },
@@ -855,7 +735,7 @@
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('workspaceName'), variables('tableName'))]"
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name')))]"
       ]
     },
     {
@@ -910,52 +790,234 @@
       ]
     },
     {
-      "condition": "[parameters('sentinelRules')]",
-      "type": "Microsoft.SecurityInsights/alertRules",
-      "apiVersion": "2025-09-01",
-      "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
-      "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'vulnder-new-act')]",
-      "kind": "Scheduled",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-workspace', parameters('name'))]",
+      "resourceGroup": "[parameters('workspaceResourceGroup')]",
       "properties": {
-        "displayName": "Vulnder: new Act now CVE",
-        "description": "A CVE affecting this tenant became Act now in Vulnder: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert lists Vulnder's reasons and the fixed versions.",
-        "enabled": true,
-        "severity": "High",
-        "query": "[variables('$fxv#1')]",
-        "queryFrequency": "PT1H",
-        "queryPeriod": "P2D",
-        "triggerOperator": "GreaterThan",
-        "triggerThreshold": 0,
-        "suppressionEnabled": false,
-        "suppressionDuration": "PT1H",
-        "eventGroupingSettings": {
-          "aggregationKind": "AlertPerResult"
+        "expressionEvaluationOptions": {
+          "scope": "inner"
         },
-        "alertDetailsOverride": {
-          "alertDisplayNameFormat": "Vulnder: {{Cve}} is Act now",
-          "alertDescriptionFormat": "{{CveTitle}}"
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceName": {
+            "value": "[parameters('workspaceName')]"
+          },
+          "tableName": {
+            "value": "[variables('tableName')]"
+          },
+          "sentinelRules": {
+            "value": "[parameters('sentinelRules')]"
+          }
         },
-        "customDetails": {
-          "Cve": "Cve",
-          "Reasons": "Reasons",
-          "RespondWithinHours": "RespondWithinHours",
-          "KevDueDate": "KevDueDate",
-          "FixedVersions": "FixedVersions",
-          "Matched": "Matched"
-        },
-        "incidentConfiguration": {
-          "createIncident": true,
-          "groupingConfiguration": {
-            "enabled": false,
-            "reopenClosedIncident": false,
-            "lookbackDuration": "PT5H",
-            "matchingMethod": "AllEntities"
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.48.1.52935",
+              "templateHash": "13240895461435305079"
+            }
+          },
+          "parameters": {
+            "workspaceName": {
+              "type": "string"
+            },
+            "tableName": {
+              "type": "string"
+            },
+            "sentinelRules": {
+              "type": "bool"
+            }
+          },
+          "variables": {
+            "$fxv#0": "// CVEs that became Act now in the last hour: Act now in a Vulnder run that\n// reached the table within the hour, and in no run in the two days before.\n// Each CVE alerts once, at the first run that has it at Act now, however the\n// rule's schedule lines up with the Logic App's. It goes by ingestion time,\n// not TimeGenerated, so rows that arrive late are still counted, once.\n// Runs hourly as the \"Vulnder: new Act now CVE\" analytics rule\n// (workspace.bicep, with sentinelRules=true).\nVulnder_CL\n| where TimeGenerated > ago(2d) and Priority == \"act\"\n| extend Ingested = ingestion_time()\n| summarize FirstAct = min(Ingested), arg_max(TimeGenerated, *) by Cve\n| where FirstAct > ago(1h)\n| project TimeGenerated, Cve, CveTitle, Priority, Reasons, Exploited, KevAddedAt, KevDueDate, KnownRansomware, SsvcExploitation, RespondWithinHours, Matched, FixedVersions, Mitigation, Advisory\n"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2025-02-01",
+              "name": "[format('{0}/{1}', parameters('workspaceName'), parameters('tableName'))]",
+              "properties": {
+                "plan": "Analytics",
+                "schema": {
+                  "name": "[parameters('tableName')]",
+                  "description": "CVEs ranked by Vulnder, one row per CVE per run.",
+                  "columns": [
+                    {
+                      "name": "TimeGenerated",
+                      "type": "dateTime"
+                    },
+                    {
+                      "name": "RunId",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Mode",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Source",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Cve",
+                      "type": "string"
+                    },
+                    {
+                      "name": "CveTitle",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Priority",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Score",
+                      "type": "real"
+                    },
+                    {
+                      "name": "RespondWithinHours",
+                      "type": "int"
+                    },
+                    {
+                      "name": "Reasons",
+                      "type": "dynamic"
+                    },
+                    {
+                      "name": "Exploited",
+                      "type": "boolean"
+                    },
+                    {
+                      "name": "KevAddedAt",
+                      "type": "dateTime"
+                    },
+                    {
+                      "name": "KevDueDate",
+                      "type": "dateTime"
+                    },
+                    {
+                      "name": "KnownRansomware",
+                      "type": "boolean"
+                    },
+                    {
+                      "name": "SsvcExploitation",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Epss",
+                      "type": "real"
+                    },
+                    {
+                      "name": "EpssPercentile",
+                      "type": "real"
+                    },
+                    {
+                      "name": "Cvss",
+                      "type": "real"
+                    },
+                    {
+                      "name": "PublishedAt",
+                      "type": "dateTime"
+                    },
+                    {
+                      "name": "BeforeWindow",
+                      "type": "boolean"
+                    },
+                    {
+                      "name": "Matched",
+                      "type": "dynamic"
+                    },
+                    {
+                      "name": "MatchType",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Confidence",
+                      "type": "string"
+                    },
+                    {
+                      "name": "FixedVersions",
+                      "type": "dynamic"
+                    },
+                    {
+                      "name": "Mitigation",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Advisory",
+                      "type": "string"
+                    },
+                    {
+                      "name": "Patch",
+                      "type": "string"
+                    },
+                    {
+                      "name": "ExploitRef",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "condition": "[parameters('sentinelRules')]",
+              "type": "Microsoft.SecurityInsights/alertRules",
+              "apiVersion": "2025-09-01",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+              "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'vulnder-new-act')]",
+              "kind": "Scheduled",
+              "properties": {
+                "displayName": "Vulnder: new Act now CVE",
+                "description": "A CVE affecting this tenant became Act now in Vulnder: on CISA KEV, reported actively exploited by CISA, or likely to be exploited soon. The alert lists Vulnder's reasons and the fixed versions.",
+                "enabled": true,
+                "severity": "High",
+                "query": "[variables('$fxv#0')]",
+                "queryFrequency": "PT1H",
+                "queryPeriod": "P2D",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionEnabled": false,
+                "suppressionDuration": "PT1H",
+                "eventGroupingSettings": {
+                  "aggregationKind": "AlertPerResult"
+                },
+                "alertDetailsOverride": {
+                  "alertDisplayNameFormat": "Vulnder: {{Cve}} is Act now",
+                  "alertDescriptionFormat": "{{CveTitle}}"
+                },
+                "customDetails": {
+                  "Cve": "Cve",
+                  "Reasons": "Reasons",
+                  "RespondWithinHours": "RespondWithinHours",
+                  "KevDueDate": "KevDueDate",
+                  "FixedVersions": "FixedVersions",
+                  "Matched": "Matched"
+                },
+                "incidentConfiguration": {
+                  "createIncident": true,
+                  "groupingConfiguration": {
+                    "enabled": false,
+                    "reopenClosedIncident": false,
+                    "lookbackDuration": "PT5H",
+                    "matchingMethod": "AllEntities"
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('workspaceName'), parameters('tableName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "workspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+            }
           }
         }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('workspaceName'), variables('tableName'))]"
-      ]
+      }
     }
   ],
   "outputs": {

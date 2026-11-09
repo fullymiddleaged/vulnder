@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import bicep from '../integrations/azure/main.bicep?raw';
+import workspaceBicep from '../integrations/azure/workspace.bicep?raw';
 import workflowText from '../integrations/azure/workflow.json?raw';
 import newAct from '../integrations/azure/kql/new-act.kql?raw';
 import latest from '../integrations/azure/kql/latest.kql?raw';
@@ -109,7 +110,7 @@ describe('Azure data collection rule', () => {
   } as unknown as MatchedVuln;
   const stream = /streamDeclarations: \{.*?columns: \[(.*?)\]/s.exec(bicep)?.[1] ?? '';
   const declared = [...stream.matchAll(/name: '([^']+)'/g)].map((m) => m[1]!);
-  const table = /schema: \{.*?columns: \[(.*?)\]/s.exec(bicep)?.[1] ?? '';
+  const table = /schema: \{.*?columns: \[(.*?)\]/s.exec(workspaceBicep)?.[1] ?? '';
   const columns = [...table.matchAll(/name: '([^']+)'/g)].map((m) => m[1]!);
   const transform = /transformKql: '(.*)'/.exec(bicep)?.[1] ?? '';
 
@@ -170,7 +171,7 @@ describe('Azure data collection rule', () => {
   });
 
   it("puts the CISA due date in the alert's details, from columns the query projects", () => {
-    const details = /customDetails: \{([^}]*)\}/.exec(bicep)?.[1] ?? '';
+    const details = /customDetails: \{([^}]*)\}/.exec(workspaceBicep)?.[1] ?? '';
     const columns = [...details.matchAll(/(\w+): '(\w+)'/g)].map((m) => m[2]!);
     expect(columns).toContain('KevDueDate');
     const projected = /\| project (.*)$/m.exec(newAct.replace(/^\/\/.*$/gm, ''))?.[1]?.split(/,\s*/) ?? [];
@@ -178,8 +179,17 @@ describe('Azure data collection rule', () => {
   });
 
   it('creates the analytics rule after the table its query reads', () => {
-    const rule = /resource newActRule [\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
+    const rule = /resource newActRule [\s\S]*?\n\}/.exec(workspaceBicep)?.[0] ?? '';
     expect(rule).toMatch(/dependsOn: \[table\]/);
+  });
+
+  it("creates the table and rule in the workspace's resource group, which can differ from the Logic App's", () => {
+    expect(bicep).toMatch(/^param workspaceResourceGroup string = resourceGroup\(\)\.name$/m);
+    const module = /module onWorkspace 'workspace\.bicep' = \{[\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
+    expect(module).toContain('scope: resourceGroup(workspaceResourceGroup)');
+    // The data collection rule writes to the module's workspace, so it waits for the table.
+    expect(bicep).toContain('workspaceResourceId: onWorkspace.outputs.workspaceId');
+    expect(bicep).not.toMatch(/^resource (table|newActRule) /m);
   });
 });
 
@@ -230,9 +240,9 @@ describe('Deploy to Azure', () => {
   it('builds from the current main.bicep, workflow and query', () => {
     const params = [...bicep.matchAll(/^param (\w+) /gm)].map((m) => m[1]!);
     expect(Object.keys(arm.parameters).sort()).toEqual(params.sort());
-    const embedded = Object.values(arm.variables);
-    expect(embedded, 'workflow.json').toContainEqual(workflow);
-    expect(embedded, 'new-act.kql').toContain(newAct);
+    expect(Object.values(arm.variables), 'workflow.json').toContainEqual(workflow);
+    const nested = arm.resources.find((r) => r.type === 'Microsoft.Resources/deployments') as { properties: { template: { variables: Record<string, unknown> } } };
+    expect(Object.values(nested.properties.template.variables), 'new-act.kql').toContain(newAct);
     const dcr = arm.resources.find((r) => r.type === 'Microsoft.Insights/dataCollectionRules') as { properties: { dataFlows: { transformKql: string }[] } };
     const transform = /transformKql: '(.*)'/.exec(bicep)?.[1]?.replaceAll("\\'", "'");
     expect(dcr.properties.dataFlows[0]!.transformKql).toBe(transform);
@@ -261,22 +271,25 @@ describe('Deploy to Azure', () => {
     }
   });
 
-  it('lists the workspaces in the subscription and keeps those in the chosen group', () => {
-    // The portal listed none when the request path named resourceGroup(); Sentinel's own forms list the subscription and filter.
-    const request = (element('workspaces').request as { path: string }).path;
-    expect(request).not.toContain('resourceGroup()');
-    expect(request).toMatch(/^\[concat\(subscription\(\)\.id, '\/providers\/Microsoft\.OperationalInsights\/workspaces\?api-version=[\d-]+'\)\]$/);
-    const inGroup = "contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))";
-    expect((element('workspaceName').constraints as { allowedValues: string }).allowedValues).toContain(`filter(basics('workspaces').value, (w) => ${inGroup})`);
-    expect(element('noWorkspace').visible).toContain(inGroup);
-    // The warning waits until a group is chosen.
-    expect(element('noWorkspace').visible).toMatch(/^\[and\(greater\(length\(resourceGroup\(\)\.name\), 0\), /);
+  it("picks the workspace with the portal's own resource picker, from any group in the subscription", () => {
+    // An ArmApiControl listing workspaces, filtered to the chosen group, showed none in the portal.
+    expect(elements.some((e) => e.type === 'Microsoft.Solutions.ArmApiControl')).toBe(false);
+    const picker = element('workspace') as { type: string; resourceType: string; options: { filter: { subscription: string } } };
+    expect(picker.type).toBe('Microsoft.Solutions.ResourceSelector');
+    expect(picker.resourceType).toBe('Microsoft.OperationalInsights/workspaces');
+    expect(picker.options.filter.subscription).toBe('onBasics');
+    expect(ui.parameters.outputs.workspaceName).toBe("[basics('workspace').name]");
+  });
+
+  it("passes the workspace's resource group, read from its resource ID", () => {
+    // '/subscriptions/{id}/resourceGroups/{group}/providers/...' split on '/' puts the group fifth.
+    expect(ui.parameters.outputs.workspaceResourceGroup).toBe("[first(skip(split(basics('workspace').id, '/'), 4))]");
+    const id = '/subscriptions/61cc0d6b/resourceGroups/vulnder-test/providers/Microsoft.OperationalInsights/workspaces/vulnder-test-ws';
+    expect(id.split('/').slice(4)[0]).toBe('vulnder-test');
   });
 
   it("puts the resources in the chosen workspace's region", () => {
-    expect(ui.parameters.outputs.location).toContain("equals(w.name, basics('workspaceName'))");
-    expect(ui.parameters.outputs.location).toContain("contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))");
-    expect(ui.parameters.outputs.location).toMatch(/\)\.location\]$/);
+    expect(ui.parameters.outputs.location).toBe("[basics('workspace').location]");
   });
 
   it('links the button on the home page, in the README and in AZURE.md to the committed template and form on main', () => {
