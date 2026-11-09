@@ -21,7 +21,7 @@
         "type": "Microsoft.Solutions.ArmApiControl",
         "request": {
           "method": "GET",
-          "path": "[concat(subscription().id, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.OperationalInsights/workspaces?api-version=2025-02-01')]"
+          "path": "[concat(subscription().id, '/providers/Microsoft.OperationalInsights/workspaces?api-version=2025-02-01')]"
         }
       },
       {
@@ -31,14 +31,14 @@
         "toolTip": "The workspace for the Vulnder_CL table, and the Sentinel workspace if you use Sentinel. Only workspaces in the resource group above are listed.",
         "filter": true,
         "constraints": {
-          "allowedValues": "[map(basics('workspaces').value, (item) => parse(concat('{\"label\":\"', item.name, '\",\"value\":\"', item.name, '\"}')))]",
+          "allowedValues": "[map(filter(basics('workspaces').value, (w) => contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))), (item) => parse(concat('{\"label\":\"', item.name, '\",\"value\":\"', item.name, '\"}')))]",
           "required": true
         }
       },
       {
         "name": "noWorkspace",
         "type": "Microsoft.Common.InfoBox",
-        "visible": "[empty(basics('workspaces').value)]",
+        "visible": "[empty(filter(basics('workspaces').value, (w) => contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))))]",
         "options": {
           "icon": "Warning",
           "text": "No Log Analytics workspace in this resource group. Choose the resource group your workspace is in."
@@ -156,7 +156,7 @@
       "days": "[steps('settings').days]",
       "name": "[steps('settings').name]",
       "vulnderUrl": "[steps('settings').vulnderUrl]",
-      "location": "[first(filter(basics('workspaces').value, (w) => equals(w.name, basics('workspaceName')))).location]"
+      "location": "[first(filter(basics('workspaces').value, (w) => and(equals(w.name, basics('workspaceName')), contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))))).location]"
     }
   }
 }

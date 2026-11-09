@@ -261,8 +261,20 @@ describe('Deploy to Azure', () => {
     }
   });
 
-  it("puts the resources in the workspace's region", () => {
-    expect(ui.parameters.outputs.location).toMatch(/equals\(w\.name, basics\('workspaceName'\)\)\)\)\.location\]$/);
+  it('lists the workspaces in the subscription and keeps those in the chosen group', () => {
+    // The portal listed none when the request path named resourceGroup(); Sentinel's own forms list the subscription and filter.
+    const request = (element('workspaces').request as { path: string }).path;
+    expect(request).not.toContain('resourceGroup()');
+    expect(request).toMatch(/^\[concat\(subscription\(\)\.id, '\/providers\/Microsoft\.OperationalInsights\/workspaces\?api-version=[\d-]+'\)\]$/);
+    const inGroup = "contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))";
+    expect((element('workspaceName').constraints as { allowedValues: string }).allowedValues).toContain(`filter(basics('workspaces').value, (w) => ${inGroup})`);
+    expect(element('noWorkspace').visible).toContain(inGroup);
+  });
+
+  it("puts the resources in the chosen workspace's region", () => {
+    expect(ui.parameters.outputs.location).toContain("equals(w.name, basics('workspaceName'))");
+    expect(ui.parameters.outputs.location).toContain("contains(toLower(w.id), toLower(concat('/resourcegroups/', resourceGroup().name, '/')))");
+    expect(ui.parameters.outputs.location).toMatch(/\)\.location\]$/);
   });
 
   it('links the button on the home page, in the README and in AZURE.md to the committed template and form on main', () => {

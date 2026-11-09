@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.48.1.52935",
-      "templateHash": "16893458173946226988"
+      "templateHash": "5846855898953068305"
     }
   },
   "parameters": {
@@ -939,6 +939,7 @@
           "Cve": "Cve",
           "Reasons": "Reasons",
           "RespondWithinHours": "RespondWithinHours",
+          "KevDueDate": "KevDueDate",
           "FixedVersions": "FixedVersions",
           "Matched": "Matched"
         },
