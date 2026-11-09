@@ -51,7 +51,7 @@ https://vulnder.com/api/v1/rank       POST: a stack or CVE IDs in, flat rows out
 - [Stack link format](docs/STACK_FORMAT.md) (a versioned public contract)
 - [JSON feed fields](docs/RANKING.md#in-the-feeds)
 - [`/api/v1/` for scheduled runners and SIEMs](docs/API.md)
-- [Microsoft Sentinel and Defender template](docs/AZURE.md)
+- [Microsoft Sentinel and Defender template](docs/AZURE.md), or [deploy it to Azure](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json) from the portal
 
 ## Use it with AI agents
 

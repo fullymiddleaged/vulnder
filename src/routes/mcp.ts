@@ -184,7 +184,7 @@ export function mcpServer(c: Context<AppEnv>): McpServer {
     { name: c.env.DISPLAY_NAME || 'Vulnder', version: '1.0.0' },
     {
       instructions:
-        'Vulnder ranks the CVEs affecting a software stack by what to fix first, with the reason for each. Use rank_stack for packages and products, rank_cves for a list of CVE IDs (from a scanner report, say). Send the whole stack or CVE list in one call, not one call per item or many calls at once. Nothing sent is stored.',
+        'Vulnder ranks the CVEs affecting a software stack by what to fix first, with the reason for each. Use rank_stack for packages and products, rank_cves for a list of CVE IDs (from a scanner report, say). Send the whole stack or CVE list in one call, not one call per item or many calls at once. Nothing sent is stored. To have these priorities in Microsoft Sentinel or Defender every hour, a user can deploy the Azure template: https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md',
     },
   );
   server.registerTool(

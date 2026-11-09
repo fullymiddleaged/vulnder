@@ -5,6 +5,10 @@ import newAct from '../integrations/azure/kql/new-act.kql?raw';
 import latest from '../integrations/azure/kql/latest.kql?raw';
 import defenderDevices from '../integrations/azure/kql/defender-devices.kql?raw';
 import dailyPatchList from '../integrations/azure/kql/daily-patch-list.kql?raw';
+import armText from '../integrations/azure/azuredeploy.json?raw';
+import uiText from '../integrations/azure/createUiDefinition.json?raw';
+import azureDoc from '../docs/AZURE.md?raw';
+import readme from '../README.md?raw';
 import type { MatchedVuln } from '../src/match/match';
 import { toRow } from '../src/routes/api';
 
@@ -193,5 +197,67 @@ describe('Azure request sizes', () => {
     const tag = json(actions.Tag_rows);
     expect(tag).not.toContain('addProperty');
     for (const field of ['timeGenerated', 'runId', 'mode', 'sourceName']) expect(tag).toContain(`'${field}'`);
+  });
+});
+
+interface ArmParameter {
+  type: string;
+  defaultValue?: unknown;
+  allowedValues?: string[];
+  minValue?: number;
+  maxValue?: number;
+}
+
+describe('Deploy to Azure', () => {
+  // CI rebuilds azuredeploy.json with the Bicep CLI (npm run check:azure); these catch a stale build without it.
+  const arm = JSON.parse(armText) as { parameters: Record<string, ArmParameter>; variables: Record<string, unknown>; resources: Json[] };
+  const ui = JSON.parse(uiText) as {
+    parameters: { basics: Json[]; steps: { name: string; elements: Json[] }[]; outputs: Record<string, string> };
+  };
+  const elements = [...ui.parameters.basics, ...ui.parameters.steps.flatMap((s) => s.elements)];
+  const element = (name: string) => elements.find((e) => e.name === name)!;
+
+  it('builds from the current main.bicep, workflow and query', () => {
+    const params = [...bicep.matchAll(/^param (\w+) /gm)].map((m) => m[1]!);
+    expect(Object.keys(arm.parameters).sort()).toEqual(params.sort());
+    const embedded = Object.values(arm.variables);
+    expect(embedded, 'workflow.json').toContainEqual(workflow);
+    expect(embedded, 'new-act.kql').toContain(newAct);
+    const dcr = arm.resources.find((r) => r.type === 'Microsoft.Insights/dataCollectionRules') as { properties: { dataFlows: { transformKql: string }[] } };
+    const transform = /transformKql: '(.*)'/.exec(bicep)?.[1]?.replaceAll("\\'", "'");
+    expect(dcr.properties.dataFlows[0]!.transformKql).toBe(transform);
+  });
+
+  it("fills every parameter the template needs from the portal form, and only the template's parameters", () => {
+    const outputs = Object.keys(ui.parameters.outputs);
+    for (const o of outputs) expect(Object.keys(arm.parameters), o).toContain(o);
+    for (const [name, p] of Object.entries(arm.parameters)) if (p.defaultValue === undefined) expect(outputs, name).toContain(name);
+    for (const [param, value] of Object.entries(ui.parameters.outputs)) {
+      const ref = /^\[(?:basics\('(\w+)'\)|steps\('\w+'\)\.(\w+))\]$/.exec(value);
+      if (ref) expect(element(ref[1] ?? ref[2]!), param).toBeDefined();
+    }
+  });
+
+  it("offers the template's modes, limits and defaults", () => {
+    const modes = (element('mode').constraints as { allowedValues: { value: string; label: string }[] }).allowedValues;
+    expect(modes.map((m) => m.value).sort()).toEqual([...arm.parameters.mode!.allowedValues!].sort());
+    expect(modes.map((m) => m.label)).toContain(element('mode').defaultValue);
+    const days = element('days');
+    expect([days.min, days.max, days.defaultValue]).toEqual([arm.parameters.days!.minValue, arm.parameters.days!.maxValue, arm.parameters.days!.defaultValue]);
+    for (const name of ['name', 'vulnderUrl']) {
+      const e = element(name) as { defaultValue: string; constraints: { regex: string } };
+      expect(e.defaultValue, name).toBe(arm.parameters[name]!.defaultValue);
+      expect(e.defaultValue, name).toMatch(new RegExp(e.constraints.regex));
+    }
+  });
+
+  it("puts the resources in the workspace's region", () => {
+    expect(ui.parameters.outputs.location).toMatch(/equals\(w\.name, basics\('workspaceName'\)\)\)\)\.location\]$/);
+  });
+
+  it('links the button in the README and AZURE.md to the committed template and form on main', () => {
+    const raw = 'https://raw.githubusercontent.com/fullymiddleaged/vulnder/main/integrations/azure/';
+    const expected = `https://portal.azure.com/#create/Microsoft.Template/uri/${encodeURIComponent(`${raw}azuredeploy.json`)}/createUIDefinitionUri/${encodeURIComponent(`${raw}createUiDefinition.json`)}`;
+    for (const [file, text] of [['README.md', readme], ['docs/AZURE.md', azureDoc]]) expect(text, file).toContain(`(${expected})`);
   });
 });

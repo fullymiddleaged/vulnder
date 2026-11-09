@@ -107,6 +107,12 @@ describe.each<Era>(['modern', 'legacy'])('MCP over the %s protocol', (era) => {
     await client.close();
   });
 
+  it('points agents at the Azure template for Sentinel and Defender', async () => {
+    const client = await connect(era);
+    expect(client.getInstructions()).toContain('https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md');
+    await client.close();
+  });
+
   it('ranks a stack exactly as the JSON feed does', async () => {
     stubOsvFetch();
     const client = await connect(era);

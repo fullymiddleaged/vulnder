@@ -21,11 +21,19 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 ## Deploy
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json)
+
+The button opens a form in the Azure portal. Choose the resource group your Log Analytics workspace is in, then the workspace and the mode. The Logic App and data collection rule go in the workspace's region. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
+
+From a clone, with the Azure CLI:
+
 ```sh
 az deployment group create -g <workspace-resource-group> \
   -f integrations/azure/main.bicep \
   -p workspaceName=<workspace> mode=intune sentinelRules=true
 ```
+
+This puts the resources in the resource group's region; pass `location=...` for another.
 
 For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge`.
 
@@ -85,3 +93,7 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 Mode `stack` has been deployed to a real subscription (Australia East, November 2026). The Logic App ranked the stack, the rows reached `Vulnder_CL` with every field the API sent, and `latest.kql`, `daily-patch-list.kql` and `new-act.kql` ran on them. Not yet tested on a real tenant: modes `defender` and `intune` (they need the licences and the Graph grant), the analytics rule (`sentinelRules=true`), and `defender-devices.kql`.
 
 The template also passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed), and `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. Neither can catch everything Azure refuses at deploy time, so deploy changes to a test resource group before relying on them. Report problems as issues.
+
+## Changing the template
+
+The button and releases deploy `azuredeploy.json`, which is built from `main.bicep` with `workflow.json` and the rule's query inlined. After changing any of them, run `npm run build:azure` and commit the result; CI rebuilds it and fails if they differ. To try the portal form, paste `createUiDefinition.json` into the [sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade).

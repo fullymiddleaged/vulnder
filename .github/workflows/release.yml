@@ -1,0 +1,48 @@
+name: release
+
+# Push a tag vX.Y.Z on main to publish a GitHub release. The tag must match
+# package.json and CHANGELOG.md must have a "## [X.Y.Z]" section, which
+# becomes the release notes. The Azure template and its portal form are
+# attached, so a deployment can pin a version.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check the tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - uses: ./.github/actions/setup-bicep
+      - run: npm run lint:azure
+      - run: npm run check:azure
+      - name: Write the release notes
+        run: npx tsx scripts/release-notes.ts "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --verify-tag
+          --title "Vulnder $GITHUB_REF_NAME"
+          --notes-file "$RUNNER_TEMP/notes.md"
+          integrations/azure/azuredeploy.json
+          integrations/azure/createUiDefinition.json
