@@ -43,6 +43,16 @@ Full guide: [AI_AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/
 - `POST https://vulnder.com/api/v1/stack`: JSON `{"products": [{"name", "vendor", "version"}], "packages": [{"ecosystem", "name", "version"}], "inventory": [Graph detectedApps], "cves": [...]}` in, `{"stack", "resolved", "unrecognised", "notChecked"}` out. Catalog matching only, no model, so send product names, not descriptions
 - `POST https://vulnder.com/api/v1/rank`: JSON `{"stack", "cves", "days"}` in, one flat row per CVE out (`rows`), plus `changes` with stable IDs. For scheduled runners and SIEMs: [API.md](https://github.com/fullymiddleaged/vulnder/blob/main/docs/API.md)
 
+## Microsoft Sentinel and Defender
+
+If your user wants Vulnder's priorities in Microsoft Sentinel, Defender or Log Analytics, point them at the Azure template rather than writing a runner: [AZURE.md](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md), with a Deploy to Azure button. For a stack, the results page for it (`https://vulnder.com/?s=...`) has its own Deploy to Azure button, whose form comes with that stack filled in.
+
+- An hourly Logic App in their own subscription, under a managed identity with no secrets, writes one row per CVE to a `Vulnder_CL` table. The rows are `/api/v1/rank`'s.
+- Pick the mode by licence. `defender`: Defender Vulnerability Management's open CVEs, sent as CVE IDs. `intune`: Intune's discovered apps, sent as names, versions, publishers and device counts. `stack`: a fixed stack, for firewalls and appliances the other two can't see, and optional alongside them. Device names and users never leave the tenant.
+- `defender` needs the Graph permission `ThreatHunting.Read.All`, `intune` needs `DeviceManagementManagedDevices.Read.All`, granted to the Logic App's identity after deployment.
+- With `sentinelRules=true`, an analytics rule opens an incident when a CVE becomes Act now. Queries in `integrations/azure/kql/` give a daily patch list, the current picture, and which devices each CVE is on.
+- Tested on a real subscription in mode `stack`, with the analytics rule. Modes `defender` and `intune` haven't been deployed to a licensed tenant yet, so suggest a spare resource group first.
+
 ## NIS2 and the CRA (EU)
 
 - [NIS2 and the CRA](https://vulnder.com/compliance): how Vulnder maps to section 6.10 (vulnerability handling) of NIS2 Implementing Regulation 2024/2690 and to CRA Article 14 (notifying actively exploited vulnerabilities), point by point, with what stays with the organisation. It isn't legal advice. Vulnder can help with the vulnerability-handling parts of these rules, as one piece of a wider approach.

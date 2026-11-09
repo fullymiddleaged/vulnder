@@ -25,6 +25,18 @@ npm run lint && npm run typecheck && npm test
 
 New behaviour needs tests in the same pull request: a new feature, source or parser comes with tests that cover it, and a bug fix comes with a test that fails without the fix. Tests must not touch the network: use recorded fixtures (see below). CI runs the same checks, plus CodeQL, on every pull request.
 
+If you change the Azure template (`integrations/azure/`), also run `npm run lint:azure && npm run build:azure` with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed, and commit the rebuilt `azuredeploy.json`. CI fails if it's out of date.
+
+## Releasing
+
+Releases are for people who want to pin a version, such as of the Azure template. To cut one, move the Unreleased entries in CHANGELOG.md under `## [X.Y.Z] - YYYY-MM-DD`, set `version` in package.json to match, and merge that to `main`. Then tag the merge commit and push the tag:
+
+```sh
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+The release workflow checks the tag is on `main` and matches package.json, runs the checks, and publishes a GitHub release with that section of the changelog as its notes and `azuredeploy.json` and `createUiDefinition.json` attached.
+
 ## Adding a manifest parser
 
 Parsers live in [`src/resolve/manifests/index.ts`](src/resolve/manifests/index.ts). They run in the browser, so a lockfile never leaves the user's machine, and they're tested server-side.

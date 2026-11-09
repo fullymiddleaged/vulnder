@@ -29,6 +29,8 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p test && tsc --noEmit -p scripts && tsc --noEmit -p web",
     "lint": "eslint .",
     "lint:azure": "bicep lint integrations/azure/main.bicep",
+    "build:azure": "bicep build integrations/azure/main.bicep --outfile integrations/azure/azuredeploy.json",
+    "check:azure": "tsx scripts/check-azure-template.ts",
     "types": "wrangler types",
     "build:web": "esbuild web/main.ts --bundle --format=esm --target=es2022 --minify --sourcemap --outfile=public/app.js"
   },

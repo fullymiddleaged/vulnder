@@ -1,0 +1,148 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true,
+      "basics": {
+        "description": "An hourly Logic App that ranks the CVEs affecting your tenant with Vulnder and writes one row per CVE to the `Vulnder_CL` table in your Log Analytics workspace. The Logic App goes in the resource group you choose here, and in the workspace's region; the workspace can be in another group. [Setup guide](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md)",
+        "resourceGroup": {
+          "allowExisting": true
+        },
+        "location": {
+          "visible": false
+        }
+      }
+    },
+    "basics": [
+      {
+        "name": "workspace",
+        "type": "Microsoft.Solutions.ResourceSelector",
+        "label": "Log Analytics workspace",
+        "toolTip": "The workspace for the Vulnder_CL table, and the Sentinel workspace if you use Sentinel. It can be in another resource group.",
+        "resourceType": "Microsoft.OperationalInsights/workspaces",
+        "options": {
+          "filter": {
+            "subscription": "onBasics",
+            "location": "all"
+          }
+        }
+      },
+      {
+        "name": "mode",
+        "type": "Microsoft.Common.DropDown",
+        "label": "Where the CVEs come from",
+        "defaultValue": "Stack",
+        "toolTip": "Pick by licence. Every mode writes the same rows.",
+        "constraints": {
+          "allowedValues": [
+            {
+              "label": "Defender",
+              "description": "Defender Vulnerability Management's open CVEs. Needs Defender for Endpoint Plan 2, the standalone licence, or Defender for Servers.",
+              "value": "defender"
+            },
+            {
+              "label": "Intune",
+              "description": "Intune's discovered apps, matched to CVE records by Vulnder.",
+              "value": "intune"
+            },
+            {
+              "label": "Stack",
+              "description": "A stack you write once, such as firewalls, VPNs and appliances.",
+              "value": "stack"
+            }
+          ],
+          "required": true
+        }
+      },
+      {
+        "name": "stack",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Stack",
+        "placeholder": "p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge",
+        "toolTip": "Easier: describe your stack at vulnder.com and use Deploy to Azure on the results, which fills this in. Here, it takes Vulnder's stack format, comma-separated. Needed for mode Stack; in modes Defender and Intune it's optional, and ranked alongside for what they can't see.",
+        "multiLine": true,
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "isValid": "[or(not(equals(basics('mode'), 'stack')), not(empty(basics('stack'))))]",
+              "message": "Mode Stack needs a stack. Describe it at vulnder.com and use Deploy to Azure on the results."
+            }
+          ]
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "settings",
+        "label": "Settings",
+        "elements": [
+          {
+            "name": "sentinelRules",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Create the Sentinel analytics rule \"Vulnder: new Act now CVE\"",
+            "toolTip": "Opens one incident per CVE the first hour it is Act now. Needs Sentinel already on the workspace."
+          },
+          {
+            "name": "days",
+            "type": "Microsoft.Common.Slider",
+            "label": "Window for new CVEs",
+            "subLabel": "days",
+            "toolTip": "CVEs Defender lists are ranked whatever their age.",
+            "min": 1,
+            "max": 90,
+            "defaultValue": 30,
+            "showStepMarkers": false
+          },
+          {
+            "name": "name",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Name",
+            "defaultValue": "vulnder",
+            "toolTip": "Names the Logic App and its data collection rule, and fills the Source column. To add a second mode to the same workspace, deploy again with another name.",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+              "validationMessage": "3 to 40 lowercase letters, digits and hyphens, starting and ending with a letter or digit."
+            }
+          },
+          {
+            "name": "vulnderUrl",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Vulnder URL",
+            "defaultValue": "https://vulnder.com",
+            "toolTip": "Change this only if you run your own Vulnder deployment.",
+            "constraints": {
+              "required": true,
+              "regex": "^https://[^\\s/]+$",
+              "validationMessage": "An https:// address with no path, such as https://vulnder.com."
+            }
+          },
+          {
+            "name": "graphPermission",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[not(equals(basics('mode'), 'stack'))]",
+            "options": {
+              "icon": "Info",
+              "text": "After deployment, grant the Logic App's managed identity the Microsoft Graph permission for this mode: ThreatHunting.Read.All for Defender, DeviceManagementManagedDevices.Read.All for Intune. Runs before the grant write nothing.",
+              "uri": "https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md#deploy"
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "workspaceName": "[basics('workspace').name]",
+      "workspaceResourceGroup": "[first(skip(split(basics('workspace').id, '/'), 4))]",
+      "mode": "[basics('mode')]",
+      "stack": "[basics('stack')]",
+      "sentinelRules": "[steps('settings').sentinelRules]",
+      "days": "[steps('settings').days]",
+      "name": "[steps('settings').name]",
+      "vulnderUrl": "[steps('settings').vulnderUrl]",
+      "location": "[basics('workspace').location]"
+    }
+  }
+}

@@ -27,3 +27,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build:web
       - run: npm test
+      - uses: ./.github/actions/setup-bicep
+      - run: npm run lint:azure
+      - run: npm run check:azure

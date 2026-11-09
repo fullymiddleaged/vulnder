@@ -14,18 +14,28 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 ## What it creates
 
-- **`Vulnder_CL`**, a custom table in your workspace, with one row per CVE per run: priority, score, reasons, KEV and CISA exploitation evidence, EPSS, CVSS, matched items, fixed versions and mitigation. Columns are listed in [main.bicep](../integrations/azure/main.bicep).
+- **`Vulnder_CL`**, a custom table in your workspace, with one row per CVE per run: priority, score, reasons, KEV and CISA exploitation evidence, EPSS, CVSS, matched items, fixed versions and mitigation. Columns are listed in [workspace.bicep](../integrations/azure/workspace.bicep).
 - **A data collection rule** of kind `Direct`, which takes the rows through the Logs Ingestion API. It needs no data collection endpoint.
 - **A Logic App** (Consumption) with a system-assigned managed identity and the Monitoring Metrics Publisher role on that rule. Nothing is stored as a secret.
 - **With `sentinelRules=true`**, which needs Sentinel already on the workspace, the analytics rule "Vulnder: new Act now CVE". It opens one incident per CVE the first hour it is Act now ([new-act.kql](../integrations/azure/kql/new-act.kql)).
 
 ## Deploy
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json)
+
+To include a stack, the easiest start is the website: describe it on the home page (in words, or by pasting a manifest), check the results, and use **Deploy to Azure** under them. That form comes from the site, with the stack filled in and named in words, so you never write the stack format. Its link carries the stack the way a results link does.
+
+The button below opens a form in the Azure portal. Choose a resource group for the Logic App, then the Log Analytics workspace, which can be in another group, and the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
+
+From a clone, with the Azure CLI:
+
 ```sh
-az deployment group create -g <workspace-resource-group> \
+az deployment group create -g <resource-group> \
   -f integrations/azure/main.bicep \
   -p workspaceName=<workspace> mode=intune sentinelRules=true
 ```
+
+This puts the resources in the resource group's region; pass `location=...` for another. If the workspace is in another resource group, deploy to the group you want the Logic App in and pass `workspaceResourceGroup=<workspace-resource-group>`.
 
 For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge`.
 
@@ -51,7 +61,7 @@ Runs before the grant fail at the Graph call and write nothing. The first run st
 
 Who can see and change it:
 
-- **Contributor or Logic App Contributor** on the resource group can edit the workflow and make any Graph call its identity is allowed. In `defender` mode that means any advanced hunting query across the tenant, not just the one the template runs. Give that role only to people you'd trust with `ThreatHunting.Read.All` themselves, or deploy into a resource group of its own.
+- **Contributor or Logic App Contributor** on the resource group can edit the workflow and make any Graph call its identity is allowed. In `defender` mode that means any advanced hunting query across the tenant, not just the one the template runs. Give that role only to people you'd trust with `ThreatHunting.Read.All` themselves, or deploy into a resource group of its own (`workspaceResourceGroup`, above).
 - **Reader** on the Logic App can open its run history, which keeps each run's Graph responses (the open CVE IDs, or Intune's app list) for 90 days by default. These never leave your tenant. To hide them, turn on secure inputs and outputs for the actions in the designer; that also hides them from you when a run needs debugging.
 
 To run more than one mode, or keep a team's stack apart from the rest, deploy again into the same workspace with another `name` (`-p name=vulnder-edge ...`). Each deployment gets its own Logic App and data collection rule and writes its `name` to the `Source` column of the shared table. The queries below read each deployment's latest run, and a CVE that more than one finds shows once, at its highest priority.
@@ -85,3 +95,7 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 Mode `stack` has been deployed to a real subscription (Australia East, November 2026), twice into one workspace under different names. The Logic Apps ranked their stacks, the rows reached `Vulnder_CL` with every field the API sent and the right `Source`, and `latest.kql`, `daily-patch-list.kql` and `new-act.kql` ran on them. With `sentinelRules=true`, the analytics rule opened one incident for each CVE that was new at Act now, and none for CVEs already in the table. Not yet tested on a real tenant: modes `defender` and `intune` (they need the licences and the Graph grant), and `defender-devices.kql`.
 
 The template also passes the Bicep linter (`npm run lint:azure`, with the [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) installed), and `test/azure-template.test.ts` checks the workflow's references and keeps the table schema in step with the API's rows. Neither can catch everything Azure refuses at deploy time, so deploy changes to a test resource group before relying on them. Report problems as issues.
+
+## Changing the template
+
+The button and releases deploy `azuredeploy.json`, which is built from `main.bicep` and `workspace.bicep` with `workflow.json` and the rule's query inlined. After changing any of them, run `npm run build:azure` and commit the result; CI rebuilds it and fails if they differ. To try the portal form, paste `createUiDefinition.json` into the [sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade).

@@ -1,0 +1,18 @@
+name: Set up Bicep
+description: Installs a pinned Bicep CLI release, checked against its SHA-256, and puts it on PATH.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        # Update both together; the digest is on the release page's bicep-linux-x64 asset.
+        BICEP_VERSION: v0.48.1
+        BICEP_SHA256: b09ec25a9d376c1f8e33ede6ed22b587f915ad68488d5db77a6f9541748c7f6e
+      run: |
+        dir="$RUNNER_TEMP/bicep"
+        mkdir -p "$dir"
+        curl -fsSL -o "$dir/bicep" "https://github.com/Azure/bicep/releases/download/$BICEP_VERSION/bicep-linux-x64"
+        echo "$BICEP_SHA256  $dir/bicep" | sha256sum -c -
+        chmod +x "$dir/bicep"
+        echo "$dir" >> "$GITHUB_PATH"

@@ -631,3 +631,13 @@ export function splitShown(results: Result[], shown: Set<string>): { fresh: Resu
   for (const r of fresh) shown.add(r.id);
   return { fresh, repeated };
 }
+
+/**
+ * The Azure portal link that deploys the Sentinel and Defender template with
+ * this stack already in its form. The template and form come from this
+ * deployment (src/routes/azure.ts); the portal fetches them from the browser.
+ */
+export function azureDeployUrl(base: string, stack: string, days: number): string {
+  const form = `${base}/azure/createUiDefinition.json?s=${encodeURIComponent(stack)}${days === 30 ? '' : `&days=${days}`}`;
+  return `https://portal.azure.com/#create/Microsoft.Template/uri/${encodeURIComponent(`${base}/azure/azuredeploy.json`)}/createUIDefinitionUri/${encodeURIComponent(form)}`;
+}

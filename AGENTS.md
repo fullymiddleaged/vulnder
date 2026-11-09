@@ -14,7 +14,7 @@ npm run backfill             # optional: 90 days of real data into local D1 (~2 
 npm run dev                  # http://localhost:8787
 ```
 
-Before calling work done, run `npm run lint && npm run typecheck && npm test` (vitest in workerd). After changing `web/`, also run `npm run build:web`, which bundles it to `public/app.js`. CI runs all four on every pull request.
+Before calling work done, run `npm run lint && npm run typecheck && npm test` (vitest in workerd). After changing `web/`, also run `npm run build:web`, which bundles it to `public/app.js`. After changing `integrations/azure/`, run `npm run lint:azure && npm run build:azure` (needs the Bicep CLI) and commit `azuredeploy.json`. CI runs all of these on every pull request and fails if `azuredeploy.json` is out of date.
 
 ## Principles (don't undo these)
 

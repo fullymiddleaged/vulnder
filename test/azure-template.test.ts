@@ -1,10 +1,21 @@
+import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { app } from '../src/index';
+import { parseStack, serializeStack } from '../src/stack/format';
+import { azureDeployUrl } from '../web/format';
 import bicep from '../integrations/azure/main.bicep?raw';
+import workspaceBicep from '../integrations/azure/workspace.bicep?raw';
 import workflowText from '../integrations/azure/workflow.json?raw';
 import newAct from '../integrations/azure/kql/new-act.kql?raw';
 import latest from '../integrations/azure/kql/latest.kql?raw';
 import defenderDevices from '../integrations/azure/kql/defender-devices.kql?raw';
 import dailyPatchList from '../integrations/azure/kql/daily-patch-list.kql?raw';
+import armText from '../integrations/azure/azuredeploy.json?raw';
+import uiText from '../integrations/azure/createUiDefinition.json?raw';
+import azureDoc from '../docs/AZURE.md?raw';
+import readme from '../README.md?raw';
+import home from '../public/index.html?raw';
+import howItWorks from '../public/how-it-works.html?raw';
 import type { MatchedVuln } from '../src/match/match';
 import { toRow } from '../src/routes/api';
 
@@ -103,7 +114,7 @@ describe('Azure data collection rule', () => {
   } as unknown as MatchedVuln;
   const stream = /streamDeclarations: \{.*?columns: \[(.*?)\]/s.exec(bicep)?.[1] ?? '';
   const declared = [...stream.matchAll(/name: '([^']+)'/g)].map((m) => m[1]!);
-  const table = /schema: \{.*?columns: \[(.*?)\]/s.exec(bicep)?.[1] ?? '';
+  const table = /schema: \{.*?columns: \[(.*?)\]/s.exec(workspaceBicep)?.[1] ?? '';
   const columns = [...table.matchAll(/name: '([^']+)'/g)].map((m) => m[1]!);
   const transform = /transformKql: '(.*)'/.exec(bicep)?.[1] ?? '';
 
@@ -164,7 +175,7 @@ describe('Azure data collection rule', () => {
   });
 
   it("puts the CISA due date in the alert's details, from columns the query projects", () => {
-    const details = /customDetails: \{([^}]*)\}/.exec(bicep)?.[1] ?? '';
+    const details = /customDetails: \{([^}]*)\}/.exec(workspaceBicep)?.[1] ?? '';
     const columns = [...details.matchAll(/(\w+): '(\w+)'/g)].map((m) => m[2]!);
     expect(columns).toContain('KevDueDate');
     const projected = /\| project (.*)$/m.exec(newAct.replace(/^\/\/.*$/gm, ''))?.[1]?.split(/,\s*/) ?? [];
@@ -172,8 +183,17 @@ describe('Azure data collection rule', () => {
   });
 
   it('creates the analytics rule after the table its query reads', () => {
-    const rule = /resource newActRule [\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
+    const rule = /resource newActRule [\s\S]*?\n\}/.exec(workspaceBicep)?.[0] ?? '';
     expect(rule).toMatch(/dependsOn: \[table\]/);
+  });
+
+  it("creates the table and rule in the workspace's resource group, which can differ from the Logic App's", () => {
+    expect(bicep).toMatch(/^param workspaceResourceGroup string = resourceGroup\(\)\.name$/m);
+    const module = /module onWorkspace 'workspace\.bicep' = \{[\s\S]*?\n\}/.exec(bicep)?.[0] ?? '';
+    expect(module).toContain('scope: resourceGroup(workspaceResourceGroup)');
+    // The data collection rule writes to the module's workspace, so it waits for the table.
+    expect(bicep).toContain('workspaceResourceId: onWorkspace.outputs.workspaceId');
+    expect(bicep).not.toMatch(/^resource (table|newActRule) /m);
   });
 });
 
@@ -201,5 +221,162 @@ describe('Azure request sizes', () => {
     const tag = json(actions.Tag_rows);
     expect(tag).not.toContain('addProperty');
     for (const field of ['timeGenerated', 'runId', 'mode', 'sourceName']) expect(tag).toContain(`'${field}'`);
+  });
+});
+
+interface ArmParameter {
+  type: string;
+  defaultValue?: unknown;
+  allowedValues?: string[];
+  minValue?: number;
+  maxValue?: number;
+}
+
+describe('Deploy to Azure', () => {
+  // CI rebuilds azuredeploy.json with the Bicep CLI (npm run check:azure); these catch a stale build without it.
+  const arm = JSON.parse(armText) as { parameters: Record<string, ArmParameter>; variables: Record<string, unknown>; resources: Json[] };
+  const ui = JSON.parse(uiText) as {
+    parameters: { basics: Json[]; steps: { name: string; elements: Json[] }[]; outputs: Record<string, string> };
+  };
+  const elements = [...ui.parameters.basics, ...ui.parameters.steps.flatMap((s) => s.elements)];
+  const element = (name: string) => elements.find((e) => e.name === name)!;
+
+  it('builds from the current main.bicep, workflow and query', () => {
+    const params = [...bicep.matchAll(/^param (\w+) /gm)].map((m) => m[1]!);
+    expect(Object.keys(arm.parameters).sort()).toEqual(params.sort());
+    expect(Object.values(arm.variables), 'workflow.json').toContainEqual(workflow);
+    const nested = arm.resources.find((r) => r.type === 'Microsoft.Resources/deployments') as { properties: { template: { variables: Record<string, unknown> } } };
+    expect(Object.values(nested.properties.template.variables), 'new-act.kql').toContain(newAct);
+    const dcr = arm.resources.find((r) => r.type === 'Microsoft.Insights/dataCollectionRules') as { properties: { dataFlows: { transformKql: string }[] } };
+    const transform = /transformKql: '(.*)'/.exec(bicep)?.[1]?.replaceAll("\\'", "'");
+    expect(dcr.properties.dataFlows[0]!.transformKql).toBe(transform);
+  });
+
+  it("fills every parameter the template needs from the portal form, and only the template's parameters", () => {
+    const outputs = Object.keys(ui.parameters.outputs);
+    for (const o of outputs) expect(Object.keys(arm.parameters), o).toContain(o);
+    for (const [name, p] of Object.entries(arm.parameters)) if (p.defaultValue === undefined) expect(outputs, name).toContain(name);
+    for (const [param, value] of Object.entries(ui.parameters.outputs)) {
+      const ref = /^\[(?:basics\('(\w+)'\)|steps\('\w+'\)\.(\w+))\]$/.exec(value);
+      if (ref) expect(element(ref[1] ?? ref[2]!), param).toBeDefined();
+    }
+  });
+
+  it("offers the template's modes, limits and defaults", () => {
+    const modes = (element('mode').constraints as { allowedValues: { value: string; label: string }[] }).allowedValues;
+    expect(modes.map((m) => m.value).sort()).toEqual([...arm.parameters.mode!.allowedValues!].sort());
+    expect(modes.map((m) => m.label)).toContain(element('mode').defaultValue);
+    const days = element('days');
+    expect([days.min, days.max, days.defaultValue]).toEqual([arm.parameters.days!.minValue, arm.parameters.days!.maxValue, arm.parameters.days!.defaultValue]);
+    for (const name of ['name', 'vulnderUrl']) {
+      const e = element(name) as { defaultValue: string; constraints: { regex: string } };
+      expect(e.defaultValue, name).toBe(arm.parameters[name]!.defaultValue);
+      expect(e.defaultValue, name).toMatch(new RegExp(e.constraints.regex));
+    }
+  });
+
+  it("picks the workspace with the portal's own resource picker, from any group in the subscription", () => {
+    // An ArmApiControl listing workspaces, filtered to the chosen group, showed none in the portal.
+    expect(elements.some((e) => e.type === 'Microsoft.Solutions.ArmApiControl')).toBe(false);
+    const picker = element('workspace') as { type: string; resourceType: string; options: { filter: { subscription: string } } };
+    expect(picker.type).toBe('Microsoft.Solutions.ResourceSelector');
+    expect(picker.resourceType).toBe('Microsoft.OperationalInsights/workspaces');
+    expect(picker.options.filter.subscription).toBe('onBasics');
+    expect(ui.parameters.outputs.workspaceName).toBe("[basics('workspace').name]");
+  });
+
+  it("passes the workspace's resource group, read from its resource ID", () => {
+    // '/subscriptions/{id}/resourceGroups/{group}/providers/...' split on '/' puts the group fifth.
+    expect(ui.parameters.outputs.workspaceResourceGroup).toBe("[first(skip(split(basics('workspace').id, '/'), 4))]");
+    const id = '/subscriptions/61cc0d6b/resourceGroups/vulnder-test/providers/Microsoft.OperationalInsights/workspaces/vulnder-test-ws';
+    expect(id.split('/').slice(4)[0]).toBe('vulnder-test');
+  });
+
+  it("puts the resources in the chosen workspace's region", () => {
+    expect(ui.parameters.outputs.location).toBe("[basics('workspace').location]");
+  });
+
+  it('links the button on the home page, in the README and in AZURE.md to the committed template and form on main', () => {
+    const raw = 'https://raw.githubusercontent.com/fullymiddleaged/vulnder/main/integrations/azure/';
+    const expected = `https://portal.azure.com/#create/Microsoft.Template/uri/${encodeURIComponent(`${raw}azuredeploy.json`)}/createUIDefinitionUri/${encodeURIComponent(`${raw}createUiDefinition.json`)}`;
+    for (const [file, text] of [['README.md', readme], ['docs/AZURE.md', azureDoc]]) expect(text, file).toContain(`(${expected})`);
+    const pages: [string, string][] = [['index.html', home], ['how-it-works.html', howItWorks]];
+    for (const [file, page] of pages) {
+      const at = page.indexOf(`<a class="button" href="${expected}">`);
+      expect(at, file).toBeGreaterThan(0);
+      expect(page.slice(at, page.indexOf('</a>', at)), file).toMatch(/<\/svg>Deploy to Azure$/);
+    }
+  });
+
+  it('links the home page row to the section on How it works', () => {
+    expect(home).toContain('href="/how-it-works#sentinel"');
+    expect(howItWorks).toContain('<h2 id="sentinel">');
+  });
+});
+
+describe('Deploy to Azure from the results page', () => {
+  type Served = { parameters: { basics: Json[]; steps: { elements: Json[] }[]; outputs: Record<string, unknown> } };
+  const get = async (path: string) => {
+    const res = await app.request(path, {}, env);
+    return { res, body: (await res.json()) as Served };
+  };
+  const named = (form: Served, name: string) => [...form.parameters.basics, ...form.parameters.steps.flatMap((s) => s.elements)].find((e) => e.name === name);
+  const STACK = 'p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1,npm:next@14.2.3,cve:2024-3400';
+
+  it('builds a portal link to this deployment, with the stack in the form link', () => {
+    const url = azureDeployUrl('https://vulnder.example', STACK, 30);
+    const [, template, form] = /^https:\/\/portal\.azure\.com\/#create\/Microsoft\.Template\/uri\/([^/]+)\/createUIDefinitionUri\/([^/]+)$/.exec(url) ?? [];
+    expect(decodeURIComponent(template!)).toBe('https://vulnder.example/azure/azuredeploy.json');
+    const formUrl = new URL(decodeURIComponent(form!));
+    expect(formUrl.origin + formUrl.pathname).toBe('https://vulnder.example/azure/createUiDefinition.json');
+    expect(formUrl.searchParams.get('s')).toBe(STACK);
+    expect(formUrl.searchParams.has('days')).toBe(false);
+    expect(new URL(decodeURIComponent(/createUIDefinitionUri\/(.+)$/.exec(azureDeployUrl('https://vulnder.example', STACK, 7))![1]!)).searchParams.get('days')).toBe('7');
+  });
+
+  it('serves the template and the form with CORS, which the portal needs', async () => {
+    for (const path of ['/azure/azuredeploy.json', '/azure/createUiDefinition.json', `/azure/createUiDefinition.json?s=${encodeURIComponent(STACK)}`]) {
+      const res = await app.request(path, {}, env);
+      expect(res.status, path).toBe(200);
+      expect(res.headers.get('access-control-allow-origin'), path).toBe('*');
+    }
+    expect(await (await app.request('/azure/azuredeploy.json', {}, env)).json()).toEqual(JSON.parse(armText));
+  });
+
+  it('points the form at this deployment', async () => {
+    const { body } = await get('/azure/createUiDefinition.json');
+    expect(named(body, 'vulnderUrl')!.defaultValue).toBe(env.BASE_URL.replace(/\/+$/, ''));
+    expect(named(body, 'stack')!.type).toBe('Microsoft.Common.TextBox');
+  });
+
+  it('fills in the stack, named in words, and passes it to the template as is', async () => {
+    const { body } = await get(`/azure/createUiDefinition.json?s=${encodeURIComponent(STACK)}&days=14`);
+    expect(named(body, 'stack')).toBeUndefined();
+    const text = (named(body, 'stackSummary')!.options as { text: string }).text;
+    expect(text).toContain('fortinet/fortios 7.4.3 (edge)');
+    expect(text).toContain('paloaltonetworks/pan_os 11.1 (edge)'); // an edge device by what it is
+    expect(text).toContain('npm next 14.2.3');
+    expect(text).toContain('CVE-2024-3400');
+    expect(text).not.toContain('p:');
+    const canonical = serializeStack(parseStack(STACK));
+    expect(body.parameters.outputs.stack).toBe(canonical);
+    expect(canonical.startsWith('[')).toBe(false);
+    expect(named(body, 'days')!.defaultValue).toBe(14);
+    // Every output still names a template parameter.
+    for (const o of Object.keys(body.parameters.outputs)) expect(Object.keys((JSON.parse(armText) as { parameters: object }).parameters), o).toContain(o);
+  });
+
+  it('names a long stack in part', async () => {
+    const long = Array.from({ length: 60 }, (_, i) => `npm:pkg-${i}@1.0.0`).join(',');
+    const { body } = await get(`/azure/createUiDefinition.json?s=${encodeURIComponent(long)}`);
+    expect((named(body, 'stackSummary')!.options as { text: string }).text).toContain(', and 10 more.');
+  });
+
+  it('refuses a stack it cannot read', async () => {
+    for (const s of ['', 'not a stack', '~!!!', '['.repeat(50), `p:a/b@${'9'.repeat(100)}`]) {
+      const res = await app.request(`/azure/createUiDefinition.json?s=${encodeURIComponent(s)}`, {}, env);
+      expect(res.status, s).toBe(400);
+    }
+    expect((await app.request(`/azure/createUiDefinition.json?s=${encodeURIComponent(STACK)}&days=500`, {}, env)).status).toBe(400);
   });
 });
