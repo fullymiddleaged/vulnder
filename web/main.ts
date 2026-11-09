@@ -1105,7 +1105,7 @@ async function renderResults(stack: string, days: number): Promise<void> {
       { class: 'headline', 'aria-labelledby': 'match-title' },
       h('h2', { id: 'match-title' }, headline.title),
       h('p', { class: 'muted' }, headline.subtitle),
-      h('div', { class: 'share-bar row wrap', role: 'group', 'aria-label': 'Share and follow' }, copyButtons(feed), exportButtons(feed)),
+      h('div', { class: 'share-bar row wrap', role: 'group', 'aria-label': 'Share and follow' }, copyButtons(feed), exportButtons(feed), deployToAzure(feed)),
     ),
     renderStack(feed, notes),
   );
@@ -1539,8 +1539,8 @@ function targetedBadge(): HTMLElement {
 }
 
 /**
- * What following and exporting give you, after the results. The full set of buttons is under the
- * headline; here, only the two this sentence is about. Then Deploy to Azure, with this stack.
+ * What following, exporting and deploying give you, after the results. The full set of buttons is
+ * under the headline; here, only the ones each sentence is about.
  */
 function renderShare(feed: Feed): HTMLElement {
   return h(
@@ -1572,7 +1572,8 @@ function deployToAzure(feed: Feed): HTMLElement {
   // The page link is `${base}/?s=...`; a self-hosted base can carry a path.
   const base = feed.links.page.slice(0, feed.links.page.indexOf('/?'));
   const mark = svg('svg', { class: 'azure-mark', viewBox: '16.5 5.7 23.2 22', 'aria-hidden': 'true', focusable: 'false' }, svg('path', { 'fill-rule': 'evenodd', d: AZURE_PATH }));
-  return h('a', { class: 'button', href: azureDeployUrl(base, feed.stack, feed.days) }, mark, 'Deploy to Azure');
+  const title = 'Opens the Azure portal to set up Microsoft Sentinel or Defender to rank this stack every hour, with the stack filled in';
+  return h('a', { class: 'button', href: azureDeployUrl(base, feed.stack, feed.days), title }, mark, 'Deploy to Azure');
 }
 
 /**

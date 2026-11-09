@@ -6,20 +6,55 @@
     "config": {
       "isWizard": true,
       "basics": {
-        "description": "An hourly Logic App that ranks the CVEs affecting your tenant with Vulnder and writes one row per CVE to the `Vulnder_CL` table in your Log Analytics workspace. The Logic App goes in the resource group you choose here, and in the workspace's region; the workspace can be in another group. [Setup guide](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md)",
+        "description": "An hourly Logic App that ranks the CVEs affecting your tenant with Vulnder and writes one row per CVE to the `Vulnder_CL` table in a Log Analytics workspace: one you have, or a new one made here. The Logic App goes in the resource group you choose here, in the workspace's region. [Setup guide](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md)",
         "resourceGroup": {
           "allowExisting": true
         },
         "location": {
-          "visible": false
+          "label": "Region",
+          "toolTip": "For a new workspace and a new resource group. With a workspace you have, the Logic App goes in its region instead.",
+          "visible": true
         }
       }
     },
     "basics": [
       {
+        "name": "workspaceChoice",
+        "type": "Microsoft.Common.OptionsGroup",
+        "label": "Log Analytics workspace",
+        "defaultValue": "Create a new one",
+        "toolTip": "Vulnder writes its rows to a Log Analytics workspace. Use your Sentinel workspace if you have one.",
+        "constraints": {
+          "allowedValues": [
+            {
+              "label": "Create a new one",
+              "value": "new"
+            },
+            {
+              "label": "Use one I have",
+              "value": "existing"
+            }
+          ],
+          "required": true
+        }
+      },
+      {
+        "name": "newWorkspaceName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "New workspace name",
+        "defaultValue": "vulnder-workspace",
+        "toolTip": "Created in the resource group and region above. With the Sentinel rule ticked under Settings, Sentinel is turned on for it.",
+        "visible": "[equals(basics('workspaceChoice'), 'new')]",
+        "constraints": {
+          "required": true,
+          "regex": "^[A-Za-z0-9][A-Za-z0-9-]{2,61}[A-Za-z0-9]$",
+          "validationMessage": "4 to 63 letters, digits and hyphens, starting and ending with a letter or digit."
+        }
+      },
+      {
         "name": "workspace",
         "type": "Microsoft.Solutions.ResourceSelector",
-        "label": "Log Analytics workspace",
+        "label": "Workspace",
         "toolTip": "The workspace for the Vulnder_CL table, and the Sentinel workspace if you use Sentinel. It can be in another resource group.",
         "resourceType": "Microsoft.OperationalInsights/workspaces",
         "options": {
@@ -27,6 +62,16 @@
             "subscription": "onBasics",
             "location": "all"
           }
+        },
+        "visible": "[equals(basics('workspaceChoice'), 'existing')]"
+      },
+      {
+        "name": "noWorkspace",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": "[and(equals(basics('workspaceChoice'), 'existing'), empty(coalesce(basics('workspace').id, '')))]",
+        "options": {
+          "icon": "Warning",
+          "text": "Pick the workspace above. If you don't have one, choose Create a new one."
         }
       },
       {
@@ -83,7 +128,7 @@
             "name": "sentinelRules",
             "type": "Microsoft.Common.CheckBox",
             "label": "Create the Sentinel analytics rule \"Vulnder: new Act now CVE\"",
-            "toolTip": "Opens one incident per CVE the first hour it is Act now. Needs Sentinel already on the workspace."
+            "toolTip": "Opens one incident per CVE the first hour it is Act now. On a new workspace this turns Sentinel on; on one you have, Sentinel must already be on."
           },
           {
             "name": "days",
@@ -134,15 +179,16 @@
       }
     ],
     "outputs": {
-      "workspaceName": "[basics('workspace').name]",
-      "workspaceResourceGroup": "[first(skip(split(basics('workspace').id, '/'), 4))]",
+      "workspaceName": "[if(equals(basics('workspaceChoice'), 'new'), basics('newWorkspaceName'), last(split(coalesce(basics('workspace').id, ''), '/')))]",
+      "workspaceResourceGroup": "[if(equals(basics('workspaceChoice'), 'new'), resourceGroup().name, first(skip(split(coalesce(basics('workspace').id, ''), '/'), 4)))]",
+      "createWorkspace": "[equals(basics('workspaceChoice'), 'new')]",
+      "location": "[if(equals(basics('workspaceChoice'), 'new'), location(), '')]",
       "mode": "[basics('mode')]",
       "stack": "[basics('stack')]",
       "sentinelRules": "[steps('settings').sentinelRules]",
       "days": "[steps('settings').days]",
       "name": "[steps('settings').name]",
-      "vulnderUrl": "[steps('settings').vulnderUrl]",
-      "location": "[basics('workspace').location]"
+      "vulnderUrl": "[steps('settings').vulnderUrl]"
     }
   }
 }

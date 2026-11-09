@@ -5,14 +5,23 @@
     "_generator": {
       "name": "bicep",
       "version": "0.48.1.52935",
-      "templateHash": "17384287633711173226"
+      "templateHash": "17363276322386975773"
     }
   },
   "parameters": {
     "workspaceName": {
       "type": "string",
+      "minLength": 4,
+      "maxLength": 63,
       "metadata": {
-        "description": "An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel)."
+        "description": "A Log Analytics workspace (the Sentinel workspace, if you use Sentinel). It must exist, unless createWorkspace is true."
+      }
+    },
+    "createWorkspace": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Create the workspace, in workspaceResourceGroup and the region in location (default: the resource group's), with Sentinel on it if sentinelRules is true."
       }
     },
     "workspaceResourceGroup": {
@@ -65,7 +74,10 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "[resourceGroup().location]"
+      "defaultValue": "",
+      "metadata": {
+        "description": "Region for the Logic App and its data collection rule. Leave empty for the workspace's region."
+      }
     },
     "name": {
       "type": "string",
@@ -76,718 +88,77 @@
     }
   },
   "variables": {
-    "$fxv#0": {
-      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-      "contentVersion": "1.0.0.0",
-      "parameters": {
-        "mode": {
-          "type": "String",
-          "defaultValue": "stack"
-        },
-        "stack": {
-          "type": "String",
-          "defaultValue": ""
-        },
-        "vulnderUrl": {
-          "type": "String",
-          "defaultValue": "https://vulnder.com"
-        },
-        "days": {
-          "type": "Int",
-          "defaultValue": 30
-        },
-        "ingestUrl": {
-          "type": "String",
-          "defaultValue": ""
-        },
-        "source": {
-          "type": "String",
-          "defaultValue": "vulnder"
-        }
-      },
-      "triggers": {
-        "Every_hour": {
-          "type": "Recurrence",
-          "recurrence": {
-            "frequency": "Hour",
-            "interval": 1
-          }
-        }
-      },
-      "actions": {
-        "Init_rows": {
-          "type": "InitializeVariable",
-          "inputs": {
-            "variables": [
-              {
-                "name": "rows",
-                "type": "array",
-                "value": []
-              }
-            ]
-          },
-          "runAfter": {}
-        },
-        "Init_apps": {
-          "type": "InitializeVariable",
-          "inputs": {
-            "variables": [
-              {
-                "name": "apps",
-                "type": "array",
-                "value": []
-              }
-            ]
-          },
-          "runAfter": {
-            "Init_rows": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Init_next": {
-          "type": "InitializeVariable",
-          "inputs": {
-            "variables": [
-              {
-                "name": "next",
-                "type": "string",
-                "value": "https://graph.microsoft.com/v1.0/deviceManagement/detectedApps"
-              }
-            ]
-          },
-          "runAfter": {
-            "Init_apps": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Switch_on_mode": {
-          "type": "Switch",
-          "expression": "@parameters('mode')",
-          "runAfter": {
-            "Init_next": [
-              "Succeeded"
-            ]
-          },
-          "cases": {
-            "Defender": {
-              "case": "defender",
-              "actions": {
-                "Hunt_open_CVEs": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "POST",
-                    "uri": "https://graph.microsoft.com/v1.0/security/runHuntingQuery",
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "Query": "DeviceTvmSoftwareVulnerabilities | distinct CveId"
-                    },
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://graph.microsoft.com"
-                    }
-                  },
-                  "runAfter": {}
-                },
-                "CVE_IDs": {
-                  "type": "Select",
-                  "inputs": {
-                    "from": "@body('Hunt_open_CVEs')?['results']",
-                    "select": "@item()?['CveId']"
-                  },
-                  "runAfter": {
-                    "Hunt_open_CVEs": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "If_any_CVEs": {
-                  "type": "If",
-                  "expression": {
-                    "and": [
-                      {
-                        "greater": [
-                          "@length(body('CVE_IDs'))",
-                          0
-                        ]
-                      }
-                    ]
-                  },
-                  "runAfter": {
-                    "CVE_IDs": [
-                      "Succeeded"
-                    ]
-                  },
-                  "else": {
-                    "actions": {}
-                  },
-                  "actions": {
-                    "For_each_2000_CVEs": {
-                      "type": "Foreach",
-                      "foreach": "@chunk(body('CVE_IDs'), 2000)",
-                      "runtimeConfiguration": {
-                        "concurrency": {
-                          "repetitions": 1
-                        }
-                      },
-                      "runAfter": {},
-                      "actions": {
-                        "Rank_CVEs": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "POST",
-                            "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
-                            "headers": {
-                              "Content-Type": "application/json"
-                            },
-                            "body": {
-                              "cves": "@items('For_each_2000_CVEs')",
-                              "days": "@parameters('days')"
-                            }
-                          },
-                          "runAfter": {}
-                        },
-                        "Merge_CVE_rows": {
-                          "type": "Compose",
-                          "inputs": "@union(variables('rows'), body('Rank_CVEs')?['rows'])",
-                          "runAfter": {
-                            "Rank_CVEs": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Keep_CVE_rows": {
-                          "type": "SetVariable",
-                          "inputs": {
-                            "name": "rows",
-                            "value": "@outputs('Merge_CVE_rows')"
-                          },
-                          "runAfter": {
-                            "Merge_CVE_rows": [
-                              "Succeeded"
-                            ]
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "Intune": {
-              "case": "intune",
-              "actions": {
-                "Page_through_apps": {
-                  "type": "Until",
-                  "expression": "@empty(variables('next'))",
-                  "limit": {
-                    "count": 1000,
-                    "timeout": "PT1H"
-                  },
-                  "runAfter": {},
-                  "actions": {
-                    "Get_page": {
-                      "type": "Http",
-                      "inputs": {
-                        "method": "GET",
-                        "uri": "@variables('next')",
-                        "authentication": {
-                          "type": "ManagedServiceIdentity",
-                          "audience": "https://graph.microsoft.com"
-                        }
-                      },
-                      "runAfter": {}
-                    },
-                    "Merge_page": {
-                      "type": "Compose",
-                      "inputs": "@union(variables('apps'), body('Get_page')?['value'])",
-                      "runAfter": {
-                        "Get_page": [
-                          "Succeeded"
-                        ]
-                      }
-                    },
-                    "Keep_apps": {
-                      "type": "SetVariable",
-                      "inputs": {
-                        "name": "apps",
-                        "value": "@outputs('Merge_page')"
-                      },
-                      "runAfter": {
-                        "Merge_page": [
-                          "Succeeded"
-                        ]
-                      }
-                    },
-                    "Next_page": {
-                      "type": "SetVariable",
-                      "inputs": {
-                        "name": "next",
-                        "value": "@{coalesce(body('Get_page')?['@odata.nextLink'], '')}"
-                      },
-                      "runAfter": {
-                        "Keep_apps": [
-                          "Succeeded"
-                        ]
-                      }
-                    }
-                  }
-                },
-                "Four_fields": {
-                  "type": "Select",
-                  "inputs": {
-                    "from": "@take(reverse(sort(variables('apps'), 'deviceCount')), 4000)",
-                    "select": {
-                      "displayName": "@item()?['displayName']",
-                      "version": "@item()?['version']",
-                      "publisher": "@item()?['publisher']",
-                      "deviceCount": "@item()?['deviceCount']"
-                    }
-                  },
-                  "runAfter": {
-                    "Page_through_apps": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Build_stack": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "POST",
-                    "uri": "@{parameters('vulnderUrl')}/api/v1/stack",
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "inventory": "@body('Four_fields')"
-                    }
-                  },
-                  "runAfter": {
-                    "Four_fields": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rank_inventory": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "POST",
-                    "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "stack": "@body('Build_stack')?['stack']",
-                      "days": "@parameters('days')"
-                    }
-                  },
-                  "runAfter": {
-                    "Build_stack": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Keep_inventory_rows": {
-                  "type": "SetVariable",
-                  "inputs": {
-                    "name": "rows",
-                    "value": "@body('Rank_inventory')?['rows']"
-                  },
-                  "runAfter": {
-                    "Rank_inventory": [
-                      "Succeeded"
-                    ]
-                  }
-                }
-              }
-            },
-            "Stack": {
-              "case": "stack",
-              "actions": {
-                "If_no_stack": {
-                  "type": "If",
-                  "expression": {
-                    "and": [
-                      {
-                        "equals": [
-                          "@trim(parameters('stack'))",
-                          ""
-                        ]
-                      }
-                    ]
-                  },
-                  "runAfter": {},
-                  "actions": {
-                    "No_stack": {
-                      "type": "Terminate",
-                      "inputs": {
-                        "runStatus": "Failed",
-                        "runError": {
-                          "code": "NoStack",
-                          "message": "mode stack needs the stack parameter"
-                        }
-                      },
-                      "runAfter": {}
-                    }
-                  },
-                  "else": {
-                    "actions": {}
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "actions": {
-              "Unknown_mode": {
-                "type": "Terminate",
-                "inputs": {
-                  "runStatus": "Failed",
-                  "runError": {
-                    "code": "UnknownMode",
-                    "message": "mode must be defender, intune or stack"
-                  }
-                },
-                "runAfter": {}
-              }
-            }
-          }
-        },
-        "If_stack": {
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "not": {
-                  "equals": [
-                    "@trim(parameters('stack'))",
-                    ""
-                  ]
-                }
-              }
-            ]
-          },
-          "runAfter": {
-            "Switch_on_mode": [
-              "Succeeded"
-            ]
-          },
-          "actions": {
-            "Rank_stack": {
-              "type": "Http",
-              "inputs": {
-                "method": "POST",
-                "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
-                "headers": {
-                  "Content-Type": "application/json"
-                },
-                "body": {
-                  "stack": "@parameters('stack')",
-                  "days": "@parameters('days')"
-                }
-              },
-              "runAfter": {}
-            },
-            "Merge_stack_rows": {
-              "type": "Compose",
-              "inputs": "@union(variables('rows'), body('Rank_stack')?['rows'])",
-              "runAfter": {
-                "Rank_stack": [
-                  "Succeeded"
-                ]
-              }
-            },
-            "Keep_stack_rows": {
-              "type": "SetVariable",
-              "inputs": {
-                "name": "rows",
-                "value": "@outputs('Merge_stack_rows')"
-              },
-              "runAfter": {
-                "Merge_stack_rows": [
-                  "Succeeded"
-                ]
-              }
-            }
-          },
-          "else": {
-            "actions": {}
-          }
-        },
-        "Tag_rows": {
-          "type": "Select",
-          "inputs": {
-            "from": "@variables('rows')",
-            "select": "@setProperty(setProperty(setProperty(setProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'sourceName', parameters('source'))"
-          },
-          "runAfter": {
-            "If_stack": [
-              "Succeeded"
-            ]
-          }
-        },
-        "If_any_rows": {
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "greater": [
-                  "@length(body('Tag_rows'))",
-                  0
-                ]
-              }
-            ]
-          },
-          "runAfter": {
-            "Tag_rows": [
-              "Succeeded"
-            ]
-          },
-          "actions": {
-            "For_each_200_rows": {
-              "type": "Foreach",
-              "foreach": "@chunk(body('Tag_rows'), 200)",
-              "runtimeConfiguration": {
-                "concurrency": {
-                  "repetitions": 1
-                }
-              },
-              "runAfter": {},
-              "actions": {
-                "Send_to_Log_Analytics": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "POST",
-                    "uri": "@parameters('ingestUrl')",
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": "@items('For_each_200_rows')",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://monitor.azure.com"
-                    }
-                  },
-                  "runAfter": {}
-                }
-              }
-            }
-          },
-          "else": {
-            "actions": {}
-          }
-        }
-      },
-      "outputs": {}
-    },
-    "streamName": "Custom-VulnderRows",
-    "tableName": "Vulnder_CL",
-    "metricsPublisher": "3913510d-42f4-4e42-8a64-420c390055eb"
+    "tableName": "Vulnder_CL"
   },
   "resources": [
     {
-      "type": "Microsoft.Insights/dataCollectionRules",
-      "apiVersion": "2024-03-11",
-      "name": "[format('{0}-dcr', parameters('name'))]",
-      "location": "[parameters('location')]",
-      "kind": "Direct",
+      "condition": "[parameters('createWorkspace')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-new-workspace', parameters('name'))]",
+      "resourceGroup": "[parameters('workspaceResourceGroup')]",
       "properties": {
-        "streamDeclarations": {
-          "[format('{0}', variables('streamName'))]": {
-            "columns": [
-              {
-                "name": "timeGenerated",
-                "type": "string"
-              },
-              {
-                "name": "runId",
-                "type": "string"
-              },
-              {
-                "name": "mode",
-                "type": "string"
-              },
-              {
-                "name": "sourceName",
-                "type": "string"
-              },
-              {
-                "name": "cve",
-                "type": "string"
-              },
-              {
-                "name": "title",
-                "type": "string"
-              },
-              {
-                "name": "priority",
-                "type": "string"
-              },
-              {
-                "name": "score",
-                "type": "real"
-              },
-              {
-                "name": "respondWithinHours",
-                "type": "int"
-              },
-              {
-                "name": "reasons",
-                "type": "dynamic"
-              },
-              {
-                "name": "exploited",
-                "type": "boolean"
-              },
-              {
-                "name": "kevAddedAt",
-                "type": "string"
-              },
-              {
-                "name": "kevDueDate",
-                "type": "string"
-              },
-              {
-                "name": "knownRansomware",
-                "type": "boolean"
-              },
-              {
-                "name": "ssvcExploitation",
-                "type": "string"
-              },
-              {
-                "name": "epss",
-                "type": "real"
-              },
-              {
-                "name": "epssPercentile",
-                "type": "real"
-              },
-              {
-                "name": "cvss",
-                "type": "real"
-              },
-              {
-                "name": "publishedAt",
-                "type": "string"
-              },
-              {
-                "name": "beforeWindow",
-                "type": "boolean"
-              },
-              {
-                "name": "matched",
-                "type": "dynamic"
-              },
-              {
-                "name": "match",
-                "type": "string"
-              },
-              {
-                "name": "confidence",
-                "type": "string"
-              },
-              {
-                "name": "fixedVersions",
-                "type": "dynamic"
-              },
-              {
-                "name": "mitigation",
-                "type": "string"
-              },
-              {
-                "name": "advisory",
-                "type": "string"
-              },
-              {
-                "name": "patch",
-                "type": "string"
-              },
-              {
-                "name": "exploitRef",
-                "type": "string"
-              }
-            ]
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceName": {
+            "value": "[parameters('workspaceName')]"
+          },
+          "location": "[if(empty(parameters('location')), createObject('value', resourceGroup().location), createObject('value', parameters('location')))]",
+          "sentinel": {
+            "value": "[parameters('sentinelRules')]"
           }
         },
-        "destinations": {
-          "logAnalytics": [
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.48.1.52935",
+              "templateHash": "7503190061630136220"
+            }
+          },
+          "parameters": {
+            "workspaceName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "sentinel": {
+              "type": "bool"
+            }
+          },
+          "resources": [
             {
-              "name": "workspace",
-              "workspaceResourceId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name'))), '2025-04-01').outputs.workspaceId.value]"
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2025-02-01",
+              "name": "[parameters('workspaceName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "condition": "[parameters('sentinel')]",
+              "type": "Microsoft.SecurityInsights/onboardingStates",
+              "apiVersion": "2025-09-01",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+              "name": "default",
+              "properties": {},
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              ]
             }
           ]
-        },
-        "dataFlows": [
-          {
-            "streams": [
-              "[variables('streamName')]"
-            ],
-            "destinations": [
-              "workspace"
-            ],
-            "outputStream": "[format('Custom-{0}', variables('tableName'))]",
-            "transformKql": "source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = ['title'], Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = ['match'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef"
-          }
-        ]
-      },
-      "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name')))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Logic/workflows",
-      "apiVersion": "2019-05-01",
-      "name": "[parameters('name')]",
-      "location": "[parameters('location')]",
-      "identity": {
-        "type": "SystemAssigned"
-      },
-      "properties": {
-        "state": "Enabled",
-        "definition": "[variables('$fxv#0')]",
-        "parameters": {
-          "mode": {
-            "value": "[parameters('mode')]"
-          },
-          "stack": {
-            "value": "[parameters('stack')]"
-          },
-          "vulnderUrl": {
-            "value": "[parameters('vulnderUrl')]"
-          },
-          "days": {
-            "value": "[parameters('days')]"
-          },
-          "ingestUrl": {
-            "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').immutableId, variables('streamName'))]"
-          },
-          "source": {
-            "value": "[parameters('name')]"
-          }
         }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]",
-      "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), resourceId('Microsoft.Logic/workflows', parameters('name')), variables('metricsPublisher'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('metricsPublisher'))]",
-        "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]",
-        "[resourceId('Microsoft.Logic/workflows', parameters('name'))]"
-      ]
+      }
     },
     {
       "type": "Microsoft.Resources/deployments",
@@ -817,7 +188,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.48.1.52935",
-              "templateHash": "13240895461435305079"
+              "templateHash": "1378536005368757372"
             }
           },
           "parameters": {
@@ -1014,10 +385,813 @@
             "workspaceId": {
               "type": "string",
               "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+            },
+            "location": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), '2025-02-01', 'full').location]"
             }
           }
         }
-      }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-new-workspace', parameters('name')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-logicapp', parameters('name'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('name')]"
+          },
+          "location": "[if(empty(parameters('location')), createObject('value', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name'))), '2025-04-01').outputs.location.value), createObject('value', parameters('location')))]",
+          "workspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name'))), '2025-04-01').outputs.workspaceId.value]"
+          },
+          "tableName": {
+            "value": "[variables('tableName')]"
+          },
+          "mode": {
+            "value": "[parameters('mode')]"
+          },
+          "stack": {
+            "value": "[parameters('stack')]"
+          },
+          "vulnderUrl": {
+            "value": "[parameters('vulnderUrl')]"
+          },
+          "days": {
+            "value": "[parameters('days')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.48.1.52935",
+              "templateHash": "9745227672718683410"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "workspaceId": {
+              "type": "string"
+            },
+            "tableName": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            },
+            "vulnderUrl": {
+              "type": "string"
+            },
+            "days": {
+              "type": "int"
+            }
+          },
+          "variables": {
+            "$fxv#0": {
+              "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "mode": {
+                  "type": "String",
+                  "defaultValue": "stack"
+                },
+                "stack": {
+                  "type": "String",
+                  "defaultValue": ""
+                },
+                "vulnderUrl": {
+                  "type": "String",
+                  "defaultValue": "https://vulnder.com"
+                },
+                "days": {
+                  "type": "Int",
+                  "defaultValue": 30
+                },
+                "ingestUrl": {
+                  "type": "String",
+                  "defaultValue": ""
+                },
+                "source": {
+                  "type": "String",
+                  "defaultValue": "vulnder"
+                }
+              },
+              "triggers": {
+                "Every_hour": {
+                  "type": "Recurrence",
+                  "recurrence": {
+                    "frequency": "Hour",
+                    "interval": 1
+                  }
+                }
+              },
+              "actions": {
+                "Init_rows": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "rows",
+                        "type": "array",
+                        "value": []
+                      }
+                    ]
+                  },
+                  "runAfter": {}
+                },
+                "Init_apps": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "apps",
+                        "type": "array",
+                        "value": []
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Init_rows": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Init_next": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "next",
+                        "type": "string",
+                        "value": "https://graph.microsoft.com/v1.0/deviceManagement/detectedApps"
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Init_apps": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Switch_on_mode": {
+                  "type": "Switch",
+                  "expression": "@parameters('mode')",
+                  "runAfter": {
+                    "Init_next": [
+                      "Succeeded"
+                    ]
+                  },
+                  "cases": {
+                    "Defender": {
+                      "case": "defender",
+                      "actions": {
+                        "Hunt_open_CVEs": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "https://graph.microsoft.com/v1.0/security/runHuntingQuery",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": {
+                              "Query": "DeviceTvmSoftwareVulnerabilities | distinct CveId"
+                            },
+                            "authentication": {
+                              "type": "ManagedServiceIdentity",
+                              "audience": "https://graph.microsoft.com"
+                            }
+                          },
+                          "runAfter": {}
+                        },
+                        "CVE_IDs": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@body('Hunt_open_CVEs')?['results']",
+                            "select": "@item()?['CveId']"
+                          },
+                          "runAfter": {
+                            "Hunt_open_CVEs": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "If_any_CVEs": {
+                          "type": "If",
+                          "expression": {
+                            "and": [
+                              {
+                                "greater": [
+                                  "@length(body('CVE_IDs'))",
+                                  0
+                                ]
+                              }
+                            ]
+                          },
+                          "runAfter": {
+                            "CVE_IDs": [
+                              "Succeeded"
+                            ]
+                          },
+                          "else": {
+                            "actions": {}
+                          },
+                          "actions": {
+                            "For_each_2000_CVEs": {
+                              "type": "Foreach",
+                              "foreach": "@chunk(body('CVE_IDs'), 2000)",
+                              "runtimeConfiguration": {
+                                "concurrency": {
+                                  "repetitions": 1
+                                }
+                              },
+                              "runAfter": {},
+                              "actions": {
+                                "Rank_CVEs": {
+                                  "type": "Http",
+                                  "inputs": {
+                                    "method": "POST",
+                                    "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+                                    "headers": {
+                                      "Content-Type": "application/json"
+                                    },
+                                    "body": {
+                                      "cves": "@items('For_each_2000_CVEs')",
+                                      "days": "@parameters('days')"
+                                    }
+                                  },
+                                  "runAfter": {}
+                                },
+                                "Merge_CVE_rows": {
+                                  "type": "Compose",
+                                  "inputs": "@union(variables('rows'), body('Rank_CVEs')?['rows'])",
+                                  "runAfter": {
+                                    "Rank_CVEs": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Keep_CVE_rows": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "rows",
+                                    "value": "@outputs('Merge_CVE_rows')"
+                                  },
+                                  "runAfter": {
+                                    "Merge_CVE_rows": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Intune": {
+                      "case": "intune",
+                      "actions": {
+                        "Page_through_apps": {
+                          "type": "Until",
+                          "expression": "@empty(variables('next'))",
+                          "limit": {
+                            "count": 1000,
+                            "timeout": "PT1H"
+                          },
+                          "runAfter": {},
+                          "actions": {
+                            "Get_page": {
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "@variables('next')",
+                                "authentication": {
+                                  "type": "ManagedServiceIdentity",
+                                  "audience": "https://graph.microsoft.com"
+                                }
+                              },
+                              "runAfter": {}
+                            },
+                            "Merge_page": {
+                              "type": "Compose",
+                              "inputs": "@union(variables('apps'), body('Get_page')?['value'])",
+                              "runAfter": {
+                                "Get_page": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Keep_apps": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "apps",
+                                "value": "@outputs('Merge_page')"
+                              },
+                              "runAfter": {
+                                "Merge_page": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Next_page": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "next",
+                                "value": "@{coalesce(body('Get_page')?['@odata.nextLink'], '')}"
+                              },
+                              "runAfter": {
+                                "Keep_apps": [
+                                  "Succeeded"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "Four_fields": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@take(reverse(sort(variables('apps'), 'deviceCount')), 4000)",
+                            "select": {
+                              "displayName": "@item()?['displayName']",
+                              "version": "@item()?['version']",
+                              "publisher": "@item()?['publisher']",
+                              "deviceCount": "@item()?['deviceCount']"
+                            }
+                          },
+                          "runAfter": {
+                            "Page_through_apps": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Build_stack": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@{parameters('vulnderUrl')}/api/v1/stack",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": {
+                              "inventory": "@body('Four_fields')"
+                            }
+                          },
+                          "runAfter": {
+                            "Four_fields": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Rank_inventory": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": {
+                              "stack": "@body('Build_stack')?['stack']",
+                              "days": "@parameters('days')"
+                            }
+                          },
+                          "runAfter": {
+                            "Build_stack": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Keep_inventory_rows": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "rows",
+                            "value": "@body('Rank_inventory')?['rows']"
+                          },
+                          "runAfter": {
+                            "Rank_inventory": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "Stack": {
+                      "case": "stack",
+                      "actions": {
+                        "If_no_stack": {
+                          "type": "If",
+                          "expression": {
+                            "and": [
+                              {
+                                "equals": [
+                                  "@trim(parameters('stack'))",
+                                  ""
+                                ]
+                              }
+                            ]
+                          },
+                          "runAfter": {},
+                          "actions": {
+                            "No_stack": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Failed",
+                                "runError": {
+                                  "code": "NoStack",
+                                  "message": "mode stack needs the stack parameter"
+                                }
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "default": {
+                    "actions": {
+                      "Unknown_mode": {
+                        "type": "Terminate",
+                        "inputs": {
+                          "runStatus": "Failed",
+                          "runError": {
+                            "code": "UnknownMode",
+                            "message": "mode must be defender, intune or stack"
+                          }
+                        },
+                        "runAfter": {}
+                      }
+                    }
+                  }
+                },
+                "If_stack": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": [
+                            "@trim(parameters('stack'))",
+                            ""
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Switch_on_mode": [
+                      "Succeeded"
+                    ]
+                  },
+                  "actions": {
+                    "Rank_stack": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('vulnderUrl')}/api/v1/rank",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "stack": "@parameters('stack')",
+                          "days": "@parameters('days')"
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Merge_stack_rows": {
+                      "type": "Compose",
+                      "inputs": "@union(variables('rows'), body('Rank_stack')?['rows'])",
+                      "runAfter": {
+                        "Rank_stack": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Keep_stack_rows": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "rows",
+                        "value": "@outputs('Merge_stack_rows')"
+                      },
+                      "runAfter": {
+                        "Merge_stack_rows": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  }
+                },
+                "Tag_rows": {
+                  "type": "Select",
+                  "inputs": {
+                    "from": "@variables('rows')",
+                    "select": "@setProperty(setProperty(setProperty(setProperty(item(), 'timeGenerated', utcNow()), 'runId', workflow()?['run']?['name']), 'mode', parameters('mode')), 'sourceName', parameters('source'))"
+                  },
+                  "runAfter": {
+                    "If_stack": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "If_any_rows": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "greater": [
+                          "@length(body('Tag_rows'))",
+                          0
+                        ]
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Tag_rows": [
+                      "Succeeded"
+                    ]
+                  },
+                  "actions": {
+                    "For_each_200_rows": {
+                      "type": "Foreach",
+                      "foreach": "@chunk(body('Tag_rows'), 200)",
+                      "runtimeConfiguration": {
+                        "concurrency": {
+                          "repetitions": 1
+                        }
+                      },
+                      "runAfter": {},
+                      "actions": {
+                        "Send_to_Log_Analytics": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@parameters('ingestUrl')",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": "@items('For_each_200_rows')",
+                            "authentication": {
+                              "type": "ManagedServiceIdentity",
+                              "audience": "https://monitor.azure.com"
+                            }
+                          },
+                          "runAfter": {}
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  }
+                }
+              },
+              "outputs": {}
+            },
+            "streamName": "Custom-VulnderRows",
+            "metricsPublisher": "3913510d-42f4-4e42-8a64-420c390055eb"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2024-03-11",
+              "name": "[format('{0}-dcr', parameters('name'))]",
+              "location": "[parameters('location')]",
+              "kind": "Direct",
+              "properties": {
+                "streamDeclarations": {
+                  "[format('{0}', variables('streamName'))]": {
+                    "columns": [
+                      {
+                        "name": "timeGenerated",
+                        "type": "string"
+                      },
+                      {
+                        "name": "runId",
+                        "type": "string"
+                      },
+                      {
+                        "name": "mode",
+                        "type": "string"
+                      },
+                      {
+                        "name": "sourceName",
+                        "type": "string"
+                      },
+                      {
+                        "name": "cve",
+                        "type": "string"
+                      },
+                      {
+                        "name": "title",
+                        "type": "string"
+                      },
+                      {
+                        "name": "priority",
+                        "type": "string"
+                      },
+                      {
+                        "name": "score",
+                        "type": "real"
+                      },
+                      {
+                        "name": "respondWithinHours",
+                        "type": "int"
+                      },
+                      {
+                        "name": "reasons",
+                        "type": "dynamic"
+                      },
+                      {
+                        "name": "exploited",
+                        "type": "boolean"
+                      },
+                      {
+                        "name": "kevAddedAt",
+                        "type": "string"
+                      },
+                      {
+                        "name": "kevDueDate",
+                        "type": "string"
+                      },
+                      {
+                        "name": "knownRansomware",
+                        "type": "boolean"
+                      },
+                      {
+                        "name": "ssvcExploitation",
+                        "type": "string"
+                      },
+                      {
+                        "name": "epss",
+                        "type": "real"
+                      },
+                      {
+                        "name": "epssPercentile",
+                        "type": "real"
+                      },
+                      {
+                        "name": "cvss",
+                        "type": "real"
+                      },
+                      {
+                        "name": "publishedAt",
+                        "type": "string"
+                      },
+                      {
+                        "name": "beforeWindow",
+                        "type": "boolean"
+                      },
+                      {
+                        "name": "matched",
+                        "type": "dynamic"
+                      },
+                      {
+                        "name": "match",
+                        "type": "string"
+                      },
+                      {
+                        "name": "confidence",
+                        "type": "string"
+                      },
+                      {
+                        "name": "fixedVersions",
+                        "type": "dynamic"
+                      },
+                      {
+                        "name": "mitigation",
+                        "type": "string"
+                      },
+                      {
+                        "name": "advisory",
+                        "type": "string"
+                      },
+                      {
+                        "name": "patch",
+                        "type": "string"
+                      },
+                      {
+                        "name": "exploitRef",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "name": "workspace",
+                      "workspaceResourceId": "[parameters('workspaceId')]"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "[variables('streamName')]"
+                    ],
+                    "destinations": [
+                      "workspace"
+                    ],
+                    "outputStream": "[format('Custom-{0}', parameters('tableName'))]",
+                    "transformKql": "source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = ['title'], Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = ['match'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Logic/workflows",
+              "apiVersion": "2019-05-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "state": "Enabled",
+                "definition": "[variables('$fxv#0')]",
+                "parameters": {
+                  "mode": {
+                    "value": "[parameters('mode')]"
+                  },
+                  "stack": {
+                    "value": "[parameters('stack')]"
+                  },
+                  "vulnderUrl": {
+                    "value": "[parameters('vulnderUrl')]"
+                  },
+                  "days": {
+                    "value": "[parameters('days')]"
+                  },
+                  "ingestUrl": {
+                    "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').immutableId, variables('streamName'))]"
+                  },
+                  "source": {
+                    "value": "[parameters('name')]"
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]",
+              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), resourceId('Microsoft.Logic/workflows', parameters('name')), variables('metricsPublisher'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('metricsPublisher'))]",
+                "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name')))]",
+                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]"
+            },
+            "ingestUrl": {
+              "type": "string",
+              "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').immutableId, variables('streamName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-workspace', parameters('name')))]"
+      ]
     }
   ],
   "outputs": {
@@ -1026,11 +1200,11 @@
       "metadata": {
         "description": "The Logic App's managed identity. Grant it Graph permissions for mode \"defender\" or \"intune\" (docs/AZURE.md)."
       },
-      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('{0}-logicapp', parameters('name'))), '2025-04-01').outputs.principalId.value]"
     },
     "ingestUrl": {
       "type": "string",
-      "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr', parameters('name'))), '2024-03-11').immutableId, variables('streamName'))]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('{0}-logicapp', parameters('name'))), '2025-04-01').outputs.ingestUrl.value]"
     }
   }
 }

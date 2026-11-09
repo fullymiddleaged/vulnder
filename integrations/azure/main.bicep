@@ -3,12 +3,17 @@
 // Everything runs in your subscription under a managed identity; Vulnder
 // gets CVE IDs, or product names and versions, and never a credential.
 // The Logic App and its data collection rule go in the resource group you
-// deploy to; the table and Sentinel rule go on an existing workspace, which
-// can be in another group (workspace.bicep).
+// deploy to (logicapp.bicep); the table and Sentinel rule go on an existing
+// workspace, which can be in another group (workspace.bicep).
 // Setup and the Graph permissions to grant afterwards: docs/AZURE.md.
 
-@description('An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel).')
+@description('A Log Analytics workspace (the Sentinel workspace, if you use Sentinel). It must exist, unless createWorkspace is true.')
+@minLength(4)
+@maxLength(63)
 param workspaceName string
+
+@description('Create the workspace, in workspaceResourceGroup and the region in location (default: the resource group\'s), with Sentinel on it if sentinelRules is true.')
+param createWorkspace bool = false
 
 @description('The workspace\'s resource group, if it isn\'t the one you deploy to.')
 param workspaceResourceGroup string = resourceGroup().name
@@ -31,15 +36,24 @@ param days int = 30
 @description('Also create Sentinel analytics rules that open incidents for new Act now CVEs. Needs Sentinel on the workspace.')
 param sentinelRules bool = false
 
-param location string = resourceGroup().location
+@description('Region for the Logic App and its data collection rule. Leave empty for the workspace\'s region.')
+param location string = ''
 
 @description('Names the Logic App and its data collection rule, and fills the Source column. Deploy again with another name to add a second mode to the same workspace.')
 param name string = 'vulnder'
 
-var streamName = 'Custom-VulnderRows'
 var tableName = 'Vulnder_CL'
-// Monitoring Metrics Publisher, which the Logs Ingestion API requires on the DCR.
-var metricsPublisher = '3913510d-42f4-4e42-8a64-420c390055eb'
+
+// For anyone without a workspace: make one, with Sentinel on it if the rule is wanted.
+module newWorkspace 'new-workspace.bicep' = if (createWorkspace) {
+  name: '${name}-new-workspace'
+  scope: resourceGroup(workspaceResourceGroup)
+  params: {
+    workspaceName: workspaceName
+    location: empty(location) ? resourceGroup().location : location
+    sentinel: sentinelRules
+  }
+}
 
 // The table and the Sentinel rule go on the workspace, in its own resource group.
 module onWorkspace 'workspace.bicep' = {
@@ -50,99 +64,26 @@ module onWorkspace 'workspace.bicep' = {
     tableName: tableName
     sentinelRules: sentinelRules
   }
+  dependsOn: [newWorkspace]
 }
 
-// The rows as /api/v1/rank returns them, plus four fields the Logic App adds.
-// Fields Vulnder adds later aren't declared, so they're dropped, not refused.
-resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
-  name: '${name}-dcr'
-  location: location
-  kind: 'Direct'
-  properties: {
-    streamDeclarations: {
-      '${streamName}': {
-        columns: [
-          { name: 'timeGenerated', type: 'string' }
-          { name: 'runId', type: 'string' }
-          { name: 'mode', type: 'string' }
-          { name: 'sourceName', type: 'string' }
-          { name: 'cve', type: 'string' }
-          { name: 'title', type: 'string' }
-          { name: 'priority', type: 'string' }
-          { name: 'score', type: 'real' }
-          { name: 'respondWithinHours', type: 'int' }
-          { name: 'reasons', type: 'dynamic' }
-          { name: 'exploited', type: 'boolean' }
-          { name: 'kevAddedAt', type: 'string' }
-          { name: 'kevDueDate', type: 'string' }
-          { name: 'knownRansomware', type: 'boolean' }
-          { name: 'ssvcExploitation', type: 'string' }
-          { name: 'epss', type: 'real' }
-          { name: 'epssPercentile', type: 'real' }
-          { name: 'cvss', type: 'real' }
-          { name: 'publishedAt', type: 'string' }
-          { name: 'beforeWindow', type: 'boolean' }
-          { name: 'matched', type: 'dynamic' }
-          { name: 'match', type: 'string' }
-          { name: 'confidence', type: 'string' }
-          { name: 'fixedVersions', type: 'dynamic' }
-          { name: 'mitigation', type: 'string' }
-          { name: 'advisory', type: 'string' }
-          { name: 'patch', type: 'string' }
-          { name: 'exploitRef', type: 'string' }
-        ]
-      }
-    }
-    destinations: {
-      logAnalytics: [{ name: 'workspace', workspaceResourceId: onWorkspace.outputs.workspaceId }]
-    }
-    dataFlows: [
-      {
-        streams: [streamName]
-        destinations: ['workspace']
-        outputStream: 'Custom-${tableName}'
-        // Title is a reserved column name, hence CveTitle. The transform parser
-        // rejects the field names title and match bare (title is a render
-        // keyword), so they're bracketed. The workflow's field is sourceName,
-        // not source, which is the name of the input table here.
-        transformKql: 'source | project TimeGenerated = todatetime(timeGenerated), RunId = runId, Mode = mode, Source = sourceName, Cve = cve, CveTitle = [\'title\'], Priority = priority, Score = score, RespondWithinHours = respondWithinHours, Reasons = reasons, Exploited = exploited, KevAddedAt = todatetime(kevAddedAt), KevDueDate = todatetime(kevDueDate), KnownRansomware = knownRansomware, SsvcExploitation = ssvcExploitation, Epss = epss, EpssPercentile = epssPercentile, Cvss = cvss, PublishedAt = todatetime(publishedAt), BeforeWindow = beforeWindow, Matched = matched, MatchType = [\'match\'], Confidence = confidence, FixedVersions = fixedVersions, Mitigation = mitigation, Advisory = advisory, Patch = patch, ExploitRef = exploitRef'
-      }
-    ]
-  }
-}
-
-// The DCR's own ingestion endpoint (kind Direct), so no DCE is needed.
-var dcrProps = dcr.properties
-var ingestUrl = '${dcrProps.endpoints.logsIngestion}/dataCollectionRules/${dcrProps.immutableId}/streams/${streamName}?api-version=2023-01-01'
-
-resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
-  name: name
-  location: location
-  identity: { type: 'SystemAssigned' }
-  properties: {
-    state: 'Enabled'
-    definition: loadJsonContent('workflow.json')
-    parameters: {
-      mode: { value: mode }
-      stack: { value: stack }
-      vulnderUrl: { value: vulnderUrl }
-      days: { value: days }
-      ingestUrl: { value: ingestUrl }
-      source: { value: name }
-    }
-  }
-}
-
-resource canPublish 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(dcr.id, logicApp.id, metricsPublisher)
-  scope: dcr
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', metricsPublisher)
-    principalId: logicApp.identity.principalId
-    principalType: 'ServicePrincipal'
+// The Logic App, its data collection rule and its role, in the workspace's
+// region unless you name one. The portal's workspace picker doesn't reliably
+// pass the region, so it's looked up here, not taken from the form.
+module onResourceGroup 'logicapp.bicep' = {
+  name: '${name}-logicapp'
+  params: {
+    name: name
+    location: empty(location) ? onWorkspace.outputs.location : location
+    workspaceId: onWorkspace.outputs.workspaceId
+    tableName: tableName
+    mode: mode
+    stack: stack
+    vulnderUrl: vulnderUrl
+    days: days
   }
 }
 
 @description('The Logic App\'s managed identity. Grant it Graph permissions for mode "defender" or "intune" (docs/AZURE.md).')
-output principalId string = logicApp.identity.principalId
-output ingestUrl string = ingestUrl
+output principalId string = onResourceGroup.outputs.principalId
+output ingestUrl string = onResourceGroup.outputs.ingestUrl

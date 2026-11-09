@@ -14,10 +14,11 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 ## What it creates
 
+- **A Log Analytics workspace**, only if you ask for a new one (`createWorkspace=true`, or Create a new one in the form). It uses pay-as-you-go pricing (PerGB2018) and keeps data for 30 days. With `sentinelRules=true`, Sentinel is turned on for it. A workspace you already have is never changed, apart from the table and rule below.
 - **`Vulnder_CL`**, a custom table in your workspace, with one row per CVE per run: priority, score, reasons, KEV and CISA exploitation evidence, EPSS, CVSS, matched items, fixed versions and mitigation. Columns are listed in [workspace.bicep](../integrations/azure/workspace.bicep).
 - **A data collection rule** of kind `Direct`, which takes the rows through the Logs Ingestion API. It needs no data collection endpoint.
 - **A Logic App** (Consumption) with a system-assigned managed identity and the Monitoring Metrics Publisher role on that rule. Nothing is stored as a secret.
-- **With `sentinelRules=true`**, which needs Sentinel already on the workspace, the analytics rule "Vulnder: new Act now CVE". It opens one incident per CVE the first hour it is Act now ([new-act.kql](../integrations/azure/kql/new-act.kql)).
+- **With `sentinelRules=true`**, which needs Sentinel already on an existing workspace, the analytics rule "Vulnder: new Act now CVE". It opens one incident per CVE the first hour it is Act now ([new-act.kql](../integrations/azure/kql/new-act.kql)).
 
 ## Deploy
 
@@ -25,7 +26,7 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 To include a stack, the easiest start is the website: describe it on the home page (in words, or by pasting a manifest), check the results, and use **Deploy to Azure** under them. That form comes from the site, with the stack filled in and named in words, so you never write the stack format. Its link carries the stack the way a results link does.
 
-The button below opens a form in the Azure portal. Choose a resource group for the Logic App, then the Log Analytics workspace, which can be in another group, and the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
+The button below opens a form in the Azure portal. Choose a resource group and region, then the Log Analytics workspace: create a new one there, or pick one you have, which can be in another group. Then choose the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
 
 From a clone, with the Azure CLI:
 
@@ -35,7 +36,7 @@ az deployment group create -g <resource-group> \
   -p workspaceName=<workspace> mode=intune sentinelRules=true
 ```
 
-This puts the resources in the resource group's region; pass `location=...` for another. If the workspace is in another resource group, deploy to the group you want the Logic App in and pass `workspaceResourceGroup=<workspace-resource-group>`.
+Without a workspace, add `createWorkspace=true` and the workspace name to create; it goes in the resource group you deploy to, in that group's region unless you pass `location=...`. This puts the Logic App and its data collection rule in the workspace's region; pass `location=...` for another. If the workspace is in another resource group, deploy to the group you want the Logic App in and pass `workspaceResourceGroup=<workspace-resource-group>`.
 
 For `stack`, also pass `stack=...`. You can use the `stack` value `/api/v1/stack` returns, or a plain one such as `p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge`.
 
@@ -98,4 +99,4 @@ The template also passes the Bicep linter (`npm run lint:azure`, with the [Bicep
 
 ## Changing the template
 
-The button and releases deploy `azuredeploy.json`, which is built from `main.bicep` and `workspace.bicep` with `workflow.json` and the rule's query inlined. After changing any of them, run `npm run build:azure` and commit the result; CI rebuilds it and fails if they differ. To try the portal form, paste `createUiDefinition.json` into the [sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade).
+The button and releases deploy `azuredeploy.json`, which is built from `main.bicep` and its modules (`new-workspace.bicep`, `workspace.bicep`, `logicapp.bicep`) with `workflow.json` and the rule's query inlined. After changing any of them, run `npm run build:azure` and commit the result; CI rebuilds it and fails if they differ. To try the portal form, paste `createUiDefinition.json` into the [sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade).

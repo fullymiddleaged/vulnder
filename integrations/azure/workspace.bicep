@@ -1,6 +1,7 @@
 // What Vulnder creates on the Log Analytics workspace itself: the Vulnder_CL
 // table and, optionally, the Sentinel analytics rule. main.bicep deploys this
-// into the workspace's resource group, which can differ from its own.
+// into the workspace's resource group, which can differ from its own. The
+// workspace exists by then: yours, or one new-workspace.bicep just made.
 
 param workspaceName string
 param tableName string
@@ -99,3 +100,4 @@ resource newActRule 'Microsoft.SecurityInsights/alertRules@2025-09-01' = if (sen
 }
 
 output workspaceId string = workspace.id
+output location string = workspace.location
