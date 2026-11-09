@@ -141,8 +141,7 @@
       "sentinelRules": "[steps('settings').sentinelRules]",
       "days": "[steps('settings').days]",
       "name": "[steps('settings').name]",
-      "vulnderUrl": "[steps('settings').vulnderUrl]",
-      "location": "[basics('workspace').location]"
+      "vulnderUrl": "[steps('settings').vulnderUrl]"
     }
   }
 }
