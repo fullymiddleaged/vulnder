@@ -61,14 +61,14 @@
         "type": "Microsoft.Common.TextBox",
         "label": "Stack",
         "placeholder": "p:fortinet/fortios@7.4.3;edge,p:paloaltonetworks/pan-os@11.1;edge",
-        "toolTip": "Stack items in Vulnder's stack format, comma-separated. Needed for mode Stack. In modes Defender and Intune it's optional, and ranked alongside for what they can't see. Mark internet-facing devices ;edge.",
+        "toolTip": "Easier: describe your stack at vulnder.com and use Deploy to Azure on the results, which fills this in. Here, it takes Vulnder's stack format, comma-separated. Needed for mode Stack; in modes Defender and Intune it's optional, and ranked alongside for what they can't see.",
         "multiLine": true,
         "constraints": {
           "required": false,
           "validations": [
             {
               "isValid": "[or(not(equals(basics('mode'), 'stack')), not(empty(basics('stack'))))]",
-              "message": "Mode Stack needs a stack."
+              "message": "Mode Stack needs a stack. Describe it at vulnder.com and use Deploy to Azure on the results."
             }
           ]
         }

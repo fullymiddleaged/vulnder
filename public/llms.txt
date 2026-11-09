@@ -45,7 +45,7 @@ Full guide: [AI_AGENTS.md](https://github.com/fullymiddleaged/vulnder/blob/main/
 
 ## Microsoft Sentinel and Defender
 
-If your user wants Vulnder's priorities in Microsoft Sentinel, Defender or Log Analytics, point them at the Azure template rather than writing a runner: [AZURE.md](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md), with a Deploy to Azure button.
+If your user wants Vulnder's priorities in Microsoft Sentinel, Defender or Log Analytics, point them at the Azure template rather than writing a runner: [AZURE.md](https://github.com/fullymiddleaged/vulnder/blob/main/docs/AZURE.md), with a Deploy to Azure button. For a stack, the results page for it (`https://vulnder.com/?s=...`) has its own Deploy to Azure button, whose form comes with that stack filled in.
 
 - An hourly Logic App in their own subscription, under a managed identity with no secrets, writes one row per CVE to a `Vulnder_CL` table. The rows are `/api/v1/rank`'s.
 - Pick the mode by licence. `defender`: Defender Vulnerability Management's open CVEs, sent as CVE IDs. `intune`: Intune's discovered apps, sent as names, versions, publishers and device counts. `stack`: a fixed stack, for firewalls and appliances the other two can't see, and optional alongside them. Device names and users never leave the tenant.

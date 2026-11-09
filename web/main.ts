@@ -43,6 +43,7 @@ import {
   changeCounts,
   componentGroups,
   splitShown,
+  azureDeployUrl,
   cvssSeverity,
   eventDetail,
   formatScore,
@@ -1539,7 +1540,7 @@ function targetedBadge(): HTMLElement {
 
 /**
  * What following and exporting give you, after the results. The full set of buttons is under the
- * headline; here, only the two this sentence is about.
+ * headline; here, only the two this sentence is about. Then Deploy to Azure, with this stack.
  */
 function renderShare(feed: Feed): HTMLElement {
   return h(
@@ -1552,7 +1553,26 @@ function renderShare(feed: Feed): HTMLElement {
       'The page link and Atom feed always show this stack’s latest results; Export for AI saves them as they are now, as Markdown an AI agent can work through.',
     ),
     h('div', { class: 'row wrap' }, copyButtons(feed, ['atom']), exportButtons(feed)),
+    h(
+      'p',
+      { class: 'muted small' },
+      'Microsoft Sentinel and Defender can rank this stack every hour and open an incident when a CVE becomes Act now. The Azure form comes with this stack filled in. ',
+      h('a', { href: '/how-it-works#sentinel' }, 'How it works'),
+    ),
+    h('div', { class: 'row wrap' }, deployToAzure(feed)),
   );
+}
+
+/** The Azure logo, as on the home page's button. */
+const AZURE_PATH =
+  'm 24.1781,6.18242 v 0 0 h 7 c 0.6,0 1.2,0.4 1.4,1 l 6.1,18 c 0.3,1 -0.4,2 -1.4,2 h -6.9 v 0 c 0,0 -0.1,0 -0.1,0 v 0 c -0.3,0 -0.6,-0.1 -0.9,-0.3 l -4.6,-3.4 -0.9,2.7 c -0.2,0.6 -0.8,1 -1.4,1 h -4.4 c -1,0 -1.7,-1 -1.4,-2 l 6,-18 c 0.3,-0.6 0.8,-1 1.5,-1 z m -2.6,13.7 8.4,6.2 c 0.1,0.1 0.2,0.1 0.3,0.1 v 0 c 0.3,0 0.6,-0.3 0.5,-0.7 l -3.4,-10 -1.3,3.3 -0.1,0.4 h -0.3 -5 z m 15.7,6.3 h -5.6 c 0.1,-0.3 0.1,-0.6 0,-1 l -6,-18 v 0 h 5.6 c 0.2,0 0.4,0.1 0.5,0.3 l 6.1,18 c 0,0.4 -0.3,0.7 -0.6,0.7 z';
+
+/** Deploy to Azure, with this stack in the portal form. */
+function deployToAzure(feed: Feed): HTMLElement {
+  // The page link is `${base}/?s=...`; a self-hosted base can carry a path.
+  const base = feed.links.page.slice(0, feed.links.page.indexOf('/?'));
+  const mark = svg('svg', { class: 'azure-mark', viewBox: '16.5 5.7 23.2 22', 'aria-hidden': 'true', focusable: 'false' }, svg('path', { 'fill-rule': 'evenodd', d: AZURE_PATH }));
+  return h('a', { class: 'button', href: azureDeployUrl(base, feed.stack, feed.days) }, mark, 'Deploy to Azure');
 }
 
 /**

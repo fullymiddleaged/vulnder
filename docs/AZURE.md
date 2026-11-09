@@ -23,7 +23,9 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json)
 
-The button opens a form in the Azure portal. Choose a resource group for the Logic App, then the Log Analytics workspace, which can be in another group, and the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
+To include a stack, the easiest start is the website: describe it on the home page (in words, or by pasting a manifest), check the results, and use **Deploy to Azure** under them. That form comes from the site, with the stack filled in and named in words, so you never write the stack format. Its link carries the stack the way a results link does.
+
+The button below opens a form in the Azure portal. Choose a resource group for the Logic App, then the Log Analytics workspace, which can be in another group, and the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
 
 From a clone, with the Azure CLI:
 

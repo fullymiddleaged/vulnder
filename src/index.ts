@@ -5,6 +5,7 @@ import { checkVectors, EMBED_MODEL } from './ingest/families';
 import { runIngest } from './ingest/run';
 import { limitFromVar } from './lib/quota';
 import { api } from './routes/api';
+import { azure } from './routes/azure';
 import { feeds } from './routes/feeds';
 import { config } from './routes/config';
 import { health } from './routes/health';
@@ -41,6 +42,7 @@ app.route('/api/resolve', resolve);
 app.route('/api/pass', pass);
 app.route('/api/v1', api);
 app.route('/mcp', mcp);
+app.route('/azure', azure);
 app.route('/', feeds);
 
 app.notFound((c) => {
