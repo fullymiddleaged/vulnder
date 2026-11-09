@@ -5,15 +5,23 @@
     "_generator": {
       "name": "bicep",
       "version": "0.48.1.52935",
-      "templateHash": "8140592115882080500"
+      "templateHash": "17363276322386975773"
     }
   },
   "parameters": {
     "workspaceName": {
       "type": "string",
       "minLength": 4,
+      "maxLength": 63,
       "metadata": {
-        "description": "An existing Log Analytics workspace (the Sentinel workspace, if you use Sentinel)."
+        "description": "A Log Analytics workspace (the Sentinel workspace, if you use Sentinel). It must exist, unless createWorkspace is true."
+      }
+    },
+    "createWorkspace": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Create the workspace, in workspaceResourceGroup and the region in location (default: the resource group's), with Sentinel on it if sentinelRules is true."
       }
     },
     "workspaceResourceGroup": {
@@ -83,6 +91,75 @@
     "tableName": "Vulnder_CL"
   },
   "resources": [
+    {
+      "condition": "[parameters('createWorkspace')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-new-workspace', parameters('name'))]",
+      "resourceGroup": "[parameters('workspaceResourceGroup')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceName": {
+            "value": "[parameters('workspaceName')]"
+          },
+          "location": "[if(empty(parameters('location')), createObject('value', resourceGroup().location), createObject('value', parameters('location')))]",
+          "sentinel": {
+            "value": "[parameters('sentinelRules')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.48.1.52935",
+              "templateHash": "7503190061630136220"
+            }
+          },
+          "parameters": {
+            "workspaceName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "sentinel": {
+              "type": "bool"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2025-02-01",
+              "name": "[parameters('workspaceName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "condition": "[parameters('sentinel')]",
+              "type": "Microsoft.SecurityInsights/onboardingStates",
+              "apiVersion": "2025-09-01",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+              "name": "default",
+              "properties": {},
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              ]
+            }
+          ]
+        }
+      }
+    },
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -315,7 +392,10 @@
             }
           }
         }
-      }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', format('{0}-new-workspace', parameters('name')))]"
+      ]
     },
     {
       "type": "Microsoft.Resources/deployments",

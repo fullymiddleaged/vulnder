@@ -6,6 +6,7 @@ import { azureDeployUrl } from '../web/format';
 import bicep from '../integrations/azure/main.bicep?raw';
 import workspaceBicep from '../integrations/azure/workspace.bicep?raw';
 import logicAppBicep from '../integrations/azure/logicapp.bicep?raw';
+import newWorkspaceBicep from '../integrations/azure/new-workspace.bicep?raw';
 import workflowText from '../integrations/azure/workflow.json?raw';
 import newAct from '../integrations/azure/kql/new-act.kql?raw';
 import latest from '../integrations/azure/kql/latest.kql?raw';
@@ -195,7 +196,7 @@ describe('Azure data collection rule', () => {
     // The data collection rule writes to the module's workspace, so it waits for the table.
     expect(bicep).toContain('workspaceId: onWorkspace.outputs.workspaceId');
     expect(logicAppBicep).toContain('workspaceResourceId: workspaceId');
-    expect(bicep, 'main.bicep only deploys the two modules').not.toMatch(/^resource /m);
+    expect(bicep, 'main.bicep only deploys modules').not.toMatch(/^resource /m);
   });
 });
 
@@ -246,8 +247,8 @@ describe('Deploy to Azure', () => {
   it('builds from the current main.bicep, workflow and query', () => {
     const params = [...bicep.matchAll(/^param (\w+) /gm)].map((m) => m[1]!);
     expect(Object.keys(arm.parameters).sort()).toEqual(params.sort());
-    const nested = arm.resources.filter((r) => r.type === 'Microsoft.Resources/deployments') as { properties: { template: { variables: Record<string, unknown>; resources: Json[] } } }[];
-    const variables = nested.flatMap((d) => Object.values(d.properties.template.variables));
+    const nested = arm.resources.filter((r) => r.type === 'Microsoft.Resources/deployments') as { properties: { template: { variables?: Record<string, unknown>; resources: Json[] } } }[];
+    const variables = nested.flatMap((d) => Object.values(d.properties.template.variables ?? {}));
     expect(variables, 'workflow.json').toContainEqual(workflow);
     expect(variables, 'new-act.kql').toContain(newAct);
     const dcr = nested.flatMap((d) => d.properties.template.resources).find((r) => r.type === 'Microsoft.Insights/dataCollectionRules') as { properties: { dataFlows: { transformKql: string }[] } };
@@ -287,30 +288,59 @@ describe('Deploy to Azure', () => {
     expect(picker.options.filter.subscription).toBe('onBasics');
   });
 
-  it("reads the workspace from the picker's resource ID only, and warns until one is picked", () => {
+  const isNew = "equals(basics('workspaceChoice'), 'new')";
+  const pickedId = "coalesce(basics('workspace').id, '')";
+
+  it("reads a picked workspace from the picker's resource ID only, and warns until one is picked", () => {
     // The picker's name and location came through empty in the portal ("The name '/Vulnder_CL' ...").
     for (const [param, value] of Object.entries(ui.parameters.outputs)) expect(value, param).not.toMatch(/basics\('workspace'\)\.(name|location)/);
-    expect(ui.parameters.outputs.workspaceName).toBe("[last(split(basics('workspace').id, '/'))]");
+    // coalesce, as Microsoft's docs advise for an element that may be hidden.
+    expect(ui.parameters.outputs.workspaceName).toBe(`[if(${isNew}, basics('newWorkspaceName'), last(split(${pickedId}, '/')))]`);
     const id = '/subscriptions/61cc0d6b/resourceGroups/vulnder-test/providers/Microsoft.OperationalInsights/workspaces/vulnder-test-ws';
     expect(id.split('/').at(-1)).toBe('vulnder-test-ws');
-    expect(element('noWorkspace').visible).toBe("[empty(basics('workspace').id)]");
+    expect(element('noWorkspace').visible).toBe(`[and(equals(basics('workspaceChoice'), 'existing'), empty(${pickedId}))]`);
     // Log Analytics workspace names are 4 to 63 characters; an empty one fails clearly, not as '/Vulnder_CL'.
-    expect(bicep).toMatch(/@minLength\(4\)\nparam workspaceName string/);
+    expect(bicep).toMatch(/@minLength\(4\)\n@maxLength\(63\)\nparam workspaceName string/);
     expect((arm.parameters.workspaceName as ArmParameter & { minLength?: number }).minLength).toBe(4);
   });
 
-  it("passes the workspace's resource group, read from its resource ID", () => {
+  it("passes the workspace's resource group: a picked one's from its resource ID, a new one's the group chosen", () => {
     // '/subscriptions/{id}/resourceGroups/{group}/providers/...' split on '/' puts the group fifth.
-    expect(ui.parameters.outputs.workspaceResourceGroup).toBe("[first(skip(split(basics('workspace').id, '/'), 4))]");
+    expect(ui.parameters.outputs.workspaceResourceGroup).toBe(`[if(${isNew}, resourceGroup().name, first(skip(split(${pickedId}, '/'), 4)))]`);
     const id = '/subscriptions/61cc0d6b/resourceGroups/vulnder-test/providers/Microsoft.OperationalInsights/workspaces/vulnder-test-ws';
     expect(id.split('/').slice(4)[0]).toBe('vulnder-test');
   });
 
+  it('offers to create the workspace, for anyone without one, and makes it only when asked', () => {
+    const choice = element('workspaceChoice') as { defaultValue: string; constraints: { allowedValues: { label: string; value: string }[] } };
+    expect(choice.constraints.allowedValues.map((v) => v.value)).toEqual(['new', 'existing']);
+    expect(choice.constraints.allowedValues.find((v) => v.value === 'new')!.label).toBe(choice.defaultValue);
+    expect(element('workspace').visible).toBe("[equals(basics('workspaceChoice'), 'existing')]");
+    const name = element('newWorkspaceName') as { visible: string; defaultValue: string; constraints: { regex: string } };
+    expect(name.visible).toBe(`[${isNew}]`);
+    const regex = new RegExp(name.constraints.regex);
+    expect(name.defaultValue).toMatch(regex);
+    for (const bad of ['abc', '-abcd', 'abcd-', 'a'.repeat(64), 'ab cd']) expect(bad).not.toMatch(regex);
+    expect('a'.repeat(63)).toMatch(regex);
+    expect(ui.parameters.outputs.createWorkspace).toBe(`[${isNew}]`);
+    expect(arm.parameters.createWorkspace!.defaultValue).toBe(false);
+    // Only a workspace this deployment makes is created or has Sentinel turned on; one you have is left as it is.
+    // Azure refused one file that both created the workspace and referred to it as existing.
+    expect(bicep).toMatch(/^module newWorkspace 'new-workspace\.bicep' = if \(createWorkspace\) \{$/m);
+    expect(/module newWorkspace [\s\S]*?\n\}/.exec(bicep)?.[0]).toContain('sentinel: sentinelRules');
+    expect(/module onWorkspace [\s\S]*?\n\}/.exec(bicep)?.[0]).toContain('dependsOn: [newWorkspace]');
+    expect(newWorkspaceBicep).toMatch(/^resource onboarding 'Microsoft\.SecurityInsights\/onboardingStates@[\d-]+' = if \(sentinel\) \{$/m);
+    expect(workspaceBicep).not.toMatch(/^resource \w+ 'Microsoft\.OperationalInsights\/workspaces@[\d-]+' = /m);
+    expect(workspaceBicep).not.toContain('onboardingStates');
+  });
+
   it("puts the Logic App and its rule in the workspace's region, which the template looks up itself", () => {
     // The portal's workspace picker passed an empty location, and Azure refused the deployment.
-    expect(ui.parameters.outputs).not.toHaveProperty('location');
+    // The form passes the Basics region only for a new workspace.
+    expect(ui.parameters.outputs.location).toBe(`[if(${isNew}, location(), '')]`);
     expect(arm.parameters.location!.defaultValue).toBe('');
     expect(workspaceBicep).toMatch(/^output location string = workspace\.location$/m);
+    expect(/module newWorkspace [\s\S]*?\n\}/.exec(bicep)?.[0]).toContain('location: empty(location) ? resourceGroup().location : location');
     expect(bicep).toContain('location: empty(location) ? onWorkspace.outputs.location : location');
     expect([...logicAppBicep.matchAll(/^ {2}location: (\w+)$/gm)].map((m) => m[1])).toEqual(['location', 'location']);
   });
