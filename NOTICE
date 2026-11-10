@@ -12,3 +12,8 @@ licensed under the MIT License. See test/fixtures/injection/README.md.
 The fonts in public/fonts are Atkinson Hyperlegible Next and Atkinson
 Hyperlegible Mono (https://github.com/googlefonts/atkinson-hyperlegible-next),
 licensed under the SIL Open Font License 1.1. See the OFL files beside them.
+
+The icons in public/brand/azure are Microsoft's Azure architecture icons
+(https://learn.microsoft.com/azure/architecture/icons/), used unaltered in an
+architecture diagram as Microsoft's terms permit. They are not covered by this
+project's licence. Microsoft reserves all other rights.

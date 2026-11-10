@@ -12,6 +12,16 @@ It works the same whatever your licences. Only where the list of what you run co
 
 Every mode writes the same rows, so the same rules and queries work for every tenant.
 
+## How it works
+
+Every hour the Logic App:
+
+1. Reads what you run: Defender's open CVEs or Intune's discovered apps through Microsoft Graph, plus any stack you gave it.
+2. Sends that to Vulnder's API, which matches and ranks the CVEs. Vulnder doesn't log or store what it's sent.
+3. Writes one row per CVE to `Vulnder_CL` through a data collection rule.
+
+If you turned on the Sentinel rule, it then opens an incident for each CVE that has just become Act now. There's a diagram on [How it works](https://vulnder.com/how-it-works#sentinel).
+
 ## What it creates
 
 - **A Log Analytics workspace**, only if you ask for a new one (`createWorkspace=true`, or Create a new one in the form). It uses pay-as-you-go pricing (PerGB2018) and keeps data for 30 days. With `sentinelRules=true`, Sentinel is turned on for it. A workspace you already have is never changed, apart from the table and rule below.
@@ -22,11 +32,15 @@ Every mode writes the same rows, so the same rules and queries work for every te
 
 ## Deploy
 
+1. **Deploy the template**, with the button or the Azure CLI (below).
+2. **Grant the Graph permission** your mode needs (below). Mode `stack` needs none.
+3. **Check the table** after the next hourly run: `Vulnder_CL | take 10` in your workspace's Logs.
+
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Ffullymiddleaged%2Fvulnder%2Fmain%2Fintegrations%2Fazure%2FcreateUiDefinition.json)
 
 To include a stack, the easiest start is the website: describe it on the home page (in words, or by pasting a manifest), check the results, and use **Deploy to Azure** under them. That form comes from the site, with the stack filled in and named in words, so you never write the stack format. Its link carries the stack the way a results link does.
 
-The button below opens a form in the Azure portal. Choose a resource group and region, then the Log Analytics workspace: create a new one there, or pick one you have, which can be in another group. Then choose the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
+The button opens a form in the Azure portal. Choose a resource group and region, then the Log Analytics workspace: create a new one there, or pick one you have, which can be in another group. Then choose the mode. The Logic App and data collection rule go in the resource group you chose, in the workspace's region; the table and the Sentinel rule go on the workspace. The button deploys the template as it is on `main`. To pin a version, deploy `azuredeploy.json` from a [release](https://github.com/fullymiddleaged/vulnder/releases) instead (`az deployment group create -g ... -f azuredeploy.json -p ...`).
 
 From a clone, with the Azure CLI:
 
@@ -81,7 +95,10 @@ Vulnder's priorities are guidance for ordering work. Only CISA KEV means exploit
 ## Notes per mode
 
 - **`defender`** sends Defender's distinct CVE IDs, up to 2,000 per call, in as many calls as needed. Vulnder ranks each listed CVE whatever its age, so nothing Defender found is left out.
-- **`intune`** reads every page of `detectedApps` and sends four fields for the 4,000 entries on most devices, which keeps the request under Vulnder's 1 MB limit. Vulnder cleans the names and collapses versions. The 200 places in a stack go to the products on most devices, and `/api/v1/stack` names the rest in `notChecked` (see [API.md](API.md#post-apiv1stack)). A product the fleet runs at several versions is checked unversioned, so it shows every version's CVEs. Apps Vulnder can't match are listed in `unrecognised`, and stay unchecked. Discovered apps don't usually include the Windows release itself. To cover it, add the Windows releases you run to `stack`, for example `p:microsoft/windows_11_24h2`.
+- **`intune`** reads every page of `detectedApps` and sends four fields for the 4,000 apps on the most devices, which keeps the request under Vulnder's 1 MB limit.
+  - Vulnder checks up to 200 products, the ones on the most devices. `/api/v1/stack` names the rest in `notChecked`, and apps it can't match in `unrecognised` (see [API.md](API.md#post-apiv1stack)).
+  - A product your fleet runs at several versions is checked unversioned, so it shows every version's CVEs.
+  - Intune doesn't usually list Windows itself. Add the releases you run to `stack`, for example `p:microsoft/windows_11_24h2`.
 - **`stack`** suits edge devices and appliances, which Defender and Intune can't see. Mark internet-facing ones `;edge` so they get the edge-device deadlines. If you also run `defender` or `intune`, pass the stack to that deployment instead of deploying twice.
 
 ## Privacy and cost
