@@ -806,7 +806,9 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .arch .box.ai { stroke: var(--accent); stroke-width: 1.5; fill: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .arch .box.local { stroke-dasharray: 4 3; }
 .arch .frame { fill: none; stroke: var(--rule); stroke-width: 1; }
+.arch .frame.tenant { stroke-dasharray: 4 3; }
 .arch .t, .arch .s { text-anchor: middle; dominant-baseline: central; }
+.arch .start { text-anchor: start; }
 .arch .t { fill: var(--fg); font-size: 12px; }
 .arch .s { fill: var(--muted); font-size: 10.5px; }
 .arch .lane-label { fill: var(--muted); font-size: 9.5px; letter-spacing: 0.14em; }
@@ -818,6 +820,8 @@ main[aria-busy='true'] + .status { position: absolute; width: 1px; height: 1px; 
 .key { width: 1.1rem; height: 0.7rem; border: 1px solid var(--fg); background: var(--card); flex: none; }
 .key.ai { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .key.local { border-style: dashed; }
+.key.tenant { border: 1px dashed var(--rule); background: none; }
+.key-icon { width: 1rem; height: 1rem; flex: none; }
 .levels { list-style: none; padding: 0; margin: 1.1rem 0; display: grid; gap: 1.1rem; }
 .levels > li { display: grid; grid-template-columns: 0.75rem 1fr; gap: 0.6rem; align-items: baseline; margin: 0; }
 /* Each priority's triggers: a short list of fragments under its name. */
