@@ -25,6 +25,11 @@ export function releaseNotes(changelog: string, version: string): string {
   return notes;
 }
 
+/** The newest released version in the changelog (the first `## [X.Y.Z]` heading), if any. */
+export function latestVersion(changelog: string): string | undefined {
+  return /^## \[(\d+\.\d+\.\d+)\]/m.exec(changelog)?.[1];
+}
+
 /**
  * Whether two built ARM templates are the same, ignoring the generator stamp
  * (Bicep's version and the template hash), so a contributor on another Bicep
