@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { releaseNotes, sameTemplate, versionFromTag } from './release';
+import { latestVersion, releaseNotes, sameTemplate, versionFromTag } from './release';
 
 describe('versionFromTag', () => {
   it('takes vX.Y.Z matching package.json', () => {
@@ -41,6 +42,20 @@ describe('releaseNotes', () => {
     expect(() => releaseNotes(changelog, '0.3.0')).toThrow(/no "## \[0.3.0\]"/);
     expect(() => releaseNotes(changelog, '0.2')).toThrow(/no "## \[0.2\]"/);
     expect(() => releaseNotes('## [0.4.0]\n\n## [0.3.0]\n- x', '0.4.0')).toThrow(/empty/);
+  });
+});
+
+describe('latestVersion', () => {
+  it('skips Unreleased and takes the first numbered section', () => {
+    expect(latestVersion('# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-11-09\n\n## [0.1.0]\n')).toBe('0.2.0');
+    expect(latestVersion('# Changelog\n\n## [Unreleased]\n')).toBeUndefined();
+  });
+
+  it("is package.json's version, with release notes, in this repository", () => {
+    const changelog = readFileSync('CHANGELOG.md', 'utf8');
+    const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+    expect(latestVersion(changelog)).toBe(version);
+    expect(releaseNotes(changelog, version)).not.toBe('');
   });
 });
 

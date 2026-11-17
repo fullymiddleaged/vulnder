@@ -85,7 +85,7 @@ Vulnder runs on Cloudflare, which sees every request, including the stack in the
 - **CVEs:** [CVE records](https://github.com/CVEProject/cvelistV5) with [CISA Vulnrichment](https://github.com/cisagov/vulnrichment), [GitHub Advisory Database](https://github.com/advisories) (CC BY 4.0)
 - **Exploitation and prediction:** [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [EPSS](https://www.first.org/epss) (*scores courtesy of FIRST*)
 - **Version checks:** [OSV](https://osv.dev)
-- **Support dates:** [endoflife.date](https://endoflife.date) (MIT)
+- **End-of-life dates:** [endoflife.date](https://endoflife.date) (MIT)
 - **Exploit availability:** [Metasploit](https://github.com/rapid7/metasploit-framework) module index (BSD-3-Clause), [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) (MIT)
 - **Security team write-ups:** RSS feeds from [Huntress](https://www.huntress.com/blog), [Rapid7](https://www.rapid7.com/blog/), [watchTowr](https://labs.watchtowr.com/), [CERT-EU](https://cert.europa.eu/publications/security-advisories) and [NCSC UK](https://www.ncsc.gov.uk/)
 

@@ -26,4 +26,4 @@ Include what you found, how to reproduce it, and what an attacker could do with 
 
 ## Supported versions
 
-Only the latest commit on `main`, which is what vulnder.com runs.
+The latest release, and the latest commit on `main`, which is what vulnder.com runs. Fixes go into `main` and the next release; older releases don't get backports.
