@@ -1,6 +1,7 @@
 import { EPSS_HIGH, LEV_HIGH } from '../config';
 import type { SeverityLabel, Ssvc } from '../ingest/types';
 import type { SupportState } from './support';
+import { compareDotted } from './versions';
 
 /**
  * What to fix first. Two layers, both explained on every result:
@@ -444,7 +445,7 @@ export interface FixItem {
   /** Sum of its CVEs' scores: what fixing this item removes. */
   score: number;
   counts: Record<Priority, number>;
-  /** Its CVEs, most urgent first. */
+  /** Its CVEs, most urgent first, led by the one with the latest fix among those as urgent as the first (see leadWithLatestFix). */
   vulns: string[];
   /** How many of them name a fixed version. */
   fixable: number;
@@ -462,6 +463,8 @@ export interface FixItem {
  * CVEs, so this is the order to work in. An item out of support ranks with Act
  * and one losing support soon with Attend, whatever its CVEs: no fix will come
  * for the next one. That orders items only; it never changes a CVE's band.
+ * Within an item, the CVE whose fix comes latest leads its most urgent ones, so
+ * the first fix shown is the one upgrade that closes the rest.
  */
 export function fixFirst(
   results: { id: string; matched: string[]; fixedVersions: string[]; assessment: Ranked }[],
@@ -482,7 +485,9 @@ export function fixFirst(
       if (r.fixedVersions.length > 0) f.fixable++;
     }
   }
+  const byId = new Map(sorted.map((r) => [r.id, r]));
   for (const f of items.values()) {
+    leadWithLatestFix(f.vulns, byId);
     f.score = Math.round(f.score * 10) / 10;
     const s = support.get(f.item);
     if (s) f.support = s;
@@ -494,4 +499,61 @@ export function fixFirst(
     return bySupport < 0 ? byCves : Math.min(byCves, bySupport);
   };
   return [...items.values()].sort((a, b) => worst(a) - worst(b) || b.score - a.score || a.item.localeCompare(b.item));
+}
+
+type FixInput = { fixedVersions: string[]; assessment: Ranked };
+
+/**
+ * Moves to the front the CVE whose fix comes latest, among the leading CVEs
+ * with the first one's band and response time (sorted, so they're a prefix).
+ * Several CVEs in one product are usually fixed by one upgrade, and the newest
+ * fix closes the older ones on its branch: nginx 1.30.7 closes a bug fixed in
+ * 1.30.1 too. Never across bands or response times, so evidence still leads.
+ */
+function leadWithLatestFix(vulns: string[], byId: ReadonlyMap<string, FixInput>): void {
+  const first = byId.get(vulns[0]!)!.assessment;
+  let lead = 0;
+  for (let i = 1; i < vulns.length; i++) {
+    const r = byId.get(vulns[i]!)!;
+    if (r.assessment.priority !== first.priority || (r.assessment.respondWithinHours ?? null) !== (first.respondWithinHours ?? null)) break;
+    if (laterFix(r.fixedVersions, byId.get(vulns[lead]!)!.fixedVersions)) lead = i;
+  }
+  if (lead > 0) vulns.unshift(...vulns.splice(lead, 1));
+}
+
+/** Each release branch's newest fix ("1.30.7" is on 1.30); fixes that aren't dotted numbers are left out. */
+function newestByBranch(fixes: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of fixes) {
+    if (compareDotted(f, f) === null) continue;
+    const branch = f.includes('.') ? f.slice(0, f.lastIndexOf('.')) : '';
+    const had = out.get(branch);
+    if (!had || compareDotted(f, had)! > 0) out.set(branch, f);
+  }
+  return out;
+}
+
+/**
+ * True when fixes `a` come later than `b`: newer on a branch both name and
+ * older on none; with no branch in common, a newer latest fix. False when
+ * either lists none: a missing fix may only be missing data.
+ */
+export function laterFix(a: string[], b: string[]): boolean {
+  const na = newestByBranch(a);
+  const nb = newestByBranch(b);
+  if (na.size === 0 || nb.size === 0) return false;
+  let shared = false;
+  let newer = false;
+  let older = false;
+  for (const [branch, fa] of na) {
+    const fb = nb.get(branch);
+    if (fb === undefined) continue;
+    shared = true;
+    const c = compareDotted(fa, fb)!;
+    if (c > 0) newer = true;
+    if (c < 0) older = true;
+  }
+  if (shared) return newer && !older;
+  const latest = (m: Map<string, string>) => [...m.values()].reduce((x, y) => (compareDotted(y, x)! > 0 ? y : x));
+  return compareDotted(latest(na), latest(nb))! > 0;
 }

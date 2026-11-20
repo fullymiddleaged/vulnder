@@ -4,6 +4,15 @@ Notable changes to Vulnder. Versions follow [semantic versioning](https://semver
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-20
+
+### Fixed
+
+- A product named with its vendor now finds the vendor's products whose names repeat the vendor. "VirtualBox" from Oracle reaches Oracle VM VirtualBox and "WebLogic" Oracle WebLogic Server, as close matches; before, only names starting the same way were searched.
+- A package with no advisories of its own now also brings in the product of the same name as a close match, when CVEs are filed there instead. "Ultralytics" found nothing before, because its CVEs are under the product, not the PyPI package.
+- "Java", "JDK", "JRE" and "OpenJDK" resolve to Oracle Java SE, which holds Java SE and OpenJDK CVEs such as Java4Shell (CVE-2026-114938).
+- Fix first leads each item with the CVE whose fix is newest among its most urgent ones, so the first fixed version you see is the upgrade that closes the rest. A bug fixed in nginx 1.30.1 no longer leads one fixed in 1.30.7 from the same band.
+
 ## [1.0.0] - 2026-11-17
 
 The first release. Vulnder takes what you run, as a description, a manifest or a list of CVE IDs, and ranks the CVEs that affect it by what to fix first, saying why for each one. It runs on Cloudflare Workers, D1 and Workers AI, including the free plan, and [vulnder.com](https://vulnder.com) runs this code.
