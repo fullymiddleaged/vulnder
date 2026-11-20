@@ -8,10 +8,10 @@ Notable changes to Vulnder. Versions follow [semantic versioning](https://semver
 
 ### Fixed
 
-- A product named with its vendor now finds the vendor's products whose names repeat the vendor. "VirtualBox" from Oracle reaches Oracle VM VirtualBox and "WebLogic" Oracle WebLogic Server, as close matches; before, only names starting the same way were searched. A product named exactly also brings the vendor's other keys for it: "Oracle WebLogic" adds the two `weblogic_server` keys Oracle files some WebLogic CVEs under.
-- A package with no advisories of its own now also brings in the product of the same name as a close match, when CVEs are filed there instead. "Ultralytics" found nothing before, because its CVEs are under the product, not the PyPI package.
-- "Java", "JDK", "JRE" and "OpenJDK" resolve to Oracle Java SE, which holds Java SE and OpenJDK CVEs such as Java4Shell (CVE-2026-114938).
-- Fix first leads each item with the CVE whose fix is newest among its most urgent ones, so the first fixed version you see is the upgrade that closes the rest. A bug fixed in nginx 1.30.1 no longer leads one fixed in 1.30.7 from the same band.
+- Products named with their vendor now also match the vendor's products whose catalog names repeat the vendor, and an exact match brings the vendor's other keys for the same product, as close matches.
+- A package with no advisories of its own also brings in the product of the same name as a close match, when that's where its CVEs are filed.
+- Java, JDK, JRE and OpenJDK resolve to Oracle Java SE.
+- Fix first leads each item with the newest fix among its most urgent CVEs, so the first fixed version shown closes the rest.
 
 ## [1.0.0] - 2026-11-17
 
