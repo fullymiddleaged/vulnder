@@ -612,7 +612,26 @@ describe('reported by trusted sources', () => {
     expect(r.score).toBeGreaterThan(assess(php).score);
   });
 
-  it('lifts any critical whatever its EPSS or what an attacker needs, but nothing below critical', () => {
+  it('lifts a high-severity CVE too: Java4Shell (CVSS 8.1, Rapid7 and CERT-EU) is Act now', () => {
+    const java = { ...php, cvss: 8.1 };
+    expect(assess(java).priority).toBe('watch');
+    const r = assess({ ...java, reported: by(['Rapid7', 'CERT-EU'], 3) });
+    expect(r).toMatchObject({ priority: 'act', respondWithinHours: 72 });
+    expect(r.why.decisive!.text).toBe('High-severity bug reported by Rapid7 and CERT-EU: Act now while EPSS and CISA catch up');
+    expect(assess({ ...base, cvss: 7.0, reported: by(['NCSC UK', 'Huntress'], 1) }).priority).toBe('act');
+    // One source calling a high urgent isn't enough; a critical it is.
+    expect(assess({ ...java, reported: by(['Rapid7'], null, ['Rapid7'], 1) }).priority).toBe('watch');
+    expect(assess({ ...base, cvss: null, severityLabel: 'high' as const, reported: by(['Huntress', 'Rapid7'], 1) }).priority).toBe('act');
+  });
+
+  it('leaves medium and low CVEs where they were, however many write them up', () => {
+    for (const cvss of [6.9, 4.3]) {
+      const s = { ...base, cvss };
+      expect(assess({ ...s, reported: by(['Huntress', 'Rapid7', 'CERT-EU'], 1, ['Huntress'], 1) }).priority).toBe(assess(s).priority);
+    }
+  });
+
+  it('lifts any critical whatever its EPSS or what an attacker needs', () => {
     for (const s of [
       { ...php, epss: 0.004 },
       { ...php, epss: 0.09 },
@@ -621,9 +640,6 @@ describe('reported by trusted sources', () => {
       { ...base, cvss: null, severityLabel: 'critical' as const },
     ]) {
       expect(assess({ ...s, reported: by(['Huntress', 'Rapid7'], 1) }).priority).toBe('act');
-    }
-    for (const s of [{ ...php, cvss: 8.9 }, { ...base, cvss: null, severityLabel: 'high' as const }]) {
-      expect(assess({ ...s, reported: by(['Huntress', 'Rapid7'], 1, ['Huntress'], 1) }).priority).not.toBe('act');
     }
   });
 
