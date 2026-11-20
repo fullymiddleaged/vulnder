@@ -4,6 +4,10 @@ Notable changes to Vulnder. Versions follow [semantic versioning](https://semver
 
 ## [Unreleased]
 
+### Changed
+
+- A high-severity CVE (CVSS 7.0 or more) that two trusted security teams have written up in the last 30 days is now Act now, as a critical already was. One team calling it urgent is still enough only for a critical, and medium and low CVEs keep their priority.
+
 ## [1.0.1] - 2026-11-20
 
 ### Fixed

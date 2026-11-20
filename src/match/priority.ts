@@ -14,7 +14,7 @@ import { compareDotted } from './versions';
  *             50% or more, or an edge device that is automatable with total
  *             impact (CISA BOD 26-04's 3-day case for an internet-facing
  *             system, and edge devices are the one place Vulnder knows that),
- *             or a critical that two trusted sources have written up, or one
+ *             or a high or critical (CVSS 7.0+) that two trusted sources have written up, or a critical one
  *             has called critical or urgent, in the last 30 days, whatever its
  *             EPSS (EPSS and CISA's assessment lag a new CVE; their write-ups
  *             don't).
@@ -245,8 +245,10 @@ export function assess(s: Signals): Assessment {
   const recent = (days: number | null | undefined) => days != null && days <= REPORTS_ACT_DAYS;
   const widelyReported = reporters.length >= REPORTS_ACT && recent(s.reported?.ageDays);
   const calledUrgent = urgentBy.length > 0 && recent(s.reported?.urgentAgeDays);
-  const reportedCritical = !active && critical && (widelyReported || calledUrgent);
-  const predicted = veryLikely || criticalLikely || takeover || reportedCritical;
+  // A critical needs two firms' write-ups or one calling it urgent; a high (CVSS 7.0+,
+  // or labelled high) needs two, since one post marked urgent lifted single highs.
+  const reportedSerious = !active && ((critical && (widelyReported || calledUrgent)) || ((high || labelled === 'high') && widelyReported));
+  const predicted = veryLikely || criticalLikely || takeover || reportedSerious;
   // BOD 26-04 as a floor, never looser than CISA: every item gets at least its
   // deadline for a system that isn't exposed (automatable: 60 days, so Watch),
   // and an edge device its deadline for one that is (automatable or total
@@ -315,9 +317,9 @@ export function assess(s: Signals): Assessment {
     else if (edgeWatch) add('edge', 'context', 'Edge device: CISA sets internet-facing systems a deadline for every bug it assesses');
     else if (s.edge) add('edge', 'context', 'Edge device: VPNs, firewalls and gateways are a top target');
   }
-  if (reportedCritical) {
+  if (reportedSerious) {
     const who = widelyReported ? `reported by ${listNames(reporters)}` : `${listNames(urgentBy)} ${urgentBy.length === 1 ? 'calls' : 'call'} urgent`;
-    add('reported', 'context', `Critical bug ${who}: Act now while EPSS and CISA catch up`);
+    add('reported', 'context', `${critical ? 'Critical' : 'High-severity'} bug ${who}: Act now while EPSS and CISA catch up`);
   }
   else if (reporters.length > 0) add('reported', 'context', `Reported by ${listNames(reporters)}`);
   // Said only where it holds the band, so Act now results don't carry it.
