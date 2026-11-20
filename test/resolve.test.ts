@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
-import { MAX_PRODUCT_LOOKUPS, mergeVendorRows, prefixShare, resolveCandidates, similarity } from '../src/resolve/catalog';
+import { MAX_PRODUCT_LOOKUPS, mergeVendorRows, PREFIX_SQL, prefixShare, resolveCandidates, shortName, similarity, VENDOR_SQL, VENDOR_TOP_SQL, withoutVendor } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, MAX_TEXT_CHARS, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
 import { MAX_MANIFEST_ENTRIES } from '../src/resolve/limits';
@@ -307,6 +307,110 @@ describe('resolveCandidates', () => {
       ['npm:left-pad@1.3.0', false],
       ['pypi:fastapi', true],
     ]);
+  });
+
+  it('adds the same-named product as a close match when a package has nothing filed under it', async () => {
+    await env.DB.prepare('INSERT INTO catalog (kind, key, ecosystem, name, vendor, product, normalized, label, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind('product', 'ultralytics/ultralytics', null, null, 'ultralytics', 'ultralytics', 'ultralytics', 'Ultralytics', 7)
+      .run();
+    const res = await resolveCandidates(store(), [
+      { kind: 'package', ecosystem: 'PyPI', name: 'ultralytics', version: '8.3.0', direct: true },
+      // Known as a package: no twin, even though `fastapi/fastapi` could exist.
+      { kind: 'package', ecosystem: 'PyPI', name: 'FastAPI', version: null, direct: true },
+      // Unknown with no twin: the package alone, as before.
+      { kind: 'package', ecosystem: 'npm', name: 'left-pad', version: null, direct: true },
+    ]);
+    expect(res.chips.map((c) => c.items.map((i) => [i.item, i.close, i.known]))).toEqual([
+      [
+        ['pypi:ultralytics@8.3.0', false, false],
+        ['?p:ultralytics/ultralytics@8.3.0', true, true],
+      ],
+      [['pypi:fastapi', false, true]],
+      [['npm:left-pad', false, false]],
+    ]);
+  });
+
+  it('finds a product whose key repeats the vendor by its short name, reading the vendor only on a miss', async () => {
+    // Ten busier Oracle products, so VirtualBox and WebLogic aren't among the vendor's top few.
+    const busy = Array.from({ length: 10 }, (_, n) => [`oracle_corporation/oracle_busy_${n}`, `oracle_busy_${n}`, 100 + n] as const);
+    const rows = [
+      ...busy,
+      ['oracle_corporation/oracle_vm_virtualbox', 'oracle_vm_virtualbox', 81],
+      ['oracle_corporation/oracle_weblogic_server', 'oracle_weblogic_server', 40],
+    ] as const;
+    await env.DB.batch(
+      rows.map(([key, product, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, 'oracle_corporation', ?, ?, ?, ?)").bind(key, product, product, product, count),
+      ),
+    );
+    const st = store();
+    const all = vi.spyOn(st, 'all');
+    const vendorReads = () => all.mock.calls.filter(([sql]) => sql === VENDOR_SQL).length;
+
+    // A clear hit in its own prefix, and a name with no vendor: nothing more is read.
+    await resolveCandidates(st, [
+      { kind: 'product', name: 'Grafana', vendor: 'Grafana', version: null, direct: true },
+      { kind: 'product', name: 'zamad', vendor: null, version: null, direct: true },
+    ]);
+    expect(vendorReads()).toBe(0);
+
+    const res = await resolveCandidates(st, [
+      { kind: 'product', name: 'VirtualBox', vendor: 'Oracle', version: '7.1', direct: true },
+      // The same vendor again: one read serves both, and both are resolved with it.
+      { kind: 'product', name: 'WebLogic', vendor: 'Oracle', version: null, direct: true },
+    ]);
+    expect(vendorReads()).toBe(1);
+    expect(res.chips.map((c) => c.items.map((i) => [i.item, i.close, i.known]))).toEqual([
+      [['?p:oracle_corporation/oracle_vm_virtualbox@7.1', true, true]],
+      [['?p:oracle_corporation/oracle_weblogic_server', true, true]],
+    ]);
+    // Asked alone, the same answer.
+    expect((await resolveCandidates(store(), [{ kind: 'product', name: 'WebLogic', vendor: 'Oracle', version: null, direct: true }])).chips[0]).toEqual(res.chips[1]);
+  });
+
+  it("adds the vendor's other keys for an exact product, from the prefix query alone", async () => {
+    const rows = [
+      ['oracle_corporation/oracle_weblogic_server', 'oracle_corporation', 'oracle_weblogic_server', 40],
+      ['oracle_corporation/weblogic_server', 'oracle_corporation', 'weblogic_server', 13],
+      ['oracle/weblogic_server', 'oracle', 'weblogic_server', 1],
+      // Same short name, another vendor; and a near name from another vendor: neither is added.
+      ['acme/weblogic_server', 'acme', 'weblogic_server', 50],
+      ['weblateorg/weblate', 'weblateorg', 'weblate', 5],
+    ] as const;
+    await env.DB.batch(
+      rows.map(([key, vendor, product, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, key, count),
+      ),
+    );
+    const st = store();
+    const all = vi.spyOn(st, 'all');
+    const res = await resolveCandidates(st, [{ kind: 'product', name: 'Oracle WebLogic', vendor: null, version: '14.1.1', direct: true }]);
+    expect(res.chips[0]!.items.map((i) => [i.item, i.close])).toEqual([
+      ['p:oracle_corporation/oracle_weblogic_server@14.1.1', false],
+      ['?p:oracle_corporation/weblogic_server@14.1.1', true],
+      ['?p:oracle/weblogic_server@14.1.1', true],
+    ]);
+    // The prefix query and the vendor's top products, as for any name: no vendor read.
+    expect(all.mock.calls.map(([sql]) => sql)).toEqual([PREFIX_SQL, VENDOR_TOP_SQL]);
+  });
+
+  it('takes the vendor off the front of a name only when enough is left to look up', () => {
+    const p = (name: string, vendor: string | null = null) => withoutVendor({ kind: 'product', name, vendor, version: null, direct: true });
+    expect(p('Oracle WebLogic')).toBe('weblogic');
+    expect(p('Oracle Corporation WebLogic', 'Oracle')).toBe('weblogic');
+    expect(p('Cisco Webex')).toBe('webex');
+    expect(p('WebLogic', 'Oracle')).toBeNull();
+    expect(p('Oracle')).toBeNull();
+    expect(p('Oracle DB')).toBeNull();
+  });
+
+  it('strips the vendor from a product name however the vendor is spelled', () => {
+    expect(shortName('oracle_java_se', 'oracle_corporation')).toBe('java_se');
+    expect(shortName('java', 'oracle')).toBe('java');
+    expect(shortName('tp_link_archer_c7', 'tp_link_systems_inc')).toBe('archer_c7');
+    expect(shortName('juniper_networks_junos_os', 'juniper_networks')).toBe('junos_os');
+    // Only the vendor: left alone.
+    expect(shortName('oracle', 'oracle_corporation')).toBe('oracle');
   });
 
   it('looks up a "package" with a space in its name like a product, instead of making an invalid item', async () => {

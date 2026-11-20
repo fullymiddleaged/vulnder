@@ -176,6 +176,11 @@ export const PRODUCT_LINES: ProductLine[] = [
   { names: ['mongodb', 'mongo', 'mongodb_server'], keys: ['mongodb/mongodb', 'mongodb/mongodb_server'] },
   { names: ['oracle_database', 'oracle_db', 'oracle_database_server'], keys: ['oracle/database_server', 'oracle_corporation/oracle_database_server'] },
   { names: ['node', 'node_js', 'nodejs'], keys: ['nodejs/node_js', 'nodejs/node'] },
+  // Oracle files Java SE and OpenJDK CVEs under these, none of which starts with "java" alone.
+  {
+    names: ['java', 'java_se', 'oracle_java', 'oracle_java_se', 'jdk', 'jre', 'oracle_jdk', 'oracle_jre', 'openjdk'],
+    keys: ['oracle_corporation/oracle_java_se', 'oracle_corporation/java_se_jdk_and_jre', 'oracle_corporation/java', 'oracle/java_se'],
+  },
   { names: ['jenkins'], keys: ['jenkins/jenkins', 'jenkins_project/jenkins'] },
   { names: ['grafana'], keys: ['grafana/grafana', 'grafana/grafana_oss', 'grafana/grafana_enterprise'] },
   { names: ['jira', 'jira_software', 'jira_server', 'jira_data_center'], keys: ['atlassian/jira_data_center', 'atlassian/jira_server', 'atlassian/jira_software_data_center', 'atlassian/jira_software_server'] },

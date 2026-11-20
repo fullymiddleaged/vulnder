@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mitigationFor } from '../src/match/match';
-import { assess, comparePriority, fixFirst, reach, severity, type Assessment, type Signals } from '../src/match/priority';
+import { assess, comparePriority, fixFirst, laterFix, reach, severity, type Assessment, type Signals } from '../src/match/priority';
 
 const base: Signals = { kevAddedAt: null, knownRansomware: false, epss: null, lev: null, exploitedSibling: null, cvss: null, cvssVector: null, ssvc: null };
 const ssvc = (exploitation: string | null, automatable: string | null = 'no', technicalImpact: string | null = 'partial') => ({
@@ -289,6 +289,34 @@ describe('fixFirst', () => {
       { item: '?p:f5/nginx', score: 31, counts: { act: 0, attend: 1, watch: 0, track: 1 }, vulns: ['CVE-5', 'CVE-4'], fixable: 1 },
       { item: 'npm:a@1', score: 186, counts: { act: 0, attend: 0, watch: 2, track: 1 }, vulns: ['CVE-1', 'CVE-2', 'CVE-4'], fixable: 1 },
     ]);
+  });
+
+  it('leads an item with the CVE whose fix comes latest, within its most urgent band only', () => {
+    // nginx in November 2026: three Act CVEs, the newest fixed in 1.30.7 and 1.31.9, which close the others.
+    const ranked = fixFirst([
+      r('CVE-2026-42945', 'act', 62.6, ['p:f5/nginx'], ['1.30.1']),
+      r('CVE-2026-123007', 'act', 11.5, ['p:f5/nginx'], ['1.30.7', '1.31.9']),
+      r('CVE-2026-9256', 'act', 10, ['p:f5/nginx'], ['1.30.2', '1.31.1']),
+      r('CVE-2026-27654', 'attend', 33.5, ['p:f5/nginx']),
+      r('CVE-2026-120993', 'watch', 0.9, ['p:f5/nginx'], ['1.31.10']),
+    ]);
+    expect(ranked[0]!.vulns).toEqual(['CVE-2026-123007', 'CVE-2026-42945', 'CVE-2026-9256', 'CVE-2026-27654', 'CVE-2026-120993']);
+  });
+
+  it('never leads with a later fix across response times, or over a CVE with no fix listed', () => {
+    const exploited = { ...r('CVE-1', 'act', 50, ['p:a/b'], ['1.0.1']), assessment: { priority: 'act' as const, score: 50, respondWithinHours: 24 } };
+    const predicted = { ...r('CVE-2', 'act', 60, ['p:a/b'], ['1.0.9']), assessment: { priority: 'act' as const, score: 60, respondWithinHours: 72 } };
+    expect(fixFirst([predicted, exploited])[0]!.vulns).toEqual(['CVE-1', 'CVE-2']);
+    expect(fixFirst([r('CVE-3', 'watch', 9, ['p:a/b']), r('CVE-4', 'watch', 1, ['p:a/b'], ['2.0.0'])])[0]!.vulns).toEqual(['CVE-3', 'CVE-4']);
+  });
+
+  it('compares fixes on a branch both name, else by the latest', () => {
+    expect(laterFix(['1.30.7', '1.31.9'], ['1.30.1'])).toBe(true);
+    expect(laterFix(['1.30.1'], ['1.30.7', '1.31.9'])).toBe(false);
+    // Newer on one branch and older on another: neither comes later.
+    expect(laterFix(['1.30.9', '1.31.1'], ['1.30.2', '1.31.5'])).toBe(false);
+    expect(laterFix(['2.4.1'], ['1.9.9'])).toBe(true);
+    expect(laterFix(['abc123'], ['1.0.0'])).toBe(false);
   });
 
   it('handles an empty stack', () => {

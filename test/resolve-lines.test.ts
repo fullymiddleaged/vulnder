@@ -17,6 +17,12 @@ describe('lineFor', () => {
     for (const name of ['AD', 'Active Directory', 'WSUS', 'Hyper-V']) expect(keysOf(name), name).toBe(WINDOWS_SERVER);
   });
 
+  it('takes Java, the JDK and OpenJDK to Oracle Java SE, whose keys share no prefix with "java"', () => {
+    for (const name of ['Java', 'Java SE', 'JDK', 'JRE', 'OpenJDK', 'Oracle Java']) expect(keysOf(name), name).toContain('oracle_corporation/oracle_java_se');
+    expect(lineFor('Java 21', null)?.version).toBe('21');
+    expect(lineFor('Java', 'Oracle')?.line).toBe(lineFor('Java', null)?.line);
+  });
+
   it('knows AI runtimes and coding agents under every vendor their CVEs are filed under', () => {
     expect(keysOf('Ollama')).toEqual(['ollama/ollama', 'ollama_ai/ollama']);
     expect(keysOf('vLLM')).toContain('vllm_project/vllm');

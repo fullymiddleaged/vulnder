@@ -13,8 +13,9 @@ import type { Candidate } from './types';
  * a close match, so results show everything relevant and say how sure they are.
  *
  * Order: curated aliases, product categories, exact keys, then trigram
- * similarity over catalog entries sharing a prefix, then the vendor's
- * best-known products. Close matches come out in catalog order (most-affected
+ * similarity over catalog entries sharing a prefix (and, with no clear
+ * winner, over the named vendor's products without the vendor in their
+ * names), then the vendor's best-known products. Close matches come out in catalog order (most-affected
  * first); for free text, the route may reorder them by fit (see profile.ts).
  */
 
@@ -92,7 +93,12 @@ export class TooManyProducts extends Error {
 
 /** What resolveProduct shares across one request's candidates. */
 interface Lookup {
+  /** Vendor rows, most-affected first: every product of the families in `fullVendors`, the top few of the rest. */
   byVendor: CatalogRow[];
+  /** Vendor families whose every product is in `byVendor`. */
+  fullVendors: Set<string>;
+  /** Families a name missed in its own prefix and wants every product of (step 4's vendor fallback). */
+  wanted: Set<string>;
   /** Every catalog product in the requested product lines' key ranges, most-affected first. */
   lineRows: CatalogRow[];
   knownAlias: Set<string>;
@@ -107,6 +113,7 @@ type ProductCandidate = Extract<Candidate, { kind: 'product' }>;
 export async function resolveCandidates(store: Store, input: Candidate[]): Promise<ResolveResult> {
   const candidates = input.map(asResolvable);
   const packageKeys = candidates.flatMap((c) => (c.kind === 'package' ? [`${c.ecosystem}:${normalizePackageName(c.ecosystem, c.name)}`] : []));
+  const twinKeys = candidates.flatMap((c) => (c.kind === 'package' && c.direct ? (twinOf(c.name) ?? []) : []));
   const aliasItems = [...new Set(candidates.flatMap((c) => ownValue(ALIASES, normalizeKey(c.name) ?? '') ?? []))];
   const products = candidates.filter((c): c is ProductCandidate => c.kind === 'product');
   const lines = products.map((p) => lineFor(p.name, p.vendor));
@@ -135,9 +142,15 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   // Independent queries, sent together. Each reads only index ranges: exact keys
   // (packages and alias targets), name prefixes, each vendor's top products,
   // every product of the vendors a category names, and the product lines' keys.
-  const [known, rows, top, all, lineHits] = await Promise.all([
-    knownKeys(store, [...packageKeys.map((key) => ({ kind: 'package' as const, key })), ...aliasItems.map(catalogKey)]),
-    queries.length === 0 ? [] : productCandidates(store, queries),
+  const [found, rows, top, all, lineHits] = await Promise.all([
+    knownKeys(store, [
+      ...packageKeys.map((key) => ({ kind: 'package' as const, key })),
+      ...twinKeys.map((key) => ({ kind: 'product' as const, key })),
+      ...aliasItems.map(catalogKey),
+    ]),
+    // Plus each name without the vendor it starts with ("Oracle WebLogic" → weblogic), in the same
+    // query, so resolveProduct can add the vendor's other keys for the same product.
+    queries.length === 0 ? [] : productCandidates(store, [...new Set([...queries, ...products.flatMap((p, i) => (lines[i] ? [] : (withoutVendor(p) ?? [])))])]),
     vendors.length === 0 ? [] : store.all<CatalogRow>(VENDOR_TOP_SQL, [JSON.stringify(spelled(vendors)), MAX_VENDOR_ONLY]),
     categoryVendors.length === 0 ? [] : productsByVendor(store, spelled(categoryVendors)),
     ranges.length === 0 ? [] : store.all<CatalogRow>(KEY_RANGE_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS]),
@@ -145,10 +158,10 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
   const byVendor = mergeVendorRows(all, top);
   // Lines can share a key (ASA and FTD), so each row once; then most-affected first, like every other list of close matches.
   const lineRows = [...new Map(lineHits.map((r) => [r.key, r])).values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const knownPackages = new Set(packageKeys.filter((key) => known.has(`package ${key}`)));
+  const knownPackages = new Set(packageKeys.filter((key) => found.has(`package ${key}`)));
   const knownAlias = new Set(aliasItems.filter((item) => {
     const { kind, key } = catalogKey(item);
-    return known.has(`${kind} ${key}`);
+    return found.has(`${kind} ${key}`);
   }));
 
   const chips: Chip[] = [];
@@ -163,7 +176,30 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
     }
     return s;
   };
-  const lookup: Lookup = { byVendor, lineRows, knownAlias, scope, categories: new Map() };
+  const lookup: Lookup = { byVendor, fullVendors: new Set(spelled(categoryVendors).map(vendorFamily)), wanted: new Set(), lineRows, knownAlias, scope, categories: new Map() };
+  const resolveAt = (i: number) => {
+    const c = products[i]!;
+    const line = lines[i] ?? null;
+    return resolveProduct(line ? { ...c, version: c.version ?? line.version } : { ...c, version: null }, line, lookup);
+  };
+  // Each distinct product once. A name its own prefix can't place but whose vendor is known
+  // asks for every product of that vendor; those are read in one more query, only then,
+  // and only the names that asked are resolved again.
+  const asked = new Map<string, number>();
+  const wanted = new Set<string>();
+  for (const [i, key] of lookupKeys.entries()) {
+    if (lookups.has(key)) continue;
+    lookup.wanted.clear();
+    lookups.set(key, resolveAt(i));
+    if (lookup.wanted.size > 0) asked.set(key, i);
+    for (const family of lookup.wanted) wanted.add(family);
+  }
+  if (wanted.size > 0) {
+    const more = await productsByVendor(store, spelled([...wanted]));
+    lookup.byVendor = mergeVendorRows([...all, ...more], top);
+    for (const family of wanted) lookup.fullVendors.add(family);
+    for (const [key, i] of asked) lookups.set(key, resolveAt(i));
+  }
   let productIndex = 0;
   let itemCount = 0;
   for (const c of candidates) {
@@ -184,18 +220,21 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
         continue;
       }
       const item: StackItem = { kind: 'package', ecosystem: c.ecosystem, name, version: c.version };
-      chips.push({
-        input: c.version ? `${c.name} ${c.version}` : c.name,
-        status: 'resolved',
-        items: [{ item: formatItem(item), label: c.name, close: false, known }],
-      });
+      const items: ChipItem[] = [{ item: formatItem(item), label: c.name, close: false, known }];
+      // Nothing filed under the package, but CVEs under a product of the same name and vendor
+      // (Ultralytics' are under `ultralytics/ultralytics`, none on PyPI): that product too, as a close match.
+      const twin = known ? null : twinOf(c.name);
+      if (twin && found.has(`product ${twin}`)) {
+        const [vendor, product] = twin.split('/') as [string, string];
+        const twinItem = formatItem({ kind: 'product', vendor, product, version: c.version, close: true });
+        items.push({ item: twinItem, label: labelFor(`p:${twin}`), close: true, known: true });
+      }
+      chips.push({ input: c.version ? `${c.name} ${c.version}` : c.name, status: 'resolved', items });
       continue;
     }
     const i = productIndex++;
-    const lookupKey = lookupKeys[i]!;
-    let chip = lookups.get(lookupKey);
+    const chip = lookups.get(lookupKeys[i]!)!;
     const line = lines[i] ?? null;
-    if (!chip) lookups.set(lookupKey, (chip = resolveProduct(line ? { ...c, version: c.version ?? line.version } : { ...c, version: null }, line, lookup)));
     const kernel = !!line?.line.kernel;
     // Counted before forCandidate copies the items, so an oversized request stops early.
     itemCount += chip.items.length + (kernel ? 1 : 0);
@@ -239,6 +278,16 @@ function forCandidate(chip: Chip, c: ProductCandidate): Chip {
 }
 
 /**
+ * The product key a package would have if its CVEs were filed under its own
+ * name as vendor and product (`ultralytics/ultralytics`); null for a name
+ * that isn't one. Only that exact key is checked, never a fuzzy match.
+ */
+function twinOf(name: string): string | null {
+  const key = normalizeKey(name);
+  return key ? `${key}/${key}` : null;
+}
+
+/**
  * Makes any candidate safe to turn into stack items, whatever the model or a
  * client sent. A version that can't appear in a stack item ("1.0 beta", a
  * newline) is dropped, as ranges are. A "package" whose item wouldn't read
@@ -263,7 +312,7 @@ function roundTrips(ecosystem: Ecosystem, rawName: string, version: string | nul
   }
 }
 
-function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor, lineRows, knownAlias, scope, categories }: Lookup): Chip {
+function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor, fullVendors, wanted, lineRows, knownAlias, scope, categories }: Lookup): Chip {
   const input = [productLabel(c.vendor, c.name), c.version].filter(Boolean).join(' ');
   const key = normalizeKey(c.name);
   if (!key) return { input, status: 'unrecognised', items: [] };
@@ -337,14 +386,40 @@ function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor
     const score = sims[i]! + (isVendor(r) ? VENDOR_BONUS : 0) + (r.product === key ? PRODUCT_BONUS : 0);
     if (score >= SUGGEST_SCORE) scored.push({ r, score });
   }
-  scored.sort((a, b) => b.score - a.score || b.r.count - a.r.count);
-  const unique = [...new Map(scored.map((s) => [s.r.key, s])).values()];
+  // Best first, each key once at its best score (a row can be found by its prefix and its vendor both).
+  const ranked = () => {
+    const seen = new Set<string>();
+    return scored.sort((a, b) => b.score - a.score || b.r.count - a.r.count).filter((s) => !seen.has(s.r.key) && !!seen.add(s.r.key));
+  };
+  let unique = ranked();
   const best = unique[0];
-  if (best) {
-    const second = unique[1];
-    if (best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
-      return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true)]);
+  const second = unique[1];
+  if (best && best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
+    // The vendor's other keys for the same product (`oracle/weblogic_server` beside
+    // `oracle_corporation/oracle_weblogic_server`), as close matches: only rows the name's
+    // own prefixes already read, so nothing more is queried and nothing near is added.
+    const short = withoutVendor(c);
+    const pool = short ? [...own, ...scope(prefixOf(short)).rows] : own;
+    return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true), ...sameProduct(best.r, pool).map((r) => make(itemOf(r), r.label ?? r.key, true, true))]);
+  }
+  // No clear winner, and a vendor is known: its products by their names without the vendor,
+  // which the prefix can't reach when the key repeats it ("Java" is oracle_corporation/oracle_java_se).
+  // Every product of the vendor is needed, so the first pass only asks for them (see resolveCandidates).
+  if (vendorKey) {
+    if (fullVendors.has(vendorKey)) {
+      const short = shortName(key, vendorKey);
+      for (const r of byVendor) {
+        if (!isVendor(r)) continue;
+        const name = shortName(r.product!, r.vendor!);
+        const sim = similarity(short, name);
+        if (sim >= SUGGEST_SCORE) scored.push({ r, score: sim + VENDOR_BONUS + (name === short ? PRODUCT_BONUS : 0) });
+      }
+      unique = ranked();
+    } else {
+      wanted.add(vendorKey);
     }
+  }
+  if (unique.length > 0) {
     // The closest names are kept, then listed most-affected first, like every other close match.
     const closest = unique.slice(0, MAX_FUZZY).sort((a, b) => b.r.count - a.r.count || b.score - a.score);
     return resolved(closest.map((s) => make(itemOf(s.r), s.r.label ?? s.r.key, true, true)));
@@ -368,6 +443,49 @@ function vendorGuesses(c: ProductCandidate): string[] {
 /** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
 function stripVendor(product: string, vendor: string): string {
   return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
+}
+
+/**
+ * The candidate's name without a vendor it starts with: "Oracle WebLogic" is
+ * `weblogic`, whether the vendor was given or is only the first word. Null when
+ * the name doesn't start with one, or too little would be left to look up.
+ */
+export function withoutVendor(c: ProductCandidate): string | null {
+  const key = normalizeKey(c.name);
+  if (!key) return null;
+  for (const v of [normalizeKey(c.vendor), normalizeKey(c.name.trim().split(/\s+/)[0])]) {
+    if (!v) continue;
+    const family = vendorFamily(v);
+    const spellings = [...new Set([...vendorSpellings(v), ...vendorSpellings(family), family])].sort((a, b) => b.length - a.length);
+    const spelling = spellings.find((sp) => key.startsWith(`${sp}_`));
+    if (spelling && key.length - spelling.length - 1 >= 3) return key.slice(spelling.length + 1);
+  }
+  return null;
+}
+
+/** Other products of `r`'s vendor (any spelling) in `rows` with the same name once the vendor is taken off, most-affected first. */
+function sameProduct(r: CatalogRow, rows: CatalogRow[]): CatalogRow[] {
+  if (r.kind !== 'product' || !r.vendor || !r.product) return [];
+  const family = vendorFamily(r.vendor);
+  const name = shortName(r.product, r.vendor);
+  const out = new Map<string, CatalogRow>();
+  for (const o of rows) {
+    if (o.kind === 'product' && o.key !== r.key && o.vendor && o.product && vendorFamily(o.vendor) === family && shortName(o.product, o.vendor) === name) out.set(o.key, o);
+  }
+  return [...out.values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1)).slice(0, MAX_FUZZY);
+}
+
+/**
+ * A product name without its vendor, however the vendor is spelled in it:
+ * `oracle_corporation`'s `oracle_java_se` is `java_se`, `tp_link_systems_inc`'s
+ * `tp_link_archer_c7` is `archer_c7`. The longest spelling that fits is taken;
+ * a name that is only the vendor is left alone.
+ */
+export function shortName(product: string, vendor: string): string {
+  const family = vendorFamily(vendor);
+  const spellings = [...new Set([...vendorSpellings(vendor), ...vendorSpellings(family), family, vendor.split('_')[0]!])].sort((a, b) => b.length - a.length);
+  const spelling = spellings.find((v) => product.startsWith(`${v}_`));
+  return spelling ? product.slice(spelling.length + 1) : product;
 }
 
 function itemOf(r: CatalogRow): string {
