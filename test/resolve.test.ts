@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
-import { MAX_PRODUCT_LOOKUPS, mergeVendorRows, prefixShare, resolveCandidates, shortName, similarity, VENDOR_SQL } from '../src/resolve/catalog';
+import { MAX_PRODUCT_LOOKUPS, mergeVendorRows, PREFIX_SQL, prefixShare, resolveCandidates, shortName, similarity, VENDOR_SQL, VENDOR_TOP_SQL, withoutVendor } from '../src/resolve/catalog';
 import { EXTRACTION_SCHEMA, fenceInput, keepMentioned, MAX_TEXT_CHARS, parseModelOutput, SYSTEM_PROMPT } from '../src/resolve/extract';
 import { JEV_MODEL } from '../src/resolve/jev';
 import { MAX_MANIFEST_ENTRIES } from '../src/resolve/limits';
@@ -366,6 +366,42 @@ describe('resolveCandidates', () => {
     ]);
     // Asked alone, the same answer.
     expect((await resolveCandidates(store(), [{ kind: 'product', name: 'WebLogic', vendor: 'Oracle', version: null, direct: true }])).chips[0]).toEqual(res.chips[1]);
+  });
+
+  it("adds the vendor's other keys for an exact product, from the prefix query alone", async () => {
+    const rows = [
+      ['oracle_corporation/oracle_weblogic_server', 'oracle_corporation', 'oracle_weblogic_server', 40],
+      ['oracle_corporation/weblogic_server', 'oracle_corporation', 'weblogic_server', 13],
+      ['oracle/weblogic_server', 'oracle', 'weblogic_server', 1],
+      // Same short name, another vendor; and a near name from another vendor: neither is added.
+      ['acme/weblogic_server', 'acme', 'weblogic_server', 50],
+      ['weblateorg/weblate', 'weblateorg', 'weblate', 5],
+    ] as const;
+    await env.DB.batch(
+      rows.map(([key, vendor, product, count]) =>
+        env.DB.prepare("INSERT INTO catalog (kind, key, vendor, product, normalized, label, count) VALUES ('product', ?, ?, ?, ?, ?, ?)").bind(key, vendor, product, product, key, count),
+      ),
+    );
+    const st = store();
+    const all = vi.spyOn(st, 'all');
+    const res = await resolveCandidates(st, [{ kind: 'product', name: 'Oracle WebLogic', vendor: null, version: '14.1.1', direct: true }]);
+    expect(res.chips[0]!.items.map((i) => [i.item, i.close])).toEqual([
+      ['p:oracle_corporation/oracle_weblogic_server@14.1.1', false],
+      ['?p:oracle_corporation/weblogic_server@14.1.1', true],
+      ['?p:oracle/weblogic_server@14.1.1', true],
+    ]);
+    // The prefix query and the vendor's top products, as for any name: no vendor read.
+    expect(all.mock.calls.map(([sql]) => sql)).toEqual([PREFIX_SQL, VENDOR_TOP_SQL]);
+  });
+
+  it('takes the vendor off the front of a name only when enough is left to look up', () => {
+    const p = (name: string, vendor: string | null = null) => withoutVendor({ kind: 'product', name, vendor, version: null, direct: true });
+    expect(p('Oracle WebLogic')).toBe('weblogic');
+    expect(p('Oracle Corporation WebLogic', 'Oracle')).toBe('weblogic');
+    expect(p('Cisco Webex')).toBe('webex');
+    expect(p('WebLogic', 'Oracle')).toBeNull();
+    expect(p('Oracle')).toBeNull();
+    expect(p('Oracle DB')).toBeNull();
   });
 
   it('strips the vendor from a product name however the vendor is spelled', () => {

@@ -148,7 +148,9 @@ export async function resolveCandidates(store: Store, input: Candidate[]): Promi
       ...twinKeys.map((key) => ({ kind: 'product' as const, key })),
       ...aliasItems.map(catalogKey),
     ]),
-    queries.length === 0 ? [] : productCandidates(store, queries),
+    // Plus each name without the vendor it starts with ("Oracle WebLogic" → weblogic), in the same
+    // query, so resolveProduct can add the vendor's other keys for the same product.
+    queries.length === 0 ? [] : productCandidates(store, [...new Set([...queries, ...products.flatMap((p, i) => (lines[i] ? [] : (withoutVendor(p) ?? [])))])]),
     vendors.length === 0 ? [] : store.all<CatalogRow>(VENDOR_TOP_SQL, [JSON.stringify(spelled(vendors)), MAX_VENDOR_ONLY]),
     categoryVendors.length === 0 ? [] : productsByVendor(store, spelled(categoryVendors)),
     ranges.length === 0 ? [] : store.all<CatalogRow>(KEY_RANGE_SQL, [JSON.stringify(ranges), MAX_PREFIX_ROWS]),
@@ -393,7 +395,12 @@ function resolveProduct(c: ProductCandidate, match: LineMatch | null, { byVendor
   const best = unique[0];
   const second = unique[1];
   if (best && best.score >= RESOLVE_SCORE && (!second || second.score <= best.score - CLEAR_LEAD)) {
-    return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true)]);
+    // The vendor's other keys for the same product (`oracle/weblogic_server` beside
+    // `oracle_corporation/oracle_weblogic_server`), as close matches: only rows the name's
+    // own prefixes already read, so nothing more is queried and nothing near is added.
+    const short = withoutVendor(c);
+    const pool = short ? [...own, ...scope(prefixOf(short)).rows] : own;
+    return resolved([make(itemOf(best.r), best.r.label ?? best.r.key, false, true), ...sameProduct(best.r, pool).map((r) => make(itemOf(r), r.label ?? r.key, true, true))]);
   }
   // No clear winner, and a vendor is known: its products by their names without the vendor,
   // which the prefix can't reach when the key repeats it ("Java" is oracle_corporation/oracle_java_se).
@@ -436,6 +443,36 @@ function vendorGuesses(c: ProductCandidate): string[] {
 /** `cisco_ios_xe_software` → `ios_xe_software`, so patterns need not repeat the vendor. */
 function stripVendor(product: string, vendor: string): string {
   return product.startsWith(`${vendor}_`) ? product.slice(vendor.length + 1) : product;
+}
+
+/**
+ * The candidate's name without a vendor it starts with: "Oracle WebLogic" is
+ * `weblogic`, whether the vendor was given or is only the first word. Null when
+ * the name doesn't start with one, or too little would be left to look up.
+ */
+export function withoutVendor(c: ProductCandidate): string | null {
+  const key = normalizeKey(c.name);
+  if (!key) return null;
+  for (const v of [normalizeKey(c.vendor), normalizeKey(c.name.trim().split(/\s+/)[0])]) {
+    if (!v) continue;
+    const family = vendorFamily(v);
+    const spellings = [...new Set([...vendorSpellings(v), ...vendorSpellings(family), family])].sort((a, b) => b.length - a.length);
+    const spelling = spellings.find((sp) => key.startsWith(`${sp}_`));
+    if (spelling && key.length - spelling.length - 1 >= 3) return key.slice(spelling.length + 1);
+  }
+  return null;
+}
+
+/** Other products of `r`'s vendor (any spelling) in `rows` with the same name once the vendor is taken off, most-affected first. */
+function sameProduct(r: CatalogRow, rows: CatalogRow[]): CatalogRow[] {
+  if (r.kind !== 'product' || !r.vendor || !r.product) return [];
+  const family = vendorFamily(r.vendor);
+  const name = shortName(r.product, r.vendor);
+  const out = new Map<string, CatalogRow>();
+  for (const o of rows) {
+    if (o.kind === 'product' && o.key !== r.key && o.vendor && o.product && vendorFamily(o.vendor) === family && shortName(o.product, o.vendor) === name) out.set(o.key, o);
+  }
+  return [...out.values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1)).slice(0, MAX_FUZZY);
 }
 
 /**
